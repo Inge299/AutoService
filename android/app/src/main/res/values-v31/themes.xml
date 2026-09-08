@@ -1,0 +1,11 @@
+<resources>
+    <style name="Theme.AutoService" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#F7F7F8</item>
+        <item name="android:navigationBarColor">#F7F7F8</item>
+        <item name="android:windowSplashScreenBackground">#F7F7F8</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#0F6B78</item>
+    </style>
+</resources>
