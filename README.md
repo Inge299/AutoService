@@ -11,6 +11,9 @@
 - `docs/PHASE_0_DISCOVERY.md` — интервью и набор пилота.
 - `docs/UX_UI_GUIDE.md` — обязательные UX/UI-правила Android-приложения.
 - `docs/SERVER_CONTRACT.md` — контракт первого серверного этапа и публичного согласования.
+- `docs/TECHNICAL_SPECIFICATION.md` — техническое задание MVP и критерии приёмки.
+- `docs/IMPLEMENTATION_PLAN.md` — этапы внедрения и план запуска пилота.
+- `docs/TEAM_WORK_PLAN.md` — разделение работы двух разработчиков и правила GitHub.
 
 ## Toolchain
 
