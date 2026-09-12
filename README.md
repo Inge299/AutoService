@@ -7,10 +7,13 @@
 ## Структура
 
 - `android/app` — Kotlin/Jetpack Compose приложение мастера;
+- `server` — локальный TypeScript/Fastify API, PostgreSQL-очередь и worker;
 - `docs/adr` — архитектурные решения;
 - `docs/PHASE_0_DISCOVERY.md` — интервью и набор пилота.
 - `docs/UX_UI_GUIDE.md` — обязательные UX/UI-правила Android-приложения.
 - `docs/SERVER_CONTRACT.md` — контракт первого серверного этапа и публичного согласования.
+- `docs/SERVER_ARCHITECTURE.md` — архитектура, модель данных, API и поток обработки медиа.
+- `docs/SERVER_OPERATIONS.md` — локальный запуск, развёртывание, проверка и эксплуатация.
 - `docs/TECHNICAL_SPECIFICATION.md` — техническое задание MVP и критерии приёмки.
 - `docs/IMPLEMENTATION_PLAN.md` — этапы внедрения и план запуска пилота.
 - `docs/TEAM_WORK_PLAN.md` — разделение работы двух разработчиков и правила GitHub.

@@ -1,0 +1,111 @@
+import type { MediaKind, PrismaClient } from "@prisma/client";
+import type { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
+import type { ObjectStorage } from "../../infrastructure/object-storage.js";
+
+const paramsSchema = z.object({ id: z.string().uuid() });
+const uploadSchema = z.object({
+  operationId: z.string().uuid(),
+  visitId: z.string().uuid(),
+  findingId: z.string().uuid().nullable().default(null),
+  kind: z.enum(["PHOTO", "VIDEO", "VOICE"]),
+  mimeType: z.enum(["image/jpeg", "video/mp4", "audio/mp4"]),
+  byteCount: z.number().int().positive().max(50 * 1024 * 1024),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+}).superRefine((value, context) => {
+  const expectedMime = { PHOTO: "image/jpeg", VIDEO: "video/mp4", VOICE: "audio/mp4" }[value.kind];
+  if (value.mimeType !== expectedMime) {
+    context.addIssue({ code: "custom", path: ["mimeType"], message: "MIME type does not match media kind" });
+  }
+});
+
+export function mediaRoutes(prisma: PrismaClient, storage: ObjectStorage): FastifyPluginAsync {
+  return async (app) => {
+    app.get("/v1/media/:id", async (request, reply) => {
+      const { id } = paramsSchema.parse(request.params);
+      const asset = await prisma.mediaAsset.findFirst({
+        where: { id, workshopId: request.actor.workshopId },
+        select: { id: true, state: true, byteCount: true, sha256: true, lastError: true },
+      });
+      if (!asset) return reply.code(404).send({ error: "not_found" });
+      return reply.send({ ...asset, byteCount: asset.byteCount.toString() });
+    });
+
+    app.post("/v1/media/:id/upload-session", async (request, reply) => {
+      const { id } = paramsSchema.parse(request.params);
+      const body = uploadSchema.parse(request.body);
+      const { workshopId } = request.actor;
+
+      const visit = await prisma.visit.findFirst({ where: { id: body.visitId, workshopId }, select: { id: true } });
+      if (!visit) return reply.code(404).send({ error: "visit_not_found" });
+      if (body.findingId) {
+        const finding = await prisma.finding.findFirst({
+          where: { id: body.findingId, visitId: body.visitId, workshopId },
+          select: { id: true },
+        });
+        if (!finding) return reply.code(404).send({ error: "finding_not_found" });
+      }
+
+      const objectKey = `workshops/${workshopId}/visits/${body.visitId}/media/${id}/original`;
+      const existing = await prisma.mediaAsset.findUnique({ where: { operationId: body.operationId } });
+      if (existing && (
+        existing.workshopId !== workshopId || existing.id !== id || existing.sha256 !== body.sha256 ||
+        existing.byteCount !== BigInt(body.byteCount)
+      )) {
+        return reply.code(409).send({ error: "operation_conflict" });
+      }
+
+      const asset = existing ?? await prisma.mediaAsset.create({
+        data: {
+          id,
+          operationId: body.operationId,
+          workshopId,
+          visitId: body.visitId,
+          findingId: body.findingId,
+          kind: body.kind as MediaKind,
+          mimeType: body.mimeType,
+          byteCount: BigInt(body.byteCount),
+          sha256: body.sha256,
+          objectKey,
+        },
+      });
+      const target = await storage.createUploadTarget({
+        objectKey: asset.objectKey,
+        mimeType: asset.mimeType,
+        byteCount: Number(asset.byteCount),
+        sha256: asset.sha256,
+      });
+      return reply.send({ mediaId: asset.id, method: "PUT", ...target });
+    });
+
+    app.post("/v1/media/:id/complete", async (request, reply) => {
+      const { id } = paramsSchema.parse(request.params);
+      const { workshopId } = request.actor;
+      const asset = await prisma.mediaAsset.findFirst({ where: { id, workshopId } });
+      if (!asset) return reply.code(404).send({ error: "not_found" });
+      if (["VERIFIED", "PROCESSING", "READY"].includes(asset.state)) {
+        return reply.send({ id: asset.id, state: asset.state });
+      }
+
+      const object = await storage.head(asset.objectKey);
+      if (BigInt(object.byteCount) !== asset.byteCount || object.sha256 !== asset.sha256) {
+        return reply.code(409).send({ error: "integrity_metadata_mismatch" });
+      }
+
+      await prisma.$transaction([
+        prisma.mediaAsset.update({ where: { id }, data: { state: "VERIFYING", lastError: null } }),
+        prisma.backgroundJob.upsert({
+          where: { idempotencyKey: `verify-media:${id}:${asset.sha256}` },
+          update: {},
+          create: {
+            workshopId,
+            type: "VERIFY_MEDIA",
+            payload: { mediaId: id },
+            idempotencyKey: `verify-media:${id}:${asset.sha256}`,
+          },
+        }),
+      ]);
+      return reply.code(202).send({ id, state: "VERIFYING" });
+    });
+  };
+}
