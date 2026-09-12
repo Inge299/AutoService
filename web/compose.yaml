@@ -1,0 +1,26 @@
+services:
+  web:
+    container_name: autoservice-web
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+    environment:
+      AUTOSERVICE_API_URL: "${AUTOSERVICE_API_URL:?Set AUTOSERVICE_API_URL}"
+      AUTOSERVICE_WORKSHOP_ID: "${AUTOSERVICE_WORKSHOP_ID:?Set AUTOSERVICE_WORKSHOP_ID}"
+      AUTOSERVICE_USER_ID: "${AUTOSERVICE_USER_ID:?Set AUTOSERVICE_USER_ID}"
+      WEB_SESSION_SECRET: "${WEB_SESSION_SECRET:?Set WEB_SESSION_SECRET}"
+      WEB_ADMIN_LOGIN: "${WEB_ADMIN_LOGIN:?Set WEB_ADMIN_LOGIN}"
+      WEB_ADMIN_PASSWORD_HASH: "${WEB_ADMIN_PASSWORD_HASH:?Set WEB_ADMIN_PASSWORD_HASH}"
+      WEB_ADMIN_NAME: "${WEB_ADMIN_NAME:-Администратор}"
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
