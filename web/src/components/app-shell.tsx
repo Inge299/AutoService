@@ -71,6 +71,11 @@ export function AppShell({ session, backend, workshop, reminderCount, children }
               <Icon name={item.icon} /><span>{item.label}</span>
             </Link>
           ))}
+          {session.role === "ADMIN" ? <Link href="/admin/users" className={isActive(pathname, "/admin/users") ? "active" : undefined}>
+            <Icon name="customers" /><span>Доступ</span>
+          </Link> : <Link href="/settings" className={isActive(pathname, "/settings") ? "active" : undefined}>
+            <Icon name="settings" /><span>Настройки</span>
+          </Link>}
         </nav>
       </div>
     </div>
