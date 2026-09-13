@@ -931,7 +931,11 @@ private fun VisitStatus.label(): String = when (this) {
 
 @Composable
 private fun StatusPill(label: String, color: androidx.compose.ui.graphics.Color) {
-    Surface(color = color, shape = MaterialTheme.shapes.small) {
+    Surface(
+        color = color,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = MaterialTheme.shapes.small,
+    ) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge,
