@@ -3,6 +3,11 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
 const paramsSchema = z.object({ id: z.string().uuid() });
+const listQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  status: z.enum(["DRAFT", "IN_REPAIR", "WAITING_APPROVAL", "COMPLETED", "CANCELLED"]).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
 const bodySchema = z.object({
   customerName: z.string().trim().max(200),
   customerPhone: z.string().trim().min(10).max(32),
@@ -18,6 +23,55 @@ const bodySchema = z.object({
 
 export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
   return async (app) => {
+    app.get("/v1/visits", async (request) => {
+      const query = listQuerySchema.parse(request.query);
+      const { workshopId } = request.actor;
+      const search = query.q || undefined;
+
+      return prisma.visit.findMany({
+        where: {
+          workshopId,
+          ...(query.status ? { status: query.status as VisitStatus } : {}),
+          ...(search
+            ? {
+                OR: [
+                  { customerName: { contains: search, mode: "insensitive" } },
+                  { customerPhone: { contains: search, mode: "insensitive" } },
+                  { vehicleLabel: { contains: search, mode: "insensitive" } },
+                  { licensePlate: { contains: search, mode: "insensitive" } },
+                ],
+              }
+            : {}),
+        },
+        orderBy: { updatedAt: "desc" },
+        take: query.limit,
+        include: {
+          findings: {
+            orderBy: { createdAt: "asc" },
+            include: { _count: { select: { media: true } } },
+          },
+          _count: { select: { media: true } },
+        },
+      });
+    });
+
+    app.get("/v1/visits/:id", async (request, reply) => {
+      const { id } = paramsSchema.parse(request.params);
+      const visit = await prisma.visit.findFirst({
+        where: { id, workshopId: request.actor.workshopId },
+        include: {
+          findings: {
+            orderBy: { createdAt: "asc" },
+            include: { _count: { select: { media: true } } },
+          },
+          _count: { select: { media: true } },
+        },
+      });
+
+      if (!visit) return reply.code(404).send({ error: "not_found" });
+      return visit;
+    });
+
     app.put("/v1/visits/:id", async (request, reply) => {
       const { id } = paramsSchema.parse(request.params);
       const body = bodySchema.parse(request.body);
