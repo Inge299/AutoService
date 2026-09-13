@@ -60,4 +60,4 @@ docker compose --env-file deploy.env up -d --build
 docker compose ps
 ```
 
-По умолчанию web слушает только `127.0.0.1:3000`, чтобы его публиковал HTTPS reverse proxy. Для временного просмотра напрямую можно установить `WEB_BIND_ADDRESS=0.0.0.0`, ограничив порт firewall по нужным IP.
+По умолчанию web слушает только `127.0.0.1:3000`, чтобы его публиковал HTTPS reverse proxy или защищённый SSH-туннель. Compose подключает web к существующей сети `autoservice_default`, где API доступен как `http://api:8080`. Для другой схемы задайте `AUTOSERVICE_DOCKER_NETWORK` и `AUTOSERVICE_API_URL`.

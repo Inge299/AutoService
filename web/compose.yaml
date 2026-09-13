@@ -24,3 +24,8 @@ services:
       timeout: 5s
       start_period: 15s
       retries: 3
+
+networks:
+  default:
+    name: "${AUTOSERVICE_DOCKER_NETWORK:-autoservice_default}"
+    external: true
