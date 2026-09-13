@@ -15,6 +15,7 @@ services:
       WEB_ADMIN_LOGIN: "${WEB_ADMIN_LOGIN:?Set WEB_ADMIN_LOGIN}"
       WEB_ADMIN_PASSWORD_HASH: "${WEB_ADMIN_PASSWORD_HASH:?Set WEB_ADMIN_PASSWORD_HASH}"
       WEB_ADMIN_NAME: "${WEB_ADMIN_NAME:-Администратор}"
+      WEB_USERS_JSON: "${WEB_USERS_JSON:-[]}"
     init: true
     security_opt:
       - no-new-privileges:true
