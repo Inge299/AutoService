@@ -61,6 +61,7 @@ data class VisitEntity(
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
     val syncState: SyncState,
+    val serverVersion: Int = 0,
 )
 
 @Entity(
@@ -117,4 +118,5 @@ data class FindingEntity(
     val status: FindingStatus,
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
+    val serverVersion: Int = 0,
 )

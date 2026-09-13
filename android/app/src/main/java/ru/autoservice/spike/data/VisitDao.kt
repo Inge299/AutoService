@@ -20,6 +20,9 @@ interface VisitDao {
     @Query("SELECT * FROM visits WHERE id = :id LIMIT 1")
     suspend fun find(id: String): VisitEntity?
 
+    @Query("SELECT * FROM visits ORDER BY createdAtEpochMs")
+    suspend fun all(): List<VisitEntity>
+
     @Query("UPDATE visits SET status = :status, updatedAtEpochMs = :updatedAt WHERE id = :visitId")
     suspend fun updateStatus(visitId: String, status: VisitStatus, updatedAt: Long)
 }

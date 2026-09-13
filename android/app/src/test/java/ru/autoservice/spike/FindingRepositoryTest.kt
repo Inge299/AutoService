@@ -17,7 +17,7 @@ class FindingRepositoryTest {
     @Test
     fun `creates local finding with price and priority`() = runTest {
         val dao = FakeFindingDao()
-        val repository = FindingRepository(dao, clock = { 456L })
+        val repository = FindingRepository(dao, FakeWorkshopRemote(), clock = { 456L })
 
         val finding = repository.createFinding(
             FindingDraft(
@@ -34,12 +34,13 @@ class FindingRepositoryTest {
         assertEquals(3_490, finding.priceRub)
         assertEquals(FindingPriority.IMPORTANT, finding.priority)
         assertEquals(456L, finding.createdAtEpochMs)
+        assertEquals(1, finding.serverVersion)
         assertEquals(finding, dao.saved)
     }
 
     @Test
     fun `rejects finding without title`() = runTest {
-        val repository = FindingRepository(FakeFindingDao())
+        val repository = FindingRepository(FakeFindingDao(), FakeWorkshopRemote())
 
         var rejected = false
         try {
@@ -61,7 +62,7 @@ class FindingRepositoryTest {
     @Test
     fun `prepares priced finding for customer approval`() = runTest {
         val dao = FakeFindingDao()
-        val repository = FindingRepository(dao, clock = { 789L })
+        val repository = FindingRepository(dao, FakeWorkshopRemote(), clock = { 789L })
         val finding = repository.createFinding(
             FindingDraft(
                 visitId = "visit-1",
@@ -93,6 +94,8 @@ class FindingRepositoryTest {
         }
 
         override fun observeForVisit(visitId: String): Flow<List<FindingEntity>> = findings
+
+        override suspend fun all(): List<FindingEntity> = findings.value
 
         override suspend fun updateStatus(findingId: String, status: FindingStatus, updatedAt: Long) {
             findings.value = findings.value.map {

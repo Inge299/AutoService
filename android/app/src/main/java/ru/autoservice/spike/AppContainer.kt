@@ -8,7 +8,9 @@ import ru.autoservice.spike.data.LocalDictionaryRepository
 import ru.autoservice.spike.data.MediaRepository
 import ru.autoservice.spike.data.VisitRepository
 import ru.autoservice.spike.media.MediaFileStore
-import ru.autoservice.spike.sync.LocalMirrorUploadTransport
+import ru.autoservice.spike.network.AuthStore
+import ru.autoservice.spike.network.AutoServiceApi
+import ru.autoservice.spike.sync.ServerUploadTransport
 import ru.autoservice.spike.sync.UploadScheduler
 import ru.autoservice.spike.sync.UploadTransport
 
@@ -23,14 +25,14 @@ class AppContainer(context: Context) {
         AppDatabase.MIGRATION_1_2,
         AppDatabase.MIGRATION_2_3,
         AppDatabase.MIGRATION_3_4,
+        AppDatabase.MIGRATION_4_5,
     ).build()
 
     val fileStore = MediaFileStore(appContext)
     val uploadScheduler = UploadScheduler(appContext)
-
-    // This is deliberately swappable. The first spike validates Android
-    // persistence and scheduling before the real resumable HTTP API exists.
-    val uploadTransport: UploadTransport = LocalMirrorUploadTransport(appContext)
+    val authStore = AuthStore(appContext)
+    val api = AutoServiceApi(BuildConfig.API_BASE_URL, authStore)
+    val uploadTransport: UploadTransport = ServerUploadTransport(api)
 
     val mediaRepository = MediaRepository(
         mediaDao = database.mediaDao(),
@@ -38,7 +40,7 @@ class AppContainer(context: Context) {
         scheduler = uploadScheduler,
     )
 
-    val visitRepository = VisitRepository(database.visitDao())
+    val visitRepository = VisitRepository(database.visitDao(), api)
     val localDictionaryRepository = LocalDictionaryRepository(database.dictionaryDao())
-    val findingRepository = FindingRepository(database.findingDao())
+    val findingRepository = FindingRepository(database.findingDao(), api)
 }

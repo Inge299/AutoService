@@ -1,9 +1,12 @@
 package ru.autoservice.spike.data
 
+import ru.autoservice.spike.network.WorkshopSnapshot
+import ru.autoservice.spike.network.WorkshopRemote
 import java.util.UUID
 
 class VisitRepository(
     private val visitDao: VisitDao,
+    private val api: WorkshopRemote,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     val activeVisits = visitDao.observeActive()
@@ -30,13 +33,24 @@ class VisitRepository(
             updatedAtEpochMs = now,
             syncState = SyncState.LOCAL,
         )
-        visitDao.upsert(visit)
-        return visit
+        val saved = api.saveVisit(visit)
+        visitDao.upsert(saved)
+        return saved
     }
 
     suspend fun startRepair(visit: VisitEntity) {
         require(visit.status == VisitStatus.DRAFT) { "Ремонт уже начат" }
-        visitDao.updateStatus(visit.id, VisitStatus.IN_REPAIR, clock())
+        val saved = api.saveVisit(
+            visit.copy(status = VisitStatus.IN_REPAIR, updatedAtEpochMs = clock()),
+        )
+        visitDao.upsert(saved)
+    }
+
+    suspend fun synchronizeLocal(): WorkshopSnapshot {
+        visitDao.all()
+            .filter { it.syncState != SyncState.SYNCED || it.serverVersion == 0 }
+            .forEach { visitDao.upsert(api.saveVisit(it)) }
+        return api.loadWorkshop().also { snapshot -> snapshot.visits.forEach { visitDao.upsert(it) } }
     }
 
     private fun normalizePhone(value: String): String {

@@ -166,7 +166,7 @@ fun CameraCaptureScreen(
                                     kind = MediaKind.PHOTO,
                                     mimeType = "image/jpeg",
                                     file = output,
-                                    onSuccess = { onMessage("Фото сохранено на телефоне") },
+                                    onSuccess = { onMessage("Фото отправлено в очередь сервера") },
                                     onFailure = { onMessage(it.message ?: "Ошибка сохранения фото") },
                                 )
                             }
@@ -215,7 +215,7 @@ fun CameraCaptureScreen(
                                             mimeType = "video/mp4",
                                             file = completed,
                                             onSuccess = {
-                                                onMessage("Видео сохранено на телефоне")
+                                                onMessage("Видео отправлено в очередь сервера")
                                             },
                                             onFailure = {
                                                 onMessage(it.message ?: "Ошибка сохранения видео")
