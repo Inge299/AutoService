@@ -31,6 +31,7 @@
 /* Responsive UI hardening for variable server data and customer decisions. */
 .customer-car{width:max-content;max-width:100%;grid-template-columns:38px minmax(0,1fr) auto}
 .customer-car>div{min-width:0}
+.customer-car>.status-pill{width:max-content;max-width:none}
 .customer-car strong,.customer-car small{overflow-wrap:anywhere}
 .customer-car strong{font-size:12.5px}
 .customer-car small{font-size:11px;line-height:1.35}
@@ -63,8 +64,8 @@
 }
 
 @media (max-width:720px){
-  .customer-car{width:100%;grid-template-columns:36px minmax(0,1fr) auto}
-  .customer-car>.status-pill{grid-column:auto}
+  .customer-car{width:100%;grid-template-columns:36px minmax(0,1fr)}
+  .customer-car>.status-pill{grid-column:2;justify-self:start}
 }
 
 @media (max-width:460px){
