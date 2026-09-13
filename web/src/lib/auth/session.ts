@@ -5,8 +5,6 @@ import {
   createDecipheriv,
   createHash,
   randomBytes,
-  scryptSync,
-  timingSafeEqual,
 } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -22,21 +20,8 @@ export interface WebSession {
   expiresAt: number;
 }
 
-type SessionIdentity = Omit<WebSession, "expiresAt">;
-
-interface ConfiguredUser extends SessionIdentity {
-  login: string;
-  passwordHash: string;
-}
-
 function encryptionKey(secret: string): Buffer {
   return createHash("sha256").update(secret).digest();
-}
-
-function safeEqual(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 function sessionSecret(): string | null {
@@ -133,74 +118,4 @@ export async function persistSession(token: string): Promise<void> {
 export async function clearSession(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(COOKIE_NAME);
-}
-
-export function credentialsMatch(login: string, password: string): boolean {
-  const expectedLogin = process.env.WEB_ADMIN_LOGIN;
-  if (!expectedLogin || !safeEqual(login, expectedLogin)) return false;
-
-  const passwordHash = process.env.WEB_ADMIN_PASSWORD_HASH;
-  if (passwordHash) {
-    return passwordMatchesHash(password, passwordHash);
-  }
-
-  // Plaintext is accepted only for local development bootstrap.
-  const developmentPassword = process.env.WEB_ADMIN_PASSWORD;
-  return process.env.NODE_ENV !== "production" && Boolean(developmentPassword) &&
-    safeEqual(password, developmentPassword as string);
-}
-
-function passwordMatchesHash(password: string, passwordHash: string): boolean {
-  const [saltHex, expectedHashHex] = passwordHash.split(":");
-  if (!saltHex || !expectedHashHex) return false;
-  try {
-    const actualHash = scryptSync(password, Buffer.from(saltHex, "hex"), 64);
-    return safeEqual(actualHash.toString("hex"), expectedHashHex);
-  } catch {
-    return false;
-  }
-}
-
-function configuredUsers(): ConfiguredUser[] {
-  const value = process.env.WEB_USERS_JSON;
-  if (!value) return [];
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((user): user is ConfiguredUser => {
-      if (!user || typeof user !== "object") return false;
-      const candidate = user as Partial<ConfiguredUser>;
-      return typeof candidate.login === "string" &&
-        typeof candidate.passwordHash === "string" &&
-        typeof candidate.userId === "string" &&
-        typeof candidate.workshopId === "string" &&
-        typeof candidate.displayName === "string" &&
-        (candidate.role === "ADMIN" || candidate.role === "EMPLOYEE");
-    });
-  } catch {
-    return [];
-  }
-}
-
-export function authenticateCredentials(login: string, password: string): SessionIdentity | null {
-  const configured = configuredUsers().find((user) => safeEqual(login, user.login));
-  if (configured && passwordMatchesHash(password, configured.passwordHash)) {
-    return {
-      userId: configured.userId,
-      workshopId: configured.workshopId,
-      displayName: configured.displayName,
-      role: configured.role,
-    };
-  }
-
-  if (!credentialsMatch(login, password)) return null;
-  const userId = process.env.AUTOSERVICE_USER_ID;
-  const workshopId = process.env.AUTOSERVICE_WORKSHOP_ID;
-  if (!userId || !workshopId) return null;
-  return {
-    userId,
-    workshopId,
-    displayName: process.env.WEB_ADMIN_NAME || "Администратор",
-    role: "ADMIN",
-  };
 }

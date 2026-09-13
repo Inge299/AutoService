@@ -47,6 +47,9 @@ export function AppShell({ session, backend, workshop, reminderCount, children }
           <Link href="/settings" className={isActive(pathname, "/settings") ? "active" : undefined}>
             <Icon name="settings" /><span>Настройки</span>
           </Link>
+          {session.role === "ADMIN" && <Link href="/admin/users" className={isActive(pathname, "/admin/users") ? "active" : undefined}>
+            <Icon name="customers" /><span>Пользователи</span>
+          </Link>}
         </nav>
         <div className="sidebar-footer">
           <div className={`backend-state backend-${backend.state.toLowerCase()}`}>

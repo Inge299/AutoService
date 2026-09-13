@@ -8,6 +8,8 @@ export const metadata: Metadata = { title: "Вход" };
 const errors: Record<string, string> = {
   invalid_credentials: "Неверный логин или пароль.",
   not_configured: "Авторизация ещё не настроена на сервере.",
+  access_revoked: "Доступ к учётной записи отключён администратором.",
+  server_unavailable: "Сервер авторизации временно недоступен.",
 };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
@@ -28,7 +30,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <span className="mobile-login-brand"><BrandMark /></span>
           <p className="eyebrow">Добро пожаловать</p>
           <h2>Вход в AutoService</h2>
-          <p className="muted login-subtitle">Используйте учётные данные администратора мастерской.</p>
+          <p className="muted login-subtitle">Используйте учётные данные, выданные администратором.</p>
           {error && <div className="form-error"><Icon name="alert" />{errors[error] ?? "Не удалось войти."}</div>}
           <form action={loginAction} className="login-form">
             <label>Логин<input name="login" autoComplete="username" required maxLength={128} placeholder="admin" /></label>

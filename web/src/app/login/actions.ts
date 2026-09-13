@@ -1,11 +1,11 @@
 "use server";
 
 import {
-  authenticateCredentials,
   clearSession,
   createSessionToken,
   persistSession,
 } from "@/lib/auth/session";
+import { authenticateApiUser } from "@/lib/api/autoservice-api";
 import { redirect } from "next/navigation";
 
 export async function loginAction(formData: FormData): Promise<void> {
@@ -16,7 +16,12 @@ export async function loginAction(formData: FormData): Promise<void> {
     redirect("/login?error=invalid_credentials");
   }
 
-  const identity = authenticateCredentials(login, password);
+  let identity;
+  try {
+    identity = await authenticateApiUser(login, password);
+  } catch {
+    redirect("/login?error=server_unavailable");
+  }
   if (!identity) redirect("/login?error=invalid_credentials");
 
   const token = createSessionToken(identity);

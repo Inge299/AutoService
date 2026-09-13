@@ -85,6 +85,24 @@ export interface ApiWorkshop {
   phone: string | null;
 }
 
+export interface ApiSessionIdentity {
+  userId: string;
+  workshopId: string;
+  displayName: string;
+  role: "ADMIN" | "EMPLOYEE";
+}
+
+export interface ApiAdminUser {
+  id: string;
+  login: string | null;
+  displayName: string;
+  phone: string | null;
+  role: "ADMIN" | "EMPLOYEE";
+  isActive: boolean;
+  createdAt: string;
+  isCurrent: boolean;
+}
+
 export type ApprovalDecisionValue = "APPROVED" | "DECLINED" | "DEFERRED" | "CALL_REQUESTED";
 
 export interface PublicApproval {
@@ -120,6 +138,12 @@ function apiBaseUrl(): string | null {
   return value ? value.replace(/\/$/, "") : null;
 }
 
+function internalApiKey(): string {
+  const value = process.env.AUTOSERVICE_INTERNAL_API_KEY?.trim();
+  if (!value) throw new Error("AUTOSERVICE_INTERNAL_API_KEY is not configured");
+  return value;
+}
+
 async function request<T>(
   path: string,
   session: WebSession,
@@ -132,6 +156,7 @@ async function request<T>(
     ...init,
     headers: {
       "content-type": "application/json",
+      "x-internal-api-key": internalApiKey(),
       "x-workshop-id": session.workshopId,
       "x-user-id": session.userId,
       ...init.headers,
@@ -222,6 +247,53 @@ export function listApiCustomers(session: WebSession, search?: string) {
 
 export function getApiWorkshop(session: WebSession) {
   return request<ApiWorkshop>("/v1/workshop", session);
+}
+
+export async function authenticateApiUser(login: string, password: string): Promise<ApiSessionIdentity | null> {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) throw new Error("AUTOSERVICE_API_URL is not configured");
+  const response = await fetch(`${baseUrl}/v1/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-internal-api-key": internalApiKey() },
+    body: JSON.stringify({ login, password }),
+    cache: "no-store",
+  });
+  if (response.status === 401) return null;
+  if (!response.ok) throw new AutoServiceApiError(response.status, await response.text());
+  return response.json() as Promise<ApiSessionIdentity>;
+}
+
+export function getApiSession(session: WebSession) {
+  return request<{ id: string; login: string | null; displayName: string; workshopId: string; role: "ADMIN" | "EMPLOYEE" }>("/v1/session", session);
+}
+
+export function listApiAdminUsers(session: WebSession) {
+  return request<ApiAdminUser[]>("/v1/admin/users", session);
+}
+
+export function createApiAdminUser(session: WebSession, payload: { login: string; displayName: string; phone?: string; password: string; role: "ADMIN" | "EMPLOYEE" }) {
+  return request<{ id: string }>("/v1/admin/users", session, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function setApiAdminUserState(session: WebSession, userId: string, isActive: boolean) {
+  return request<{ id: string; isActive: boolean }>(`/v1/admin/users/${encodeURIComponent(userId)}/state`, session, {
+    method: "PATCH",
+    body: JSON.stringify({ isActive }),
+  });
+}
+
+export function setApiAdminUserRole(session: WebSession, userId: string, role: "ADMIN" | "EMPLOYEE") {
+  return request<{ id: string; role: "ADMIN" | "EMPLOYEE" }>(`/v1/admin/users/${encodeURIComponent(userId)}/role`, session, {
+    method: "PATCH",
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function resetApiAdminUserPassword(session: WebSession, userId: string, password: string) {
+  return request<{ id: string }>(`/v1/admin/users/${encodeURIComponent(userId)}/password`, session, {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
 }
 
 export async function getPublicApproval(token: string): Promise<PublicApproval | null> {
