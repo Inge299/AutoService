@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatusPill } from "@/components/status-pill";
 import { VisitRow } from "@/components/visit-row";
 import { requireSession } from "@/lib/auth/session";
-import { formatRub, visitStatusMeta, type VisitStatus } from "@/lib/domain";
+import { formatRub, pluralRu, visitStatusMeta, type VisitStatus } from "@/lib/domain";
 import { workshopRepository } from "@/lib/repository";
 
 export const metadata: Metadata = { title: "Сегодня" };
@@ -47,7 +47,7 @@ export default async function DashboardPage() {
       <div className="dashboard-layout">
         <div className="dashboard-main">
           <section className="section-block">
-            <div className="section-heading"><div><h2>Нужно внимание</h2><p>Сначала действия, которые задерживают ремонт</p></div><StatusPill label={`${attention.length} задачи`} tone="danger" /></div>
+            <div className="section-heading"><div><h2>Нужно внимание</h2><p>Сначала действия, которые задерживают ремонт</p></div><StatusPill label={`${attention.length} ${pluralRu(attention.length, "задача", "задачи", "задач")}`} tone="danger" /></div>
             <div className="attention-list">
               {attention.map((visit) => (
                 <Link key={visit.id} href={`/visits/${visit.id}`} className="attention-card">
@@ -60,7 +60,7 @@ export default async function DashboardPage() {
           </section>
 
           <section className="section-block">
-            <div className="section-heading"><div><h2>Автомобили сегодня</h2><p>{active.length} активных визита</p></div><Link href="/visits" className="text-link">Все визиты <Icon name="arrow-right" /></Link></div>
+            <div className="section-heading"><div><h2>Автомобили сегодня</h2><p>{active.length} {pluralRu(active.length, "активный визит", "активных визита", "активных визитов")}</p></div><Link href="/visits" className="text-link">Все визиты <Icon name="arrow-right" /></Link></div>
             <div className="work-board">
               {board.map((column) => {
                 const items = active.filter((visit) => visit.status === column.status);

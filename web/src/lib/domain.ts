@@ -102,3 +102,12 @@ export const priorityMeta: Record<FindingPriority, { label: string; tone: string
 export function formatRub(value: number): string {
   return new Intl.NumberFormat("ru-RU").format(value) + " ₽";
 }
+
+export function pluralRu(count: number, one: string, few: string, many: string): string {
+  const modulo100 = Math.abs(count) % 100;
+  const modulo10 = modulo100 % 10;
+  if (modulo100 > 10 && modulo100 < 20) return many;
+  if (modulo10 === 1) return one;
+  if (modulo10 >= 2 && modulo10 <= 4) return few;
+  return many;
+}

@@ -15,6 +15,7 @@ const filters: Array<{ value?: VisitStatus; label: string }> = [
 export default async function VisitsPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: VisitStatus }> }) {
   const params = await searchParams;
   const activeStatus = filters.some((item) => item.value === params.status) ? params.status : undefined;
+  const hasFilters = Boolean(params.q?.trim() || activeStatus);
   const visits = await workshopRepository.listVisits({ query: params.q, status: activeStatus });
   return (
     <>
@@ -30,7 +31,7 @@ export default async function VisitsPage({ searchParams }: { searchParams: Promi
             return <Link key={filter.label} href={href} className={activeStatus === filter.value ? "active" : undefined}>{filter.label}{filter.value && <small>{visitStatusMeta[filter.value].label === filter.label ? "" : ""}</small>}</Link>;
           })}
         </div>
-        <div className="visit-list">{visits.length ? visits.map((visit) => <VisitRow key={visit.id} visit={visit} />) : <div className="empty-state"><Icon name="search" /><h3>Ничего не найдено</h3><p>Попробуйте изменить запрос или сбросить фильтр.</p><Link href="/visits" className="button button-secondary">Сбросить фильтры</Link></div>}</div>
+        <div className="visit-list">{visits.length ? visits.map((visit) => <VisitRow key={visit.id} visit={visit} />) : <div className="empty-state"><Icon name={hasFilters ? "search" : "car"} /><h3>{hasFilters ? "Ничего не найдено" : "Визитов пока нет"}</h3><p>{hasFilters ? "Попробуйте изменить запрос или сбросить фильтр." : "Первый визит появится после синхронизации с сервером."}</p>{hasFilters && <Link href="/visits" className="button button-secondary">Сбросить фильтры</Link>}</div>}</div>
       </section>
     </>
   );
