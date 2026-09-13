@@ -25,6 +25,7 @@ const headers = { "x-workshop-id": workshopId, "x-user-id": userId };
 function mockedPrisma(overrides: Record<string, unknown>): PrismaClient {
   return {
     membership: { findUnique: vi.fn().mockResolvedValue({ userId }) },
+    workshop: { findUnique: vi.fn().mockResolvedValue({ id: workshopId, name: "АвтоСфера", phone: "+79990000000" }) },
     customer: { findMany: vi.fn().mockResolvedValue([]) },
     visit: { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn().mockResolvedValue(null) },
     ...overrides,
@@ -32,6 +33,24 @@ function mockedPrisma(overrides: Record<string, unknown>): PrismaClient {
 }
 
 describe("read routes", () => {
+  it("returns the authenticated workshop profile", async () => {
+    const findUnique = vi.fn().mockResolvedValue({ id: workshopId, name: "АвтоСфера", phone: "+79990000000" });
+    const app = await buildApp(config, {
+      prisma: mockedPrisma({ workshop: { findUnique } }),
+      storage: {} as ObjectStorage,
+    });
+
+    const response = await app.inject({ method: "GET", url: "/v1/workshop", headers });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ id: workshopId, name: "АвтоСфера", phone: "+79990000000" });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { id: workshopId },
+      select: { id: true, name: true, phone: true },
+    });
+    await app.close();
+  });
+
   it("lists only the authenticated workshop visits with validated filters", async () => {
     const findMany = vi.fn().mockResolvedValue([
       {
