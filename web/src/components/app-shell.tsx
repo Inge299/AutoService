@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logoutAction } from "@/app/login/actions";
 import { BrandMark, Icon, type IconName } from "@/components/icons";
-import type { BackendConnection } from "@/lib/api/autoservice-api";
+import type { ApiWorkshop, BackendConnection } from "@/lib/api/autoservice-api";
 import type { WebSession } from "@/lib/auth/session";
 
 const navigation: Array<{ href: string; label: string; icon: IconName }> = [
@@ -19,22 +19,28 @@ function isActive(pathname: string, href: string) {
   return href === "/dashboard" ? pathname === href : pathname.startsWith(href);
 }
 
-export function AppShell({ session, backend, children }: { session: WebSession; backend: BackendConnection; children: React.ReactNode }) {
+export function AppShell({ session, backend, workshop, reminderCount, children }: { session: WebSession; backend: BackendConnection; workshop: ApiWorkshop; reminderCount: number; children: React.ReactNode }) {
   const pathname = usePathname();
+  const workshopInitials = workshop.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "АС";
   return (
     <div className="app-frame">
       <aside className="sidebar">
         <Link href="/dashboard" className="sidebar-brand"><BrandMark /></Link>
         <div className="workshop-card">
-          <span className="workshop-avatar">АС</span>
-          <span><strong>АвтоСфера</strong><small>Оренбург · 1 локация</small></span>
+          <span className="workshop-avatar">{workshopInitials}</span>
+          <span><strong>{workshop.name}</strong><small>{workshop.phone || "Данные мастерской с сервера"}</small></span>
           <Icon name="more" />
         </div>
         <nav className="sidebar-nav" aria-label="Основная навигация">
           <p className="nav-caption">Рабочее пространство</p>
           {navigation.map((item) => (
             <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? "active" : undefined}>
-              <Icon name={item.icon} /><span>{item.label}</span>{item.href === "/reminders" && <em>2</em>}
+              <Icon name={item.icon} /><span>{item.label}</span>{item.href === "/reminders" && reminderCount > 0 && <em>{reminderCount}</em>}
             </Link>
           ))}
           <p className="nav-caption nav-caption-settings">Управление</p>

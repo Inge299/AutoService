@@ -79,6 +79,12 @@ export interface ApiCustomer {
   _count: { visits: number };
 }
 
+export interface ApiWorkshop {
+  id: string;
+  name: string;
+  phone: string | null;
+}
+
 export type ApprovalDecisionValue = "APPROVED" | "DECLINED" | "DEFERRED" | "CALL_REQUESTED";
 
 export interface PublicApproval {
@@ -212,6 +218,10 @@ export function listApiCustomers(session: WebSession, search?: string) {
   if (search?.trim()) query.set("q", search.trim());
   const suffix = query.size ? `?${query.toString()}` : "";
   return request<ApiCustomer[]>(`/v1/customers${suffix}`, session);
+}
+
+export function getApiWorkshop(session: WebSession) {
+  return request<ApiWorkshop>("/v1/workshop", session);
 }
 
 export async function getPublicApproval(token: string): Promise<PublicApproval | null> {

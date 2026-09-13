@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Icon } from "@/components/icons";
+import { Icon, type IconName } from "@/components/icons";
 import type { ApprovalDecisionValue } from "@/lib/api/autoservice-api";
 import { formatRub } from "@/lib/domain";
 
-const labels: Record<ApprovalDecisionValue, { title: string; text: string }> = {
-  APPROVED: { title: "Работа согласована", text: "Мастерская получила ваше решение и может продолжить ремонт." },
-  DECLINED: { title: "Работа отклонена", text: "Мастерская получила решение и не будет выполнять эту работу." },
-  DEFERRED: { title: "Работа отложена", text: "Рекомендация сохранена в истории автомобиля." },
-  CALL_REQUESTED: { title: "Запрошен звонок", text: "Мастерская свяжется с вами, чтобы ответить на вопросы." },
+const labels: Record<ApprovalDecisionValue, { title: string; text: string; icon: IconName; tone: string }> = {
+  APPROVED: { title: "Работа согласована", text: "Мастерская получила ваше решение и может продолжить ремонт.", icon: "check", tone: "success" },
+  DECLINED: { title: "Работа отклонена", text: "Мастерская получила решение и не будет выполнять эту работу.", icon: "alert", tone: "danger" },
+  DEFERRED: { title: "Работа отложена", text: "Рекомендация сохранена в истории автомобиля.", icon: "clock", tone: "neutral" },
+  CALL_REQUESTED: { title: "Запрошен звонок", text: "Мастерская свяжется с вами, чтобы ответить на вопросы.", icon: "phone", tone: "warning" },
 };
 
 interface SavedDecision {
@@ -55,7 +55,8 @@ export function ApprovalDecision({
       hour: "2-digit",
       minute: "2-digit",
     }).format(new Date(decision.createdAt));
-    return <div className="decision-result"><span><Icon name="check" /></span><h3>{labels[decision.value].title}</h3><p>{labels[decision.value].text}</p><small>Решение сохранено на сервере · {savedAt}</small></div>;
+    const result = labels[decision.value];
+    return <div className={`decision-result decision-result-${result.tone}`}><span><Icon name={result.icon} /></span><h3>{result.title}</h3><p>{result.text}</p><small>Решение сохранено на сервере · {savedAt}</small></div>;
   }
 
   return (
