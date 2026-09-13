@@ -1,4 +1,5 @@
-import type { PrismaClient } from "@prisma/client";
+import type { MembershipRole, PrismaClient } from "@prisma/client";
+import { timingSafeEqual } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
@@ -9,22 +10,38 @@ const actorSchema = z.object({
 
 declare module "fastify" {
   interface FastifyRequest {
-    actor: z.infer<typeof actorSchema>;
+    actor: z.infer<typeof actorSchema> & { role: MembershipRole };
   }
 }
 
-export function registerDevelopmentActorContext(
+function safeEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+export function registerActorContext(
   app: FastifyInstance,
   prisma: PrismaClient,
   nodeEnv: string,
+  internalApiKey?: string,
 ): void {
-  if (nodeEnv === "production") {
-    throw new Error("Production authentication is not implemented");
+  if (nodeEnv === "production" && !internalApiKey) {
+    throw new Error("Production authentication requires INTERNAL_API_KEY");
   }
 
   app.decorateRequest("actor");
   app.addHook("onRequest", async (request, reply) => {
     if (!request.url.startsWith("/v1/")) return;
+
+    if (internalApiKey) {
+      const suppliedKey = request.headers["x-internal-api-key"];
+      if (typeof suppliedKey !== "string" || !safeEqual(suppliedKey, internalApiKey)) {
+        return reply.code(401).send({ error: "unauthorized" });
+      }
+    }
+
+    if (request.url.startsWith("/v1/auth/login")) return;
 
     const parsed = actorSchema.safeParse({
       workshopId: request.headers["x-workshop-id"],
@@ -40,9 +57,17 @@ export function registerDevelopmentActorContext(
           userId: parsed.data.userId,
         },
       },
-      select: { userId: true },
+      select: {
+        role: true,
+        isActive: true,
+        user: { select: { isActive: true } },
+      },
     });
-    if (!membership) return reply.code(401).send({ error: "unauthorized" });
-    request.actor = parsed.data;
+    if (!membership?.isActive || !membership.user.isActive) {
+      return reply.code(403).send({ error: "access_revoked" });
+    }
+    request.actor = { ...parsed.data, role: membership.role };
   });
 }
+
+export const registerDevelopmentActorContext = registerActorContext;

@@ -1,0 +1,108 @@
+import type { PrismaClient } from "@prisma/client";
+import { describe, expect, it, vi } from "vitest";
+import { buildApp } from "../src/app.js";
+import type { Config } from "../src/config.js";
+import type { ObjectStorage } from "../src/infrastructure/object-storage.js";
+import { hashPassword } from "../src/security/password.js";
+
+const config: Config = {
+  NODE_ENV: "test",
+  HOST: "127.0.0.1",
+  PORT: 8080,
+  LOG_LEVEL: "silent",
+  DATABASE_URL: "postgresql://unused",
+  S3_REGION: "ru-central1",
+  S3_BUCKET: "test-bucket",
+  S3_ACCESS_KEY_ID: "test",
+  S3_SECRET_ACCESS_KEY: "test",
+  S3_FORCE_PATH_STYLE: true,
+  WORKER_POLL_INTERVAL_MS: 100,
+};
+
+const workshopId = "11111111-1111-4111-8111-111111111111";
+const userId = "22222222-2222-4222-8222-222222222222";
+const headers = { "x-workshop-id": workshopId, "x-user-id": userId };
+
+function basePrisma(role: "ADMIN" | "EMPLOYEE" = "ADMIN") {
+  return {
+    membership: {
+      findUnique: vi.fn().mockResolvedValue({ role, isActive: true, user: { isActive: true } }),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+  };
+}
+
+describe("database authentication and administration", () => {
+  it("authenticates an active database user", async () => {
+    const passwordHash = await hashPassword("strong-password");
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: userId,
+          displayName: "Администратор",
+          isActive: true,
+          passwordHash,
+          memberships: [{ workshopId, role: "ADMIN" }],
+        }),
+      },
+    } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { login: "Admin", password: "strong-password" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      userId,
+      workshopId,
+      displayName: "Администратор",
+      role: "ADMIN",
+    });
+    await app.close();
+  });
+
+  it("rejects a disabled membership even with valid actor headers", async () => {
+    const prisma = {
+      membership: { findUnique: vi.fn().mockResolvedValue({ role: "EMPLOYEE", isActive: false, user: { isActive: true } }) },
+    } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+
+    const response = await app.inject({ method: "GET", url: "/v1/session", headers });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: "access_revoked" });
+    await app.close();
+  });
+
+  it("allows only administrators to list workshop users", async () => {
+    const prisma = basePrisma("EMPLOYEE") as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+
+    const response = await app.inject({ method: "GET", url: "/v1/admin/users", headers });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: "admin_required" });
+    await app.close();
+  });
+
+  it("returns users scoped to the administrator workshop", async () => {
+    const findMany = vi.fn().mockResolvedValue([{ role: "ADMIN", isActive: true, createdAt: new Date(), user: {
+      id: userId, login: "admin", displayName: "Администратор", phone: null, isActive: true,
+    } }]);
+    const prisma = {
+      ...basePrisma(),
+      membership: { ...basePrisma().membership, findMany },
+    } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+
+    const response = await app.inject({ method: "GET", url: "/v1/admin/users", headers });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()[0]).toMatchObject({ login: "admin", role: "ADMIN", isActive: true, isCurrent: true });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { workshopId } }));
+    await app.close();
+  });
+});

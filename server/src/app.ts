@@ -1,7 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Config } from "./config.js";
-import { registerDevelopmentActorContext } from "./http/context.js";
+import { registerActorContext } from "./http/context.js";
+import { adminUserRoutes } from "./http/routes/admin-users.js";
+import { authRoutes } from "./http/routes/auth.js";
 import { registerErrorHandler } from "./http/errors.js";
 import { customerRoutes } from "./http/routes/customers.js";
 import { findingRoutes } from "./http/routes/findings.js";
@@ -20,9 +22,11 @@ export interface AppDependencies {
 export async function buildApp(config: Config, dependencies: AppDependencies): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: config.LOG_LEVEL } });
   registerErrorHandler(app);
-  registerDevelopmentActorContext(app, dependencies.prisma, config.NODE_ENV);
+  registerActorContext(app, dependencies.prisma, config.NODE_ENV, config.INTERNAL_API_KEY);
   await app.register(healthRoutes(dependencies.prisma));
   await app.register(publicApprovalRoutes(dependencies.prisma));
+  await app.register(authRoutes(dependencies.prisma));
+  await app.register(adminUserRoutes(dependencies.prisma));
   await app.register(workshopRoutes(dependencies.prisma));
   await app.register(customerRoutes(dependencies.prisma));
   await app.register(visitRoutes(dependencies.prisma));

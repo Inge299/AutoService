@@ -7,6 +7,7 @@ const schema = z.object({
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().int().min(1).max(65_535).default(8080),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
+  INTERNAL_API_KEY: z.string().min(32).optional(),
   DATABASE_URL: z.string().min(1),
   S3_ENDPOINT: z.string().url().optional(),
   S3_REGION: z.string().min(1).default("ru-central1"),
@@ -20,5 +21,9 @@ const schema = z.object({
 export type Config = z.infer<typeof schema>;
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Config {
-  return schema.parse(environment);
+  const config = schema.parse(environment);
+  if (config.NODE_ENV === "production" && !config.INTERNAL_API_KEY) {
+    throw new Error("INTERNAL_API_KEY must contain at least 32 characters in production");
+  }
+  return config;
 }
