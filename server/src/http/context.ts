@@ -42,14 +42,15 @@ export function registerActorContext(
       ? verifyAccessToken(authorization.slice("Bearer ".length), internalApiKey)
       : null;
 
-    if (internalApiKey && !bearerActor) {
+    const staffBearerActor = bearerActor?.scope === "STAFF" ? bearerActor : null;
+    if (internalApiKey && !staffBearerActor) {
       const suppliedKey = request.headers["x-internal-api-key"];
       if (typeof suppliedKey !== "string" || !safeEqual(suppliedKey, internalApiKey)) {
         return reply.code(401).send({ error: "unauthorized" });
       }
     }
 
-    const parsed = actorSchema.safeParse(bearerActor ?? {
+    const parsed = actorSchema.safeParse(staffBearerActor ?? {
         workshopId: request.headers["x-workshop-id"],
         userId: request.headers["x-user-id"],
       });

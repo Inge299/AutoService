@@ -91,12 +91,14 @@ model User {
   id          String       @id @db.Uuid
   login       String?      @unique
   phone       String?      @unique
+  email       String?      @unique
   passwordHash String?     @map("password_hash")
   isActive    Boolean      @default(true) @map("is_active")
   displayName String       @map("display_name")
   createdAt   DateTime     @default(now()) @map("created_at")
   updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at")
   memberships Membership[]
+  customerProfiles Customer[] @relation("CustomerAccount")
   devices     Device[]
 
   @@map("users")
@@ -131,9 +133,12 @@ model Customer {
   workshopId  String    @map("workshop_id") @db.Uuid
   name        String
   phone       String
+  email       String?
+  accountUserId String?    @unique @map("account_user_id") @db.Uuid
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   workshop    Workshop  @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  accountUser User?     @relation("CustomerAccount", fields: [accountUserId], references: [id], onDelete: SetNull)
   vehicles    Vehicle[]
   visits      Visit[]
 

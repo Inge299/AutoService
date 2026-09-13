@@ -16,6 +16,9 @@
 | Подтверждение файла | `POST /v1/media/{id}/complete` | Реализовано |
 | Статус файла | `GET /v1/media/{id}` | Реализовано |
 | Вход Android | `POST /v1/auth/login` | Реализовано |
+| Регистрация клиента по защищённой ссылке | `POST /public/v1/customer-accounts/register` | Реализовано |
+| Вход клиента по телефону/e-mail | `POST /public/v1/customer-accounts/login` | Реализовано |
+| Кабинет клиента: автомобили и ремонты | `GET /public/v1/customer-accounts/me` | Реализовано |
 
 Детали запросов, ответов и ошибок описаны в [серверной архитектуре](SERVER_ARCHITECTURE.md).
 
@@ -24,8 +27,8 @@
 | Операция | Планируемый path | Статус |
 |---|---|---|
 | Создать согласование | `POST /v1/findings/{id}/approval-link` | Не реализовано |
-| Открыть клиентскую страницу | `GET /a/{token}` | Не реализовано |
-| Решение клиента | `POST /a/{token}/decision` | Не реализовано |
+| Открыть клиентскую страницу | `GET /a/{token}` | Реализовано веб-слоем |
+| Решение клиента | `POST /public/v1/approvals/{token}/decision` | Реализовано |
 | Отправить SMS/сообщение | `POST /v1/approval-links/{id}/send-message` | Не реализовано |
 
 Для согласований уже заложены таблицы `approval_versions`, `approval_links` и `approval_decisions`. Таблицы доставки сообщений пока нет: её нужно проектировать после выбора провайдера.

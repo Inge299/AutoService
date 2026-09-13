@@ -6,6 +6,7 @@ import { adminUserRoutes } from "./http/routes/admin-users.js";
 import { authRoutes } from "./http/routes/auth.js";
 import { registerErrorHandler } from "./http/errors.js";
 import { customerRoutes } from "./http/routes/customers.js";
+import { customerAccountRoutes } from "./http/routes/customer-accounts.js";
 import { findingRoutes } from "./http/routes/findings.js";
 import { healthRoutes } from "./http/routes/health.js";
 import { mediaRoutes } from "./http/routes/media.js";
@@ -25,6 +26,7 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
   registerActorContext(app, dependencies.prisma, config.NODE_ENV, config.INTERNAL_API_KEY);
   await app.register(healthRoutes(dependencies.prisma));
   await app.register(publicApprovalRoutes(dependencies.prisma));
+  await app.register(customerAccountRoutes(dependencies.prisma, config.INTERNAL_API_KEY));
   await app.register(authRoutes(dependencies.prisma, config.INTERNAL_API_KEY));
   await app.register(adminUserRoutes(dependencies.prisma));
   await app.register(workshopRoutes(dependencies.prisma));

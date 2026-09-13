@@ -5,12 +5,16 @@ const payloadSchema = z.object({
   version: z.literal(1),
   userId: z.string().uuid(),
   workshopId: z.string().uuid(),
+  scope: z.enum(["STAFF", "CUSTOMER"]).default("STAFF"),
+  customerId: z.string().uuid().optional(),
   expiresAt: z.number().int().positive(),
 });
 
 export interface AccessTokenActor {
   userId: string;
   workshopId: string;
+  scope?: "STAFF" | "CUSTOMER";
+  customerId?: string;
 }
 
 const DEFAULT_TTL_MS = 12 * 60 * 60_000;
@@ -47,7 +51,13 @@ export function verifyAccessToken(token: string, secret: string, now = Date.now(
 
     const parsed = payloadSchema.safeParse(JSON.parse(Buffer.from(payload, "base64url").toString("utf8")));
     if (!parsed.success || parsed.data.expiresAt <= now) return null;
-    return { userId: parsed.data.userId, workshopId: parsed.data.workshopId };
+    if (parsed.data.scope === "CUSTOMER" && !parsed.data.customerId) return null;
+    return {
+      userId: parsed.data.userId,
+      workshopId: parsed.data.workshopId,
+      scope: parsed.data.scope,
+      ...(parsed.data.customerId ? { customerId: parsed.data.customerId } : {}),
+    };
   } catch {
     return null;
   }

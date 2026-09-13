@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { PrismaClient, VisitStatus } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
@@ -84,6 +85,18 @@ export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
           return { conflict: true as const, visit: existing };
         }
 
+        const customer = await tx.customer.upsert({
+          where: { workshopId_phone: { workshopId, phone: body.customerPhone } },
+          update: { name: body.customerName },
+          create: { id: randomUUID(), workshopId, name: body.customerName, phone: body.customerPhone },
+        });
+        const existingVehicle = await tx.vehicle.findFirst({
+          where: { workshopId, customerId: customer.id, label: body.vehicleLabel, licensePlate: body.licensePlate.toUpperCase() },
+          select: { id: true },
+        });
+        const vehicle = existingVehicle
+          ? await tx.vehicle.update({ where: { id: existingVehicle.id }, data: { updatedAt: new Date(body.updatedAtEpochMs) } })
+          : await tx.vehicle.create({ data: { id: randomUUID(), workshopId, customerId: customer.id, label: body.vehicleLabel, licensePlate: body.licensePlate.toUpperCase() } });
         const data = {
           customerName: body.customerName,
           customerPhone: body.customerPhone,
@@ -93,6 +106,8 @@ export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
           complaint: body.complaint,
           status: body.status as VisitStatus,
           updatedAt: new Date(body.updatedAtEpochMs),
+          customerId: customer.id,
+          vehicleId: vehicle.id,
         };
         const saved = existing
           ? await tx.visit.update({
