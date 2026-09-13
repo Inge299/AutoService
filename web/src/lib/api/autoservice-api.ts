@@ -2,6 +2,7 @@ import "server-only";
 
 import type { FindingPriority, FindingStatus, VisitStatus } from "@/lib/domain";
 import type { WebSession } from "@/lib/auth/session";
+import type { CustomerWebSession } from "@/lib/auth/session";
 
 export type BackendConnection =
   | { state: "CONNECTED"; label: string }
@@ -125,6 +126,19 @@ export interface PublicApproval {
     mediaCount: number;
   };
   decision: { value: ApprovalDecisionValue; createdAt: string } | null;
+}
+
+export interface CustomerAccountIdentity {
+  accessToken: string;
+  expiresAtEpochMs: number;
+  customer: { id: string; name: string; phone: string; email: string | null };
+}
+
+export interface CustomerPortal {
+  customer: { id: string; name: string; phone: string; email: string | null };
+  workshop: { name: string; phone: string | null };
+  vehicles: Array<{ id: string; label: string; licensePlate: string; updatedAt: string }>;
+  visits: ApiVisit[];
 }
 
 export class AutoServiceApiError extends Error {
@@ -318,4 +332,41 @@ export async function submitPublicApprovalDecision(token: string, value: Approva
   });
   if (!response.ok) throw new AutoServiceApiError(response.status, await response.text());
   return response.json() as Promise<{ value: ApprovalDecisionValue; createdAt: string }>;
+}
+
+async function customerRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) throw new Error("AUTOSERVICE_API_URL is not configured");
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers: { "content-type": "application/json", ...init.headers },
+    cache: "no-store",
+  });
+  if (!response.ok) throw new AutoServiceApiError(response.status, await response.text());
+  return response.json() as Promise<T>;
+}
+
+export function registerCustomerAccount(approvalToken: string, email: string, password: string) {
+  return customerRequest<CustomerAccountIdentity>("/public/v1/customer-accounts/register", {
+    method: "POST",
+    body: JSON.stringify({ approvalToken, email, password }),
+  });
+}
+
+export function loginCustomerAccount(identity: string, password: string) {
+  return customerRequest<CustomerAccountIdentity>("/public/v1/customer-accounts/login", {
+    method: "POST",
+    body: JSON.stringify({ identity, password }),
+  });
+}
+
+export async function getCustomerPortal(session: CustomerWebSession): Promise<CustomerPortal | null> {
+  try {
+    return await customerRequest<CustomerPortal>("/public/v1/customer-accounts/me", {
+      headers: { authorization: `Bearer ${session.accessToken}` },
+    });
+  } catch (error) {
+    if (error instanceof AutoServiceApiError && error.status === 401) return null;
+    throw error;
+  }
 }

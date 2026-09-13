@@ -1,0 +1,11 @@
+import Link from "next/link";
+import { BrandMark } from "@/components/icons";
+import { registerCustomerAction } from "@/app/customer/actions";
+
+export const metadata = { title: "Создать кабинет клиента" };
+
+export default async function CustomerRegisterPage({ searchParams }: { searchParams: Promise<{ approval?: string; error?: string }> }) {
+  const { approval, error } = await searchParams;
+  if (!approval) return <main className="login-page"><section className="login-panel"><div className="login-form-wrap"><BrandMark /><h2>Нужна персональная ссылка</h2><p className="muted login-subtitle">Откройте ссылку согласования, которую прислала мастерская, и создайте кабинет из неё.</p><Link className="button button-secondary" href="/customer/login">У меня уже есть кабинет</Link></div></section></main>;
+  return <main className="login-page"><section className="login-story"><Link href="/" className="login-brand"><BrandMark /></Link><div className="login-message"><span className="eyebrow light">Личный кабинет клиента</span><h1>Все автомобили<br />и ремонты — рядом.</h1><p>Телефон уже подтверждён персональной ссылкой мастерской. Укажите e-mail и придумайте пароль для дальнейшего входа.</p></div></section><section className="login-panel"><div className="login-form-wrap"><p className="eyebrow">Первый вход</p><h2>Создать кабинет</h2><p className="muted login-subtitle">Доступ будет только к вашим автомобилям и ремонтам.</p>{error && <div className="form-error">Не удалось создать кабинет. Проверьте данные или войдите в существующий.</div>}<form action={registerCustomerAction} className="login-form"><input type="hidden" name="approval" value={approval}/><label>E-mail<input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="you@example.ru"/></label><label>Пароль<input name="password" type="password" autoComplete="new-password" required minLength={8} maxLength={256} placeholder="Не менее 8 символов"/></label><button className="button button-primary" type="submit">Создать и перейти в кабинет</button></form><p className="security-note">Телефон из заявки используется как идентификатор клиента. Подтверждение e-mail будет добавлено при подключении почтового сервиса.</p><Link className="text-link" href={`/customer/login?approval=${encodeURIComponent(approval)}`}>У меня уже есть кабинет</Link></div></section></main>;
+}

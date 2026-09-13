@@ -5,6 +5,7 @@ import { BrandMark, Icon } from "@/components/icons";
 import { StatusPill } from "@/components/status-pill";
 import { getPublicApproval } from "@/lib/api/autoservice-api";
 import { formatRub, priorityMeta } from "@/lib/domain";
+import Link from "next/link";
 
 export const metadata: Metadata = { title: "Согласование работ" };
 
@@ -43,7 +44,7 @@ export default async function ApprovalPage({ params }: { params: Promise<{ token
             {approval.finding.mediaCount ? <div className="evidence-photo"><div className="brake-visual"><span className="brake-disc"/><span className="brake-caliper"/></div><span className="photo-caption"><Icon name="camera" /> Материалы мастера · {approval.finding.mediaCount}</span></div> : <div className="empty-inline"><Icon name="camera" /><p><strong>Материалы не приложены</strong><small>Решение можно принять по описанию или запросить звонок.</small></p></div>}
             <div className="price-box"><div><small>Стоимость работы</small><strong>{formatRub(approval.finding.priceRub)}</strong></div><p>Работа и материалы включены. Изменение стоимости потребует нового согласования.</p></div>
           </section>
-          <aside className="customer-decision"><ApprovalDecision token={token} priceRub={approval.finding.priceRub} initialDecision={approval.decision} /><div className="customer-help"><Icon name="phone" /><p><strong>Остались вопросы?</strong><small>{approval.workshop.phone ? <>Позвоните по номеру <a href={`tel:${phoneLink}`}>{approval.workshop.phone}</a> или выберите «Нужен звонок».</> : <>Выберите «Нужен звонок», и мастерская свяжется с вами.</>}</small></p></div></aside>
+          <aside className="customer-decision"><ApprovalDecision token={token} priceRub={approval.finding.priceRub} initialDecision={approval.decision} /><div className="customer-help"><Icon name="phone" /><p><strong>Остались вопросы?</strong><small>{approval.workshop.phone ? <>Позвоните по номеру <a href={`tel:${phoneLink}`}>{approval.workshop.phone}</a> или выберите «Нужен звонок».</> : <>Выберите «Нужен звонок», и мастерская свяжется с вами.</>}</small></p></div><Link className="button button-secondary" href={`/customer/register?approval=${encodeURIComponent(token)}`}>Открыть личный кабинет</Link><Link className="text-link" href={`/customer/login?approval=${encodeURIComponent(token)}`}>Уже есть кабинет? Войти</Link></aside>
         </div>
       </div>
       <footer className="customer-footer"><span>AutoService</span><p>Защищённая персональная ссылка · действует до {expiresAt}</p></footer>
