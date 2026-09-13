@@ -79,6 +79,36 @@ export interface ApiCustomer {
   _count: { visits: number };
 }
 
+export type ApprovalDecisionValue = "APPROVED" | "DECLINED" | "DEFERRED" | "CALL_REQUESTED";
+
+export interface PublicApproval {
+  expiresAt: string;
+  openedAt: string;
+  workshop: { name: string; phone: string | null };
+  visit: {
+    id: string;
+    customerName: string;
+    vehicleLabel: string;
+    licensePlate: string;
+    status: VisitStatus;
+  };
+  finding: {
+    id: string;
+    title: string;
+    description: string;
+    priceRub: number;
+    priority: FindingPriority;
+    mediaCount: number;
+  };
+  decision: { value: ApprovalDecisionValue; createdAt: string } | null;
+}
+
+export class AutoServiceApiError extends Error {
+  constructor(public readonly status: number, body: string) {
+    super(`AutoService API ${status}: ${body.slice(0, 300)}`);
+  }
+}
+
 function apiBaseUrl(): string | null {
   const value = process.env.AUTOSERVICE_API_URL?.trim();
   return value ? value.replace(/\/$/, "") : null;
@@ -105,7 +135,7 @@ async function request<T>(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`AutoService API ${response.status}: ${body.slice(0, 300)}`);
+    throw new AutoServiceApiError(response.status, body);
   }
 
   return response.json() as Promise<T>;
@@ -172,7 +202,7 @@ export async function getApiVisit(id: string, session: WebSession): Promise<ApiV
   try {
     return await request<ApiVisit>(`/v1/visits/${encodeURIComponent(id)}`, session);
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("AutoService API 404:")) return null;
+    if (error instanceof AutoServiceApiError && error.status === 404) return null;
     throw error;
   }
 }
@@ -182,4 +212,28 @@ export function listApiCustomers(session: WebSession, search?: string) {
   if (search?.trim()) query.set("q", search.trim());
   const suffix = query.size ? `?${query.toString()}` : "";
   return request<ApiCustomer[]>(`/v1/customers${suffix}`, session);
+}
+
+export async function getPublicApproval(token: string): Promise<PublicApproval | null> {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) throw new Error("AUTOSERVICE_API_URL is not configured");
+  const response = await fetch(`${baseUrl}/public/v1/approvals/${encodeURIComponent(token)}`, {
+    cache: "no-store",
+  });
+  if (response.status === 404 || response.status === 410) return null;
+  if (!response.ok) throw new AutoServiceApiError(response.status, await response.text());
+  return response.json() as Promise<PublicApproval>;
+}
+
+export async function submitPublicApprovalDecision(token: string, value: ApprovalDecisionValue) {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) throw new Error("AUTOSERVICE_API_URL is not configured");
+  const response = await fetch(`${baseUrl}/public/v1/approvals/${encodeURIComponent(token)}/decision`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ value }),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new AutoServiceApiError(response.status, await response.text());
+  return response.json() as Promise<{ value: ApprovalDecisionValue; createdAt: string }>;
 }

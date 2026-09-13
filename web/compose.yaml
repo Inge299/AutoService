@@ -26,7 +26,30 @@ services:
       start_period: 15s
       retries: 3
 
+  caddy:
+    image: caddy:2.10-alpine
+    container_name: autoservice-caddy
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      PUBLIC_HOST: "${PUBLIC_HOST:?Set PUBLIC_HOST}"
+    ports:
+      - "${PUBLIC_HTTP_PORT:-80}:80"
+      - "${PUBLIC_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    security_opt:
+      - no-new-privileges:true
+
 networks:
   default:
     name: "${AUTOSERVICE_DOCKER_NETWORK:-autoservice_default}"
     external: true
+
+volumes:
+  caddy-data:
+  caddy-config:
