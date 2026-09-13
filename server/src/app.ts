@@ -25,7 +25,7 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
   registerActorContext(app, dependencies.prisma, config.NODE_ENV, config.INTERNAL_API_KEY);
   await app.register(healthRoutes(dependencies.prisma));
   await app.register(publicApprovalRoutes(dependencies.prisma));
-  await app.register(authRoutes(dependencies.prisma));
+  await app.register(authRoutes(dependencies.prisma, config.INTERNAL_API_KEY));
   await app.register(adminUserRoutes(dependencies.prisma));
   await app.register(workshopRoutes(dependencies.prisma));
   await app.register(customerRoutes(dependencies.prisma));

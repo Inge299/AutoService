@@ -64,6 +64,43 @@ describe("database authentication and administration", () => {
     await app.close();
   });
 
+  it("issues a signed token and accepts it without internal headers", async () => {
+    const passwordHash = await hashPassword("strong-password");
+    const membership = { role: "EMPLOYEE", isActive: true, user: { isActive: true } };
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: userId,
+          displayName: "Мастер",
+          isActive: true,
+          passwordHash,
+          memberships: [{ workshopId, role: "EMPLOYEE" }],
+        }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ id: userId, login: "master", displayName: "Мастер" }),
+      },
+      membership: { findUnique: vi.fn().mockResolvedValue(membership) },
+    } as unknown as PrismaClient;
+    const protectedConfig = { ...config, INTERNAL_API_KEY: "a".repeat(32) };
+    const app = await buildApp(protectedConfig, { prisma, storage: {} as ObjectStorage });
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { login: "master", password: "strong-password" },
+    });
+    expect(login.statusCode).toBe(200);
+    expect(login.json().accessToken).toEqual(expect.any(String));
+
+    const session = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { authorization: `Bearer ${login.json().accessToken}` },
+    });
+    expect(session.statusCode).toBe(200);
+    expect(session.json()).toMatchObject({ id: userId, workshopId, role: "EMPLOYEE" });
+    await app.close();
+  });
+
   it("rejects a disabled membership even with valid actor headers", async () => {
     const prisma = {
       membership: { findUnique: vi.fn().mockResolvedValue({ role: "EMPLOYEE", isActive: false, user: { isActive: true } }) },

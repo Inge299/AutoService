@@ -17,17 +17,24 @@ export interface UploadTarget {
 
 export class ObjectStorage {
   private readonly client: S3Client;
+  private readonly uploadClient: S3Client;
 
   constructor(private readonly config: Config) {
-    this.client = new S3Client({
-      ...(config.S3_ENDPOINT ? { endpoint: config.S3_ENDPOINT } : {}),
+    const common = {
       region: config.S3_REGION,
       forcePathStyle: config.S3_FORCE_PATH_STYLE,
       credentials: {
         accessKeyId: config.S3_ACCESS_KEY_ID,
         secretAccessKey: config.S3_SECRET_ACCESS_KEY,
       },
+    };
+    this.client = new S3Client({
+      ...common,
+      ...(config.S3_ENDPOINT ? { endpoint: config.S3_ENDPOINT } : {}),
     });
+    this.uploadClient = config.S3_PUBLIC_ENDPOINT
+      ? new S3Client({ ...common, endpoint: config.S3_PUBLIC_ENDPOINT })
+      : this.client;
   }
 
   async createUploadTarget(input: {
@@ -46,7 +53,7 @@ export class ObjectStorage {
     });
 
     return {
-      url: await getSignedUrl(this.client, command, { expiresIn: expiresInSeconds }),
+      url: await getSignedUrl(this.uploadClient, command, { expiresIn: expiresInSeconds }),
       expiresInSeconds,
       headers: {
         "content-type": input.mimeType,

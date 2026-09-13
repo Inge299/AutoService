@@ -2,6 +2,7 @@ import type { MembershipRole, PrismaClient } from "@prisma/client";
 import { timingSafeEqual } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { verifyAccessToken } from "../security/access-token.js";
 
 const actorSchema = z.object({
   workshopId: z.string().uuid(),
@@ -34,19 +35,24 @@ export function registerActorContext(
   app.addHook("onRequest", async (request, reply) => {
     if (!request.url.startsWith("/v1/")) return;
 
-    if (internalApiKey) {
+    if (request.method === "POST" && request.url.split("?", 1)[0] === "/v1/auth/login") return;
+
+    const authorization = request.headers.authorization;
+    const bearerActor = internalApiKey && authorization?.startsWith("Bearer ")
+      ? verifyAccessToken(authorization.slice("Bearer ".length), internalApiKey)
+      : null;
+
+    if (internalApiKey && !bearerActor) {
       const suppliedKey = request.headers["x-internal-api-key"];
       if (typeof suppliedKey !== "string" || !safeEqual(suppliedKey, internalApiKey)) {
         return reply.code(401).send({ error: "unauthorized" });
       }
     }
 
-    if (request.url.startsWith("/v1/auth/login")) return;
-
-    const parsed = actorSchema.safeParse({
-      workshopId: request.headers["x-workshop-id"],
-      userId: request.headers["x-user-id"],
-    });
+    const parsed = actorSchema.safeParse(bearerActor ?? {
+        workshopId: request.headers["x-workshop-id"],
+        userId: request.headers["x-user-id"],
+      });
     if (!parsed.success) {
       return reply.code(401).send({ error: "unauthorized" });
     }

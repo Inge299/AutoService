@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { createAccessToken } from "../../security/access-token.js";
 import { verifyPassword } from "../../security/password.js";
 
 const loginSchema = z.object({
@@ -23,7 +24,7 @@ function canAttempt(address: string): boolean {
   return current.count <= MAX_ATTEMPTS;
 }
 
-export function authRoutes(prisma: PrismaClient): FastifyPluginAsync {
+export function authRoutes(prisma: PrismaClient, accessTokenSecret?: string): FastifyPluginAsync {
   return async (app) => {
     app.post("/v1/auth/login", async (request, reply) => {
       if (!canAttempt(request.ip)) {
@@ -56,12 +57,16 @@ export function authRoutes(prisma: PrismaClient): FastifyPluginAsync {
       }
 
       attempts.delete(request.ip);
-      return {
+      const session = {
         userId: user.id,
         workshopId: membership.workshopId,
         displayName: user.displayName,
         role: membership.role,
       };
+      if (!accessTokenSecret) return session;
+
+      const access = createAccessToken(session, accessTokenSecret);
+      return { ...session, accessToken: access.token, expiresAtEpochMs: access.expiresAt };
     });
 
     app.get("/v1/session", async (request) => {

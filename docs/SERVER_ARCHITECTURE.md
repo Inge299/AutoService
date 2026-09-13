@@ -49,15 +49,17 @@ API не проксирует тело файла. Клиент получает
 
 ## Авторизация и изоляция
 
-В development-режиме запросы `/v1/*` требуют заголовки:
+Внутренний веб-клиент обращается к `/v1/*` с закрытым ключом и заголовками:
 
 ```http
 x-workshop-id: <UUID мастерской>
 x-user-id: <UUID пользователя>
 ```
 
-Пара проверяется в `memberships`, а запросы ограничиваются этой мастерской. Эти заголовки не являются
-production-авторизацией. При `NODE_ENV=production` API намеренно не запускается.
+Android получает после `POST /v1/auth/login` подписанный bearer-токен на 12 часов и передаёт
+его как `Authorization: Bearer <token>`. Токен не содержит служебный ключ. На каждом запросе
+сервер снова проверяет membership и активность пользователя, поэтому отключение сотрудника
+администратором немедленно прекращает доступ Android-клиента.
 
 Seed development-среды:
 
@@ -79,6 +81,7 @@ user:     22222222-2222-4222-8222-222222222222
 | `POST /v1/media/{id}/upload-session` | Получить presigned `PUT` URL | URL, TTL и обязательные headers |
 | `POST /v1/media/{id}/complete` | Подтвердить upload | `202`, статус `VERIFYING` |
 | `GET /v1/media/{id}` | Прочитать статус | Метаданные и статус |
+| `POST /v1/auth/login` | Вход пользователя | Сессия и bearer-токен для Android |
 
 ### Визит
 
@@ -164,6 +167,7 @@ exponential backoff до 60 секунд, не более 5 попыток. Пр
 | `LOG_LEVEL` | `info` | Уровень JSON-логов |
 | `DATABASE_URL` | — | PostgreSQL connection string, обязателен |
 | `S3_ENDPOINT` | AWS SDK default | URL S3-compatible API |
+| `S3_PUBLIC_ENDPOINT` | `S3_ENDPOINT` | Публичный HTTPS endpoint для presigned upload URL Android |
 | `S3_REGION` | `ru-central1` | S3 region |
 | `S3_BUCKET` | — | Bucket, обязателен |
 | `S3_ACCESS_KEY_ID` | — | Access key, обязателен |
