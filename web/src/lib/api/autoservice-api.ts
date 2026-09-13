@@ -43,6 +43,42 @@ export interface MediaUploadPayload {
   sha256: string;
 }
 
+export interface ApiFinding {
+  id: string;
+  title: string;
+  description: string;
+  priceRub: number | null;
+  priority: FindingPriority;
+  status: FindingStatus;
+  createdAt: string;
+  updatedAt: string;
+  _count: { media: number };
+}
+
+export interface ApiVisit {
+  id: string;
+  customerName: string;
+  customerPhone: string;
+  vehicleLabel: string;
+  licensePlate: string;
+  mileageKm: number | null;
+  complaint: string;
+  status: VisitStatus;
+  createdAt: string;
+  updatedAt: string;
+  findings: ApiFinding[];
+  _count: { media: number };
+}
+
+export interface ApiCustomer {
+  id: string;
+  name: string;
+  phone: string;
+  vehicles: Array<{ id: string; label: string; licensePlate: string }>;
+  visits: Array<{ createdAt: string }>;
+  _count: { visits: number };
+}
+
 function apiBaseUrl(): string | null {
   const value = process.env.AUTOSERVICE_API_URL?.trim();
   return value ? value.replace(/\/$/, "") : null;
@@ -119,4 +155,31 @@ export function completeMediaUpload(id: string, session: WebSession) {
 
 export function getMediaStatus(id: string, session: WebSession) {
   return request<Record<string, unknown>>(`/v1/media/${id}`, session);
+}
+
+export function listApiVisits(
+  session: WebSession,
+  filters: { query?: string; status?: VisitStatus } = {},
+) {
+  const query = new URLSearchParams();
+  if (filters.query?.trim()) query.set("q", filters.query.trim());
+  if (filters.status) query.set("status", filters.status);
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return request<ApiVisit[]>(`/v1/visits${suffix}`, session);
+}
+
+export async function getApiVisit(id: string, session: WebSession): Promise<ApiVisit | null> {
+  try {
+    return await request<ApiVisit>(`/v1/visits/${encodeURIComponent(id)}`, session);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("AutoService API 404:")) return null;
+    throw error;
+  }
+}
+
+export function listApiCustomers(session: WebSession, search?: string) {
+  const query = new URLSearchParams();
+  if (search?.trim()) query.set("q", search.trim());
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return request<ApiCustomer[]>(`/v1/customers${suffix}`, session);
 }

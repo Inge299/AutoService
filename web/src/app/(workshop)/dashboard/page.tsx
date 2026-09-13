@@ -17,9 +17,10 @@ const board: Array<{ status: VisitStatus; label: string }> = [
 ];
 
 export default async function DashboardPage() {
-  const [session, visits] = await Promise.all([
+  const [session, visits, reminders] = await Promise.all([
     requireSession(),
     workshopRepository.listVisits(),
+    workshopRepository.listReminders(),
   ]);
   const currentDate = new Intl.DateTimeFormat("ru-RU", {
     weekday: "long",
@@ -29,17 +30,18 @@ export default async function DashboardPage() {
   }).format(new Date());
   const active = visits.filter((visit) => !["COMPLETED", "CANCELLED"].includes(visit.status));
   const attention = active.filter((visit) => visit.attention);
-  const approvedValue = visits.flatMap((visit) => visit.findings).filter((finding) => finding.status === "APPROVED").reduce((sum, finding) => sum + (finding.priceRub ?? 0), 0);
+  const approvedFindings = visits.flatMap((visit) => visit.findings).filter((finding) => finding.status === "APPROVED");
+  const approvedValue = approvedFindings.reduce((sum, finding) => sum + (finding.priceRub ?? 0), 0);
 
   return (
     <>
       <PageHeader eyebrow={currentDate} title={`Добрый день, ${session.displayName}`} description="Вот что происходит в мастерской прямо сейчас." actions={<Link href="/visits" className="button button-secondary"><Icon name="search" /> Найти визит</Link>} />
 
       <section className="metric-grid" aria-label="Сводка за сегодня">
-        <article className="metric-card"><span className="metric-icon teal"><Icon name="car" /></span><div><small>Автомобилей в работе</small><strong>{active.length}</strong><p><b>+2</b> с начала дня</p></div></article>
-        <article className="metric-card"><span className="metric-icon amber"><Icon name="clock" /></span><div><small>Ждут решения клиента</small><strong>{active.filter((visit) => visit.status === "WAITING_APPROVAL").length}</strong><p>1 ссылка открыта</p></div></article>
-        <article className="metric-card"><span className="metric-icon green"><Icon name="check" /></span><div><small>Согласовано сегодня</small><strong>{formatRub(approvedValue)}</strong><p><b>2 работы</b> подтверждены</p></div></article>
-        <article className="metric-card"><span className="metric-icon coral"><Icon name="alert" /></span><div><small>Нужно внимание</small><strong>{attention.length}</strong><p>Звонок и загрузка фото</p></div></article>
+        <article className="metric-card"><span className="metric-icon teal"><Icon name="car" /></span><div><small>Автомобилей в работе</small><strong>{active.length}</strong><p>По данным сервера</p></div></article>
+        <article className="metric-card"><span className="metric-icon amber"><Icon name="clock" /></span><div><small>Ждут решения клиента</small><strong>{active.filter((visit) => visit.status === "WAITING_APPROVAL").length}</strong><p>Активные согласования</p></div></article>
+        <article className="metric-card"><span className="metric-icon green"><Icon name="check" /></span><div><small>Согласовано</small><strong>{formatRub(approvedValue)}</strong><p><b>{approvedFindings.length}</b> подтверждено</p></div></article>
+        <article className="metric-card"><span className="metric-icon coral"><Icon name="alert" /></span><div><small>Нужно внимание</small><strong>{attention.length}</strong><p>{attention.length ? "Требуется действие" : "Нет задерживающих задач"}</p></div></article>
       </section>
 
       <div className="dashboard-layout">
@@ -72,8 +74,8 @@ export default async function DashboardPage() {
         </div>
 
         <aside className="dashboard-side">
-          <section className="side-card revenue-card"><p className="eyebrow light">Результат недели</p><h3>Дополнительные работы</h3><strong>{formatRub(42_300)}</strong><p>согласовано через AutoService</p><div className="mini-chart" aria-label="Рост согласованной выручки"><i style={{height:"28%"}}/><i style={{height:"44%"}}/><i style={{height:"37%"}}/><i style={{height:"62%"}}/><i style={{height:"56%"}}/><i style={{height:"84%"}}/><i style={{height:"100%"}}/></div><small><b>+18%</b> к прошлой неделе</small></section>
-          <section className="side-card"><div className="side-card-title"><h3>Ближайшие напоминания</h3><Link href="/reminders">Все</Link></div><div className="reminder-mini"><span>Сегодня</span><div><strong>Анна Лебедева</strong><small>Проверка тормозов · VW Polo</small></div></div><div className="reminder-mini"><span>10 ноя</span><div><strong>Андрей Орлов</strong><small>Проверка подвески · Skoda</small></div></div></section>
+          <section className="side-card revenue-card"><p className="eyebrow light">Текущий результат</p><h3>Согласованные работы</h3><strong>{formatRub(approvedValue)}</strong><p>по загруженным визитам</p><div className="mini-chart" aria-label="Состояние согласований"><i style={{height:"24%"}}/><i style={{height:"24%"}}/><i style={{height:"24%"}}/><i style={{height: approvedValue ? "78%" : "24%"}}/><i style={{height: approvedValue ? "78%" : "24%"}}/><i style={{height: approvedValue ? "78%" : "24%"}}/><i style={{height: approvedValue ? "78%" : "24%"}}/></div><small><b>{approvedFindings.length}</b> работ подтверждено</small></section>
+          <section className="side-card"><div className="side-card-title"><h3>Ближайшие напоминания</h3><Link href="/reminders">Все</Link></div>{reminders.length ? reminders.slice(0, 2).map((reminder) => <div className="reminder-mini" key={reminder.id}><span>{reminder.due}</span><div><strong>{reminder.customer}</strong><small>{reminder.reason} · {reminder.vehicle}</small></div></div>) : <p className="board-empty">Напоминаний пока нет</p>}</section>
         </aside>
       </div>
     </>
