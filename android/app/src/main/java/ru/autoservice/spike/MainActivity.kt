@@ -52,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.core.content.ContextCompat
@@ -88,6 +89,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     val visits by viewModel.activeVisits.collectAsState()
     val vehicleBrandSuggestions by viewModel.vehicleBrandSuggestions.collectAsState()
     val complaintSuggestions by viewModel.complaintSuggestions.collectAsState()
+    val session by viewModel.session.collectAsState()
     var selectedVisitId by remember { mutableStateOf<String?>(null) }
     var creatingVisit by remember { mutableStateOf(false) }
     var creatingFindingForVisitId by remember { mutableStateOf<String?>(null) }
@@ -117,8 +119,36 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
         scope.launch { snackbarHost.showSnackbar(text) }
     }
 
+    if (session == null) {
+        Scaffold(
+            topBar = { TopAppBar(title = { Text("AutoService") }) },
+            snackbarHost = { SnackbarHost(snackbarHost) },
+        ) { padding ->
+            LoginScreen(
+                onLogin = { login, password, completed ->
+                    viewModel.login(
+                        login = login,
+                        password = password,
+                        onSuccess = completed,
+                        onFailure = {
+                            completed()
+                            message(if (it.message == "invalid_credentials") "Неверный логин или пароль" else it.message ?: "Не удалось войти")
+                        },
+                    )
+                },
+                modifier = Modifier.padding(padding),
+            )
+        }
+        return
+    }
+
     Scaffold(
-        topBar = { TopAppBar(title = { Text("AutoService") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("AutoService · ${session?.displayName}") },
+                actions = { TextButton(onClick = viewModel::logout) { Text("Выйти") } },
+            )
+        },
         snackbarHost = { SnackbarHost(snackbarHost) },
     ) { padding ->
         val selectedVisit = visits.firstOrNull { it.id == selectedVisitId }
@@ -147,7 +177,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                         onSuccess = { visit ->
                             creatingVisit = false
                             selectedVisitId = visit.id
-                            message("Визит сохранён на телефоне")
+                            message("Визит сохранён на сервере")
                         },
                         onFailure = { message(it.message ?: "Не удалось создать визит") },
                     )
@@ -164,7 +194,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                         draft = draft,
                         onSuccess = {
                             creatingFindingForVisitId = null
-                            message("Находка сохранена на телефоне")
+                            message("Находка сохранена на сервере")
                         },
                         onFailure = { message(it.message ?: "Не удалось сохранить находку") },
                     )
@@ -247,6 +277,55 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                 modifier = Modifier.padding(padding),
             )
         }
+    }
+}
+
+@Composable
+private fun LoginScreen(
+    onLogin: (String, String, () -> Unit) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var login by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(false) }
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = modifier.fillMaxSize().padding(24.dp),
+    ) {
+        Spacer(Modifier.height(36.dp))
+        Text("Вход в мастерскую", style = MaterialTheme.typography.headlineMedium)
+        Text("Используйте учётные данные, выданные администратором.")
+        OutlinedTextField(
+            value = login,
+            onValueChange = { login = it },
+            label = { Text("Логин") },
+            enabled = !loading,
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Пароль") },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            enabled = !loading,
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Button(
+            onClick = {
+                loading = true
+                onLogin(login, password) { loading = false }
+            },
+            enabled = !loading && login.isNotBlank() && password.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(if (loading) "Подключение…" else "Войти") }
+        Text(
+            "Все визиты и находки сохраняются на сервере. Медиа остаются на устройстве только до подтверждённой загрузки.",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -617,7 +696,7 @@ private fun VisitScreen(
                     kind = MediaKind.VOICE,
                     mimeType = "audio/mp4",
                     file = completed,
-                    onSuccess = { onMessage("Голос сохранён на телефоне") },
+                    onSuccess = { onMessage("Голос отправлен в очередь сервера") },
                     onFailure = { onMessage(it.message ?: "Не удалось сохранить запись") },
                 )
             } else {
@@ -729,7 +808,7 @@ private fun VisitTimeline(
             TimelineStep(
                 number = "1",
                 title = "Приёмка сохранена",
-                detail = "Данные автомобиля на телефоне",
+                detail = "Данные автомобиля подтверждены сервером",
                 color = MaterialTheme.colorScheme.tertiaryContainer,
             )
             TimelineStep(
@@ -852,7 +931,11 @@ private fun VisitStatus.label(): String = when (this) {
 
 @Composable
 private fun StatusPill(label: String, color: androidx.compose.ui.graphics.Color) {
-    Surface(color = color, shape = MaterialTheme.shapes.small) {
+    Surface(
+        color = color,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = MaterialTheme.shapes.small,
+    ) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge,

@@ -16,7 +16,9 @@ class AutoServiceApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         applicationScope.launch {
-            container.mediaRepository.recoverAndReschedule()
+            if (container.authStore.session.value != null) {
+                container.mediaRepository.recoverAndReschedule()
+            }
         }
     }
 }
