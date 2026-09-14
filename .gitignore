@@ -4,4 +4,8 @@ local.properties
 **/build/
 *.iml
 captures/
-
+server/node_modules/
+server/dist/
+server/.env
+server/coverage/
+/.env
