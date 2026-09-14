@@ -18,6 +18,9 @@ interface FindingDao {
     @Query("SELECT * FROM findings WHERE visitId = :visitId ORDER BY createdAtEpochMs DESC")
     fun observeForVisit(visitId: String): Flow<List<FindingEntity>>
 
+    @Query("SELECT * FROM findings ORDER BY createdAtEpochMs")
+    suspend fun all(): List<FindingEntity>
+
     @Query(
         "UPDATE findings SET status = :status, updatedAtEpochMs = :updatedAt WHERE id = :findingId",
     )

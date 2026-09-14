@@ -19,10 +19,13 @@ import ru.autoservice.spike.data.MediaKind
 import ru.autoservice.spike.data.SeededQuickValues
 import ru.autoservice.spike.data.VisitDraft
 import ru.autoservice.spike.data.VisitEntity
+import ru.autoservice.spike.network.AuthSession
 import java.io.File
 
 class QueueViewModel(application: Application) : AndroidViewModel(application) {
     private val container = (application as AutoServiceApplication).container
+
+    val session: StateFlow<AuthSession?> = container.authStore.session
 
     val assets: StateFlow<List<MediaAssetEntity>> = container.mediaRepository.assets.stateIn(
         scope = viewModelScope,
@@ -51,6 +54,43 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = SeededQuickValues.complaints,
         )
+
+    init {
+        if (session.value != null) refresh()
+    }
+
+    fun login(
+        login: String,
+        password: String,
+        onSuccess: () -> Unit,
+        onFailure: (Throwable) -> Unit,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                require(login.isNotBlank()) { "Введите логин" }
+                require(password.isNotBlank()) { "Введите пароль" }
+                container.api.login(login, password)
+                synchronize()
+            }.onSuccess { onSuccess() }
+                .onFailure(onFailure)
+        }
+    }
+
+    fun logout() {
+        container.authStore.clear()
+    }
+
+    fun refresh(onFailure: (Throwable) -> Unit = {}) {
+        viewModelScope.launch {
+            runCatching { synchronize() }.onFailure(onFailure)
+        }
+    }
+
+    private suspend fun synchronize() {
+        val snapshot = container.visitRepository.synchronizeLocal()
+        container.findingRepository.synchronizeLocal(snapshot.findings)
+        container.mediaRepository.recoverAndReschedule()
+    }
 
     fun createVisit(
         draft: VisitDraft,

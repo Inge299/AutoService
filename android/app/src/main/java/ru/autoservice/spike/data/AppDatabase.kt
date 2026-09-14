@@ -8,7 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [VisitEntity::class, MediaAssetEntity::class, DictionaryValueEntity::class, FindingEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -52,6 +52,13 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `media_assets` ADD COLUMN `findingId` TEXT")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_media_assets_findingId` ON `media_assets` (`findingId`)")
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `visits` ADD COLUMN `serverVersion` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `findings` ADD COLUMN `serverVersion` INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

@@ -1,9 +1,11 @@
 package ru.autoservice.spike.data
 
+import ru.autoservice.spike.network.WorkshopRemote
 import java.util.UUID
 
 class FindingRepository(
     private val findingDao: FindingDao,
+    private val api: WorkshopRemote,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     fun findingsForVisit(visitId: String) = findingDao.observeForVisit(visitId)
@@ -24,18 +26,17 @@ class FindingRepository(
             createdAtEpochMs = now,
             updatedAtEpochMs = now,
         )
-        findingDao.insert(finding)
-        return finding
+        val saved = api.saveFinding(finding)
+        findingDao.insert(saved)
+        return saved
     }
 
     suspend fun prepareForApproval(finding: FindingEntity) {
         require(finding.status == FindingStatus.DRAFT) { "Находка уже подготовлена" }
         require(finding.priceRub != null) { "Укажите цену перед согласованием" }
-        findingDao.updateStatus(
-            findingId = finding.id,
-            status = FindingStatus.READY_FOR_APPROVAL,
-            updatedAt = clock(),
-        )
+        findingDao.update(api.saveFinding(
+            finding.copy(status = FindingStatus.READY_FOR_APPROVAL, updatedAtEpochMs = clock()),
+        ))
     }
 
     suspend fun updateDraft(finding: FindingEntity, draft: FindingDraft): FindingEntity {
@@ -49,8 +50,9 @@ class FindingRepository(
             priority = draft.priority,
             updatedAtEpochMs = clock(),
         )
-        findingDao.update(updated)
-        return updated
+        val saved = api.saveFinding(updated)
+        findingDao.update(saved)
+        return saved
     }
 
     suspend fun recordCustomerDecision(finding: FindingEntity, decision: FindingStatus) {
@@ -58,7 +60,19 @@ class FindingRepository(
         require(finding.status in setOf(FindingStatus.READY_FOR_APPROVAL, FindingStatus.SENT_TO_CUSTOMER)) {
             "Находка не готова к решению клиента"
         }
-        findingDao.updateStatus(finding.id, decision, clock())
+        findingDao.update(api.saveFinding(
+            finding.copy(status = decision, updatedAtEpochMs = clock()),
+        ))
+    }
+
+    suspend fun synchronizeLocal(serverFindings: List<FindingEntity>) {
+        findingDao.all()
+            .filter { it.serverVersion == 0 }
+            .forEach { findingDao.update(api.saveFinding(it)) }
+        serverFindings.forEach { remote ->
+            val local = findingDao.all().firstOrNull { it.id == remote.id }
+            if (local == null) findingDao.insert(remote) else findingDao.update(remote)
+        }
     }
 
     private companion object {

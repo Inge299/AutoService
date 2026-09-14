@@ -15,7 +15,7 @@ class VisitRepositoryTest {
     @Test
     fun `creates offline visit and normalizes russian phone`() = runTest {
         val dao = FakeVisitDao()
-        val repository = VisitRepository(visitDao = dao, clock = { 123L })
+        val repository = VisitRepository(visitDao = dao, api = FakeWorkshopRemote(), clock = { 123L })
 
         val visit = repository.createVisit(
             VisitDraft(
@@ -32,12 +32,14 @@ class VisitRepositoryTest {
         assertEquals("Иван", visit.customerName)
         assertEquals("Lada Vesta", visit.vehicleLabel)
         assertEquals(visit, dao.saved)
+        assertEquals(1, visit.serverVersion)
+        assertEquals(ru.autoservice.spike.data.SyncState.SYNCED, visit.syncState)
         assertEquals(123L, visit.createdAtEpochMs)
     }
 
     @Test
     fun `rejects visit without vehicle identifier`() = runTest {
-        val repository = VisitRepository(FakeVisitDao())
+        val repository = VisitRepository(FakeVisitDao(), FakeWorkshopRemote())
 
         var rejected = false
         try {
@@ -72,6 +74,8 @@ class VisitRepositoryTest {
 
         override suspend fun find(id: String): VisitEntity? =
             visits.value.firstOrNull { it.id == id }
+
+        override suspend fun all(): List<VisitEntity> = visits.value
 
         override suspend fun updateStatus(visitId: String, status: ru.autoservice.spike.data.VisitStatus, updatedAt: Long) {
             visits.value = visits.value.map {

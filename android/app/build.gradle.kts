@@ -15,6 +15,11 @@ android {
         versionCode = 1
         versionName = "0.1.0-spike"
 
+        val apiBaseUrl = providers.gradleProperty("AUTOSERVICE_API_BASE_URL")
+            .orElse("https://autoservice.135.106.211.119.sslip.io")
+            .get()
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
