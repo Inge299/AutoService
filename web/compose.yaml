@@ -1,0 +1,51 @@
+services:
+  web:
+    container_name: autoservice-web
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+    environment:
+      AUTOSERVICE_API_URL: "${AUTOSERVICE_API_URL:?Set AUTOSERVICE_API_URL}"
+      AUTOSERVICE_INTERNAL_API_KEY: "${INTERNAL_API_KEY:?Set INTERNAL_API_KEY}"
+      WEB_SESSION_SECRET: "${WEB_SESSION_SECRET:?Set WEB_SESSION_SECRET}"
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  caddy:
+    image: caddy:2.10-alpine
+    container_name: autoservice-caddy
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      PUBLIC_HOST: "${PUBLIC_HOST:?Set PUBLIC_HOST}"
+      MEDIA_PUBLIC_HOST: "${MEDIA_PUBLIC_HOST:?Set MEDIA_PUBLIC_HOST}"
+    ports:
+      - "${PUBLIC_HTTP_PORT:-80}:80"
+      - "${PUBLIC_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  default:
+    name: "${AUTOSERVICE_DOCKER_NETWORK:-autoservice_default}"
+    external: true
+
+volumes:
+  caddy-data:
+  caddy-config:
