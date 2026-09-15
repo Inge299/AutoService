@@ -69,6 +69,7 @@ import ru.autoservice.spike.data.VisitDraft
 import ru.autoservice.spike.data.VisitEntity
 import ru.autoservice.spike.data.VisitStatus
 import ru.autoservice.spike.media.VoiceRecorder
+import ru.autoservice.spike.network.OtpChallenge
 import ru.autoservice.spike.ui.CameraCaptureScreen
 import ru.autoservice.spike.ui.QueueViewModel
 import ru.autoservice.spike.ui.theme.AutoServiceTheme
@@ -125,7 +126,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
             snackbarHost = { SnackbarHost(snackbarHost) },
         ) { padding ->
             LoginScreen(
-                onLogin = { login, password, completed ->
+                onPasswordLogin = { login, password, completed ->
                     viewModel.login(
                         login = login,
                         password = password,
@@ -133,6 +134,27 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                         onFailure = {
                             completed()
                             message(if (it.message == "invalid_credentials") "Неверный логин или пароль" else it.message ?: "Не удалось войти")
+                        },
+                    )
+                },
+                onRequestCode = { phone, completed ->
+                    viewModel.requestLoginCode(
+                        phone = phone,
+                        onSuccess = completed,
+                        onFailure = {
+                            completed(null)
+                            message(authErrorMessage(it))
+                        },
+                    )
+                },
+                onVerifyCode = { challengeId, code, completed ->
+                    viewModel.verifyLoginCode(
+                        challengeId = challengeId,
+                        code = code,
+                        onSuccess = completed,
+                        onFailure = {
+                            completed()
+                            message(authErrorMessage(it))
                         },
                     )
                 },
@@ -282,11 +304,17 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
 
 @Composable
 private fun LoginScreen(
-    onLogin: (String, String, () -> Unit) -> Unit,
+    onPasswordLogin: (String, String, () -> Unit) -> Unit,
+    onRequestCode: (String, (OtpChallenge?) -> Unit) -> Unit,
+    onVerifyCode: (String, String, () -> Unit) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var mode by remember { mutableStateOf(LoginMode.SMS) }
     var login by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf("") }
+    var challenge by remember { mutableStateOf<OtpChallenge?>(null) }
     var loading by remember { mutableStateOf(false) }
 
     Column(
@@ -295,38 +323,118 @@ private fun LoginScreen(
     ) {
         Spacer(Modifier.height(36.dp))
         Text("Вход в мастерскую", style = MaterialTheme.typography.headlineMedium)
-        Text("Используйте учётные данные, выданные администратором.")
-        OutlinedTextField(
-            value = login,
-            onValueChange = { login = it },
-            label = { Text("Логин") },
-            enabled = !loading,
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Пароль") },
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            enabled = !loading,
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Button(
-            onClick = {
-                loading = true
-                onLogin(login, password) { loading = false }
-            },
-            enabled = !loading && login.isNotBlank() && password.isNotBlank(),
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(if (loading) "Подключение…" else "Войти") }
+        when (mode) {
+            LoginMode.SMS -> {
+                Text("Получите одноразовый код на рабочий номер.")
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("Телефон") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    enabled = !loading,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Button(
+                    onClick = {
+                        loading = true
+                        onRequestCode(phone) { created ->
+                            loading = false
+                            if (created != null) {
+                                challenge = created
+                                code = ""
+                                mode = LoginMode.CODE
+                            }
+                        }
+                    },
+                    enabled = !loading && phone.trim().length in 8..32,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (loading) "Отправка…" else "Получить код") }
+                TextButton(onClick = { mode = LoginMode.PASSWORD }, enabled = !loading) {
+                    Text("Войти по паролю")
+                }
+            }
+
+            LoginMode.CODE -> {
+                Text("Введите 6 цифр из SMS. Код действует 5 минут.")
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { value -> code = value.filter(Char::isDigit).take(6) },
+                    label = { Text("Код из SMS") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    enabled = !loading,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Button(
+                    onClick = {
+                        val challengeId = challenge?.challengeId ?: return@Button
+                        loading = true
+                        onVerifyCode(challengeId, code) { loading = false }
+                    },
+                    enabled = !loading && code.length == 6 && challenge != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (loading) "Проверка…" else "Войти") }
+                TextButton(
+                    onClick = {
+                        challenge = null
+                        code = ""
+                        mode = LoginMode.SMS
+                    },
+                    enabled = !loading,
+                ) { Text("Изменить номер") }
+            }
+
+            LoginMode.PASSWORD -> {
+                Text("Используйте учётные данные, выданные администратором.")
+                OutlinedTextField(
+                    value = login,
+                    onValueChange = { login = it },
+                    label = { Text("Логин") },
+                    enabled = !loading,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Пароль") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    enabled = !loading,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Button(
+                    onClick = {
+                        loading = true
+                        onPasswordLogin(login, password) { loading = false }
+                    },
+                    enabled = !loading && login.isNotBlank() && password.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (loading) "Подключение…" else "Войти") }
+                TextButton(onClick = { mode = LoginMode.SMS }, enabled = !loading) {
+                    Text("Войти по SMS")
+                }
+            }
+        }
         Text(
-            "Все визиты и находки сохраняются на сервере. Медиа остаются на устройстве только до подтверждённой загрузки.",
+            "Сессия зашифрована ключом устройства. Все визиты и находки сохраняются на сервере.",
             style = MaterialTheme.typography.bodySmall,
         )
     }
+}
+
+private enum class LoginMode { SMS, CODE, PASSWORD }
+
+private fun authErrorMessage(error: Throwable): String = when (error.message) {
+    "invalid_credentials" -> "Неверный логин или пароль"
+    "invalid_or_expired_code" -> "Код неверен или истёк"
+    "retry_later" -> "Новый код можно запросить через минуту"
+    "too_many_attempts" -> "Слишком много попыток. Попробуйте позже"
+    "verification_delivery_failed" -> "Не удалось отправить SMS"
+    "phone_authentication_unavailable" -> "Вход по SMS временно недоступен"
+    else -> error.message ?: "Не удалось войти"
 }
 
 @Composable
