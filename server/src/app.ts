@@ -15,8 +15,7 @@ import { visitRoutes } from "./http/routes/visits.js";
 import { workshopRoutes } from "./http/routes/workshops.js";
 import type { ObjectStorage } from "./infrastructure/object-storage.js";
 import {
-  debugVerificationDelivery,
-  disabledVerificationDelivery,
+  createVerificationDelivery,
   type VerificationDelivery,
 } from "./infrastructure/verification-delivery.js";
 import { phoneAuthRoutes } from "./http/routes/phone-auth.js";
@@ -30,9 +29,7 @@ export interface AppDependencies {
 export async function buildApp(config: Config, dependencies: AppDependencies): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: config.LOG_LEVEL } });
   registerErrorHandler(app);
-  const verificationDelivery = dependencies.verificationDelivery ?? (
-    config.SMS_PROVIDER === "debug" ? debugVerificationDelivery(app.log) : disabledVerificationDelivery
-  );
+  const verificationDelivery = dependencies.verificationDelivery ?? createVerificationDelivery(config, app.log);
   registerActorContext(
     app,
     dependencies.prisma,
