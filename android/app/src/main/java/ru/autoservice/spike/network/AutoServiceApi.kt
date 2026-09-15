@@ -1,6 +1,8 @@
 package ru.autoservice.spike.network
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -24,6 +26,12 @@ data class WorkshopSnapshot(
     val findings: List<FindingEntity>,
 )
 
+data class OtpChallenge(
+    val challengeId: String,
+    val expiresInSeconds: Int,
+    val resendAfterEpochMs: Long,
+)
+
 interface WorkshopRemote {
     suspend fun loadWorkshop(): WorkshopSnapshot
     suspend fun saveVisit(visit: VisitEntity): VisitEntity
@@ -36,6 +44,7 @@ class AutoServiceApi(
     private val authStore: AuthStore,
 ) : WorkshopRemote {
     private val baseUrl = baseUrl.trimEnd('/')
+    private val refreshMutex = Mutex()
 
     suspend fun login(login: String, password: String): AuthSession = withContext(Dispatchers.IO) {
         val body = JSONObject()
@@ -44,14 +53,59 @@ class AutoServiceApi(
         val json = request("POST", "/v1/auth/login", body = body, authenticated = false)
         val session = AuthSession(
             accessToken = json.getString("accessToken"),
+            accessTokenExpiresAtEpochMs = json.getLong("accessTokenExpiresAtEpochMs"),
+            refreshToken = json.getString("refreshToken"),
+            refreshTokenExpiresAtEpochMs = json.getLong("refreshTokenExpiresAtEpochMs"),
             userId = json.getString("userId"),
             workshopId = json.getString("workshopId"),
             displayName = json.getString("displayName"),
             role = json.getString("role"),
-            expiresAtEpochMs = json.getLong("expiresAtEpochMs"),
         )
         authStore.save(session)
         session
+    }
+
+    suspend fun requestLoginCode(phone: String): OtpChallenge = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("audience", "STAFF")
+            .put("phone", phone.trim())
+        val json = request("POST", "/public/v1/auth/phone/request-code", body, authenticated = false)
+        OtpChallenge(
+            challengeId = json.getString("challengeId"),
+            expiresInSeconds = json.getInt("expiresInSeconds"),
+            resendAfterEpochMs = json.getLong("resendAfterEpochMs"),
+        )
+    }
+
+    suspend fun verifyLoginCode(challengeId: String, code: String): AuthSession = withContext(Dispatchers.IO) {
+        val tokenJson = request(
+            "POST",
+            "/public/v1/auth/phone/verify-code",
+            JSONObject().put("challengeId", challengeId).put("code", code.trim()),
+            authenticated = false,
+        )
+        val accessToken = tokenJson.getString("accessToken")
+        val identity = requestWithAccessToken("GET", "/v1/session", accessToken)
+        val session = AuthSession(
+            accessToken = accessToken,
+            accessTokenExpiresAtEpochMs = tokenJson.getLong("accessTokenExpiresAtEpochMs"),
+            refreshToken = tokenJson.getString("refreshToken"),
+            refreshTokenExpiresAtEpochMs = tokenJson.getLong("refreshTokenExpiresAtEpochMs"),
+            userId = identity.getString("id"),
+            workshopId = identity.getString("workshopId"),
+            displayName = identity.getString("displayName"),
+            role = identity.getString("role"),
+        )
+        authStore.save(session)
+        session
+    }
+
+    suspend fun logout() = withContext(Dispatchers.IO) {
+        try {
+            if (authStore.session.value != null) request("POST", "/v1/auth/logout", JSONObject())
+        } finally {
+            authStore.clear()
+        }
     }
 
     override suspend fun loadWorkshop(): WorkshopSnapshot = withContext(Dispatchers.IO) {
@@ -138,32 +192,89 @@ class AutoServiceApi(
         }
     }
 
-    private fun request(
+    private suspend fun request(
         method: String,
         path: String,
         body: JSONObject? = null,
         authenticated: Boolean = true,
     ): JSONObject = JSONObject(requestText(method, path, body, authenticated))
 
-    private fun requestArray(method: String, path: String): JSONArray =
+    private suspend fun requestArray(method: String, path: String): JSONArray =
         JSONArray(requestText(method, path, null, authenticated = true))
 
-    private fun requestText(
+    private suspend fun requestText(
         method: String,
         path: String,
         body: JSONObject?,
         authenticated: Boolean,
     ): String {
+        if (!authenticated) return requireSuccess(executeRequest(method, path, body, null))
+
+        var session = validAccessSession()
+        var response = executeRequest(method, path, body, session.accessToken)
+        if (response.status == 401) {
+            session = rotateSession(session.accessToken)
+            response = executeRequest(method, path, body, session.accessToken)
+        }
+        return requireSuccess(response, clearSessionOnUnauthorized = true)
+    }
+
+    private fun requestWithAccessToken(method: String, path: String, accessToken: String): JSONObject =
+        JSONObject(requireSuccess(executeRequest(method, path, null, accessToken)))
+
+    private suspend fun validAccessSession(): AuthSession {
+        val current = authStore.session.value ?: throw ApiException(401, "Войдите в систему")
+        if (current.refreshTokenExpiresAtEpochMs <= System.currentTimeMillis()) {
+            authStore.clear()
+            throw ApiException(401, "Сессия истекла")
+        }
+        return if (current.accessTokenExpiresAtEpochMs > System.currentTimeMillis() + ACCESS_REFRESH_MARGIN_MS) {
+            current
+        } else {
+            rotateSession(current.accessToken)
+        }
+    }
+
+    private suspend fun rotateSession(rejectedAccessToken: String): AuthSession = refreshMutex.withLock {
+        val current = authStore.session.value ?: throw ApiException(401, "Войдите в систему")
+        // Другой запрос уже выполнил одноразовую ротацию, пока этот ожидал mutex.
+        if (current.accessToken != rejectedAccessToken) return@withLock current
+        if (current.refreshTokenExpiresAtEpochMs <= System.currentTimeMillis()) {
+            authStore.clear()
+            throw ApiException(401, "Сессия истекла")
+        }
+        val response = executeRequest(
+            method = "POST",
+            path = "/public/v1/auth/refresh",
+            body = JSONObject().put("refreshToken", current.refreshToken),
+            accessToken = null,
+        )
+        val json = JSONObject(requireSuccess(response, clearSessionOnUnauthorized = true))
+        val refreshed = current.copy(
+            accessToken = json.getString("accessToken"),
+            accessTokenExpiresAtEpochMs = json.getLong("accessTokenExpiresAtEpochMs"),
+            refreshToken = json.getString("refreshToken"),
+            refreshTokenExpiresAtEpochMs = json.getLong("refreshTokenExpiresAtEpochMs"),
+        )
+        authStore.save(refreshed)
+        refreshed
+    }
+
+    private data class ApiResponse(val status: Int, val body: String)
+
+    private fun executeRequest(
+        method: String,
+        path: String,
+        body: JSONObject?,
+        accessToken: String?,
+    ): ApiResponse {
         val connection = URL("$baseUrl$path").openConnection() as HttpURLConnection
         try {
             connection.requestMethod = method
             connection.connectTimeout = 15_000
             connection.readTimeout = 60_000
             connection.setRequestProperty("accept", "application/json")
-            if (authenticated) {
-                val session = authStore.session.value ?: throw ApiException(401, "Войдите в систему")
-                connection.setRequestProperty("authorization", "Bearer ${session.accessToken}")
-            }
+            if (accessToken != null) connection.setRequestProperty("authorization", "Bearer $accessToken")
             if (body != null) {
                 connection.doOutput = true
                 connection.setRequestProperty("content-type", "application/json")
@@ -172,15 +283,26 @@ class AutoServiceApi(
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
             val response = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-            if (status !in 200..299) {
-                if (authenticated && status in setOf(401, 403)) authStore.clear()
-                val code = runCatching { JSONObject(response).optString("error") }.getOrNull()
-                throw ApiException(status, code?.takeIf(String::isNotBlank) ?: "Ошибка сервера ($status)")
-            }
-            return response.ifBlank { "{}" }
+            return ApiResponse(status, response)
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun requireSuccess(response: ApiResponse, clearSessionOnUnauthorized: Boolean = false): String {
+        if (response.status !in 200..299) {
+            if (clearSessionOnUnauthorized && response.status == 401) authStore.clear()
+            val code = runCatching { JSONObject(response.body).optString("error") }.getOrNull()
+            throw ApiException(
+                response.status,
+                code?.takeIf(String::isNotBlank) ?: "Ошибка сервера (${response.status})",
+            )
+        }
+        return response.body.ifBlank { "{}" }
+    }
+
+    private companion object {
+        const val ACCESS_REFRESH_MARGIN_MS = 60_000L
     }
 }
 

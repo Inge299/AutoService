@@ -20,6 +20,7 @@ import ru.autoservice.spike.data.SeededQuickValues
 import ru.autoservice.spike.data.VisitDraft
 import ru.autoservice.spike.data.VisitEntity
 import ru.autoservice.spike.network.AuthSession
+import ru.autoservice.spike.network.OtpChallenge
 import java.io.File
 
 class QueueViewModel(application: Application) : AndroidViewModel(application) {
@@ -76,8 +77,41 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun requestLoginCode(
+        phone: String,
+        onSuccess: (OtpChallenge) -> Unit,
+        onFailure: (Throwable) -> Unit,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                require(phone.trim().length in 8..32) { "Введите номер телефона" }
+                container.api.requestLoginCode(phone)
+            }.onSuccess(onSuccess)
+                .onFailure(onFailure)
+        }
+    }
+
+    fun verifyLoginCode(
+        challengeId: String,
+        code: String,
+        onSuccess: () -> Unit,
+        onFailure: (Throwable) -> Unit,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                require(Regex("^\\d{6}$").matches(code.trim())) { "Введите 6 цифр из SMS" }
+                container.api.verifyLoginCode(challengeId, code)
+                synchronize()
+            }.onSuccess { onSuccess() }
+                .onFailure(onFailure)
+        }
+    }
+
     fun logout() {
-        container.authStore.clear()
+        viewModelScope.launch {
+            runCatching { container.api.logout() }
+                .onFailure { container.authStore.clear() }
+        }
     }
 
     fun refresh(onFailure: (Throwable) -> Unit = {}) {
