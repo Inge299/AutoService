@@ -73,7 +73,9 @@ docker compose -f docker-compose.deploy.yml up -d --build
 ```
 
 API публикуется только на `127.0.0.1:8080`. PostgreSQL и MinIO не публикуют
-host-порты. При `SMS_PROVIDER=disabled` парольный вход работает, но запрос SMS-кода
+host-порты. В production API доверяет ровно одному reverse-proxy hop, поэтому Caddy/Nginx
+должен передавать корректный `X-Forwarded-For`; это необходимо для лимитов входа и OTP по IP.
+При `SMS_PROVIDER=disabled` парольный вход работает, но запрос SMS-кода
 возвращает `503`. Для `smsru` сервер передаёт ключ только в POST form body, проверяет
 общий и индивидуальный статус номера и ограничивает HTTP-вызов десятью секундами.
 

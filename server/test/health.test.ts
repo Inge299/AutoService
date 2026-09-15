@@ -45,4 +45,25 @@ describe("health", () => {
     expect(response.json()).toEqual({ error: "unauthorized" });
     await app.close();
   });
+
+  it("uses the client address supplied by the single production proxy hop", async () => {
+    const app = await buildApp({
+      ...config,
+      NODE_ENV: "production",
+      INTERNAL_API_KEY: "i".repeat(32),
+      ACCESS_TOKEN_SECRET: "a".repeat(32),
+      OTP_HASH_SECRET: "o".repeat(32),
+    }, {
+      prisma: {} as PrismaClient,
+      storage: {} as ObjectStorage,
+    });
+    app.get("/_test/client-ip", async (request) => ({ ip: request.ip }));
+    const response = await app.inject({
+      method: "GET",
+      url: "/_test/client-ip",
+      headers: { "x-forwarded-for": "203.0.113.42" },
+    });
+    expect(response.json()).toEqual({ ip: "203.0.113.42" });
+    await app.close();
+  });
 });

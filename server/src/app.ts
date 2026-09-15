@@ -26,8 +26,15 @@ export interface AppDependencies {
   verificationDelivery?: VerificationDelivery;
 }
 
+const trustSingleProxyHop = (_address: string, hop: number): boolean => hop === 0;
+
 export async function buildApp(config: Config, dependencies: AppDependencies): Promise<FastifyInstance> {
-  const app = Fastify({ logger: { level: config.LOG_LEVEL } });
+  const app = Fastify({
+    logger: { level: config.LOG_LEVEL },
+    // Production publishes the API only through one local reverse-proxy hop.
+    // Trusting exactly that hop keeps per-client authentication limits effective.
+    trustProxy: config.NODE_ENV === "production" ? trustSingleProxyHop : false,
+  });
   registerErrorHandler(app);
   const verificationDelivery = dependencies.verificationDelivery ?? createVerificationDelivery(config, app.log);
   registerActorContext(
