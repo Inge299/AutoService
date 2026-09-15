@@ -106,6 +106,11 @@ describe("database authentication and administration", () => {
     });
     expect(login.statusCode).toBe(200);
     expect(login.json().accessToken).toEqual(expect.any(String));
+    expect(prisma.authSession.create).toHaveBeenCalledOnce();
+    const sessionData = vi.mocked(prisma.authSession.create).mock.calls[0]?.[0].data;
+    expect(sessionData).toMatchObject({ userId, workshopId, scope: "STAFF" });
+    expect(sessionData).not.toHaveProperty("displayName");
+    expect(sessionData).not.toHaveProperty("role");
 
     const session = await app.inject({
       method: "GET",
