@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const booleanFromString = z.enum(["true", "false"]).transform((value) => value === "true");
+const emptyToUndefined = (value: unknown) => value === "" ? undefined : value;
 
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -10,7 +11,9 @@ const schema = z.object({
   INTERNAL_API_KEY: z.string().min(32).optional(),
   ACCESS_TOKEN_SECRET: z.string().min(32).optional(),
   OTP_HASH_SECRET: z.string().min(32).optional(),
-  SMS_PROVIDER: z.enum(["disabled", "debug"]).default("disabled"),
+  SMS_PROVIDER: z.enum(["disabled", "debug", "smsru"]).default("disabled"),
+  SMS_RU_API_ID: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
+  SMS_RU_FROM: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(32).optional()),
   DATABASE_URL: z.string().min(1),
   S3_ENDPOINT: z.string().url().optional(),
   S3_PUBLIC_ENDPOINT: z.string().url().optional(),
@@ -37,6 +40,9 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Config
   }
   if (config.NODE_ENV === "production" && config.SMS_PROVIDER === "debug") {
     throw new Error("SMS_PROVIDER=debug is forbidden in production");
+  }
+  if (config.SMS_PROVIDER === "smsru" && !config.SMS_RU_API_ID) {
+    throw new Error("SMS_RU_API_ID is required when SMS_PROVIDER=smsru");
   }
   return config;
 }

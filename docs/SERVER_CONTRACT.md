@@ -16,9 +16,9 @@
 | Подтверждение файла | `POST /v1/media/{id}/complete` | Реализовано |
 | Статус файла | `GET /v1/media/{id}` | Реализовано |
 | Вход Android | `POST /v1/auth/login` | Реализовано |
-| Вход сотрудника/клиента по SMS | `POST /public/v1/auth/phone/request-code`, `verify-code` | Реализовано ядро; нужен production-провайдер |
+| Вход сотрудника/клиента по SMS | `POST /public/v1/auth/phone/request-code`, `verify-code` | Реализовано через SMS.RU |
 | Ротация/отзыв сессии | `POST /public/v1/auth/refresh`, `POST /v1/auth/logout` | Реализовано |
-| Регистрация клиента по защищённой ссылке и SMS | `POST /public/v1/customer-accounts/register` | Реализовано ядро; нужен production-провайдер |
+| Регистрация клиента по защищённой ссылке и SMS | `POST /public/v1/customer-accounts/register` | Реализовано через SMS.RU |
 | Вход клиента по телефону/e-mail | `POST /public/v1/customer-accounts/login` | Реализовано |
 | Кабинет клиента: автомобили и ремонты | `GET /public/v1/customer-accounts/me` | Реализовано |
 
@@ -46,6 +46,6 @@
 ## До боевого запуска нужны
 
 - домен и TLS;
-- production SMS-провайдер и его credentials;
+- production credentials SMS.RU и согласованное имя/шаблон отправителя;
 - выбранный канал доставки и реквизиты провайдера;
 - текст сервисного сообщения и политика обработки персональных данных.

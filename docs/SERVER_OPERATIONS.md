@@ -60,6 +60,10 @@ INTERNAL_API_KEY=<random-32+-character-service-key>
 ACCESS_TOKEN_SECRET=<different-random-32+-character-signing-key>
 OTP_HASH_SECRET=<third-random-32+-character-hmac-key>
 SMS_PROVIDER=disabled
+# Для включения после настройки кабинета:
+# SMS_PROVIDER=smsru
+# SMS_RU_API_ID=<api-id из кабинета SMS.RU>
+# SMS_RU_FROM=<согласованное имя отправителя или пусто для default>
 ```
 
 ```bash
@@ -70,7 +74,8 @@ docker compose -f docker-compose.deploy.yml up -d --build
 
 API публикуется только на `127.0.0.1:8080`. PostgreSQL и MinIO не публикуют
 host-порты. При `SMS_PROVIDER=disabled` парольный вход работает, но запрос SMS-кода
-возвращает `503`; публичный запуск требует реального provider adapter и TLS.
+возвращает `503`. Для `smsru` сервер передаёт ключ только в POST form body, проверяет
+общий и индивидуальный статус номера и ограничивает HTTP-вызов десятью секундами.
 
 ## Проверка после запуска
 
@@ -156,7 +161,7 @@ API пишет структурированные JSON-логи Fastify. У work
 
 ## Обязательно до публичного запуска
 
-- production-адаптер выбранного SMS-провайдера и проверка доставки;
+- production credentials, баланс и согласованный шаблон/отправитель SMS.RU;
 - HTTPS и reverse proxy;
 - отдельные S3 credentials с минимальными правами вместо root credentials;
 - автоматические off-host backups с регулярной проверкой restore;
