@@ -9,6 +9,7 @@ const config: Config = {
   HOST: "127.0.0.1",
   PORT: 8080,
   LOG_LEVEL: "silent",
+  SMS_PROVIDER: "disabled",
   DATABASE_URL: "postgresql://unused",
   S3_REGION: "ru-central1",
   S3_BUCKET: "test-bucket",

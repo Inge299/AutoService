@@ -11,7 +11,7 @@ const actorSchema = z.object({
 
 declare module "fastify" {
   interface FastifyRequest {
-    actor: z.infer<typeof actorSchema> & { role: MembershipRole };
+    actor: z.infer<typeof actorSchema> & { role: MembershipRole; sessionId?: string };
   }
 }
 
@@ -26,9 +26,10 @@ export function registerActorContext(
   prisma: PrismaClient,
   nodeEnv: string,
   internalApiKey?: string,
+  accessTokenSecret?: string,
 ): void {
-  if (nodeEnv === "production" && !internalApiKey) {
-    throw new Error("Production authentication requires INTERNAL_API_KEY");
+  if (nodeEnv === "production" && (!internalApiKey || !accessTokenSecret)) {
+    throw new Error("Production authentication requires dedicated internal and access-token secrets");
   }
 
   app.decorateRequest("actor");
@@ -38,12 +39,15 @@ export function registerActorContext(
     if (request.method === "POST" && request.url.split("?", 1)[0] === "/v1/auth/login") return;
 
     const authorization = request.headers.authorization;
-    const bearerActor = internalApiKey && authorization?.startsWith("Bearer ")
-      ? verifyAccessToken(authorization.slice("Bearer ".length), internalApiKey)
+    const bearerActor = accessTokenSecret && authorization?.startsWith("Bearer ")
+      ? verifyAccessToken(authorization.slice("Bearer ".length), accessTokenSecret)
       : null;
 
     const staffBearerActor = bearerActor?.scope === "STAFF" ? bearerActor : null;
-    if (internalApiKey && !staffBearerActor) {
+    if (authorization?.startsWith("Bearer ") && !staffBearerActor) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+    if (!staffBearerActor && internalApiKey) {
       const suppliedKey = request.headers["x-internal-api-key"];
       if (typeof suppliedKey !== "string" || !safeEqual(suppliedKey, internalApiKey)) {
         return reply.code(401).send({ error: "unauthorized" });
@@ -56,6 +60,27 @@ export function registerActorContext(
       });
     if (!parsed.success) {
       return reply.code(401).send({ error: "unauthorized" });
+    }
+    if (staffBearerActor) {
+      const session = await prisma.authSession.findUnique({
+        where: { id: staffBearerActor.sessionId },
+        select: {
+          userId: true,
+          workshopId: true,
+          scope: true,
+          customerId: true,
+          expiresAt: true,
+          revokedAt: true,
+        },
+      });
+      if (
+        !session || session.revokedAt || session.expiresAt <= new Date() ||
+        session.scope !== "STAFF" || session.customerId ||
+        session.userId !== staffBearerActor.userId ||
+        session.workshopId !== staffBearerActor.workshopId
+      ) {
+        return reply.code(401).send({ error: "session_expired" });
+      }
     }
     const membership = await prisma.membership.findUnique({
       where: {
@@ -73,7 +98,11 @@ export function registerActorContext(
     if (!membership?.isActive || !membership.user.isActive) {
       return reply.code(403).send({ error: "access_revoked" });
     }
-    request.actor = { ...parsed.data, role: membership.role };
+    request.actor = {
+      ...parsed.data,
+      role: membership.role,
+      ...(staffBearerActor ? { sessionId: staffBearerActor.sessionId } : {}),
+    };
   });
 }
 

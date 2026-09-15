@@ -1,13 +1,14 @@
 import type { PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { createAccessToken } from "../../security/access-token.js";
+import { issueSession, revokeSession, rotateSession } from "../../security/auth-session.js";
 import { verifyPassword } from "../../security/password.js";
 
 const loginSchema = z.object({
   login: z.string().trim().min(1).max(128).transform((value) => value.toLocaleLowerCase("ru-RU")),
   password: z.string().min(1).max(256),
 });
+const refreshSchema = z.object({ refreshToken: z.string().min(40).max(256) });
 
 const attempts = new Map<string, { count: number; resetAt: number }>();
 const MAX_ATTEMPTS = 10;
@@ -65,8 +66,25 @@ export function authRoutes(prisma: PrismaClient, accessTokenSecret?: string): Fa
       };
       if (!accessTokenSecret) return session;
 
-      const access = createAccessToken(session, accessTokenSecret);
-      return { ...session, accessToken: access.token, expiresAtEpochMs: access.expiresAt };
+      const tokens = await issueSession(prisma, { ...session, scope: "STAFF" }, accessTokenSecret);
+      return {
+        ...session,
+        ...tokens,
+        expiresAtEpochMs: tokens.accessTokenExpiresAtEpochMs,
+      };
+    });
+
+    app.post("/public/v1/auth/refresh", async (request, reply) => {
+      if (!accessTokenSecret) return reply.code(503).send({ error: "authentication_unavailable" });
+      const body = refreshSchema.parse(request.body);
+      const tokens = await rotateSession(prisma, body.refreshToken, accessTokenSecret);
+      if (!tokens) return reply.code(401).send({ error: "invalid_refresh_token" });
+      return reply.send({ ...tokens, expiresAtEpochMs: tokens.accessTokenExpiresAtEpochMs });
+    });
+
+    app.post("/v1/auth/logout", async (request, reply) => {
+      if (request.actor.sessionId) await revokeSession(prisma, request.actor.sessionId);
+      return reply.code(204).send();
     });
 
     app.get("/v1/session", async (request) => {

@@ -2,7 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 const payloadSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
+  sessionId: z.string().uuid(),
   userId: z.string().uuid(),
   workshopId: z.string().uuid(),
   scope: z.enum(["STAFF", "CUSTOMER"]).default("STAFF"),
@@ -11,13 +12,14 @@ const payloadSchema = z.object({
 });
 
 export interface AccessTokenActor {
+  sessionId: string;
   userId: string;
   workshopId: string;
   scope?: "STAFF" | "CUSTOMER";
   customerId?: string;
 }
 
-const DEFAULT_TTL_MS = 12 * 60 * 60_000;
+export const DEFAULT_ACCESS_TOKEN_TTL_MS = 15 * 60_000;
 
 function signature(payload: string, secret: string): Buffer {
   return createHmac("sha256", secret).update(payload).digest();
@@ -27,10 +29,10 @@ export function createAccessToken(
   actor: AccessTokenActor,
   secret: string,
   now = Date.now(),
-  ttlMs = DEFAULT_TTL_MS,
+  ttlMs = DEFAULT_ACCESS_TOKEN_TTL_MS,
 ): { token: string; expiresAt: number } {
   const expiresAt = now + ttlMs;
-  const payload = Buffer.from(JSON.stringify({ version: 1, ...actor, expiresAt })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ version: 2, ...actor, expiresAt })).toString("base64url");
   return {
     token: `${payload}.${signature(payload, secret).toString("base64url")}`,
     expiresAt,
@@ -53,6 +55,7 @@ export function verifyAccessToken(token: string, secret: string, now = Date.now(
     if (!parsed.success || parsed.data.expiresAt <= now) return null;
     if (parsed.data.scope === "CUSTOMER" && !parsed.data.customerId) return null;
     return {
+      sessionId: parsed.data.sessionId,
       userId: parsed.data.userId,
       workshopId: parsed.data.workshopId,
       scope: parsed.data.scope,

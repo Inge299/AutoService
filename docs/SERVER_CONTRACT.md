@@ -16,7 +16,9 @@
 | Подтверждение файла | `POST /v1/media/{id}/complete` | Реализовано |
 | Статус файла | `GET /v1/media/{id}` | Реализовано |
 | Вход Android | `POST /v1/auth/login` | Реализовано |
-| Регистрация клиента по защищённой ссылке | `POST /public/v1/customer-accounts/register` | Реализовано |
+| Вход сотрудника/клиента по SMS | `POST /public/v1/auth/phone/request-code`, `verify-code` | Реализовано ядро; нужен production-провайдер |
+| Ротация/отзыв сессии | `POST /public/v1/auth/refresh`, `POST /v1/auth/logout` | Реализовано |
+| Регистрация клиента по защищённой ссылке и SMS | `POST /public/v1/customer-accounts/register` | Реализовано ядро; нужен production-провайдер |
 | Вход клиента по телефону/e-mail | `POST /public/v1/customer-accounts/login` | Реализовано |
 | Кабинет клиента: автомобили и ремонты | `GET /public/v1/customer-accounts/me` | Реализовано |
 
@@ -44,6 +46,6 @@
 ## До боевого запуска нужны
 
 - домен и TLS;
-- production-авторизация;
+- production SMS-провайдер и его credentials;
 - выбранный канал доставки и реквизиты провайдера;
 - текст сервисного сообщения и политика обработки персональных данных.

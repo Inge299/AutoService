@@ -10,6 +10,7 @@ const config: Config = {
   HOST: "127.0.0.1",
   PORT: 8080,
   LOG_LEVEL: "silent",
+  SMS_PROVIDER: "disabled",
   DATABASE_URL: "postgresql://unused",
   S3_REGION: "ru-central1",
   S3_BUCKET: "test-bucket",
@@ -79,8 +80,23 @@ describe("database authentication and administration", () => {
         findUniqueOrThrow: vi.fn().mockResolvedValue({ id: userId, login: "master", displayName: "Мастер" }),
       },
       membership: { findUnique: vi.fn().mockResolvedValue(membership) },
+      authSession: {
+        create: vi.fn().mockResolvedValue({}),
+        findUnique: vi.fn().mockResolvedValue({
+          userId,
+          workshopId,
+          scope: "STAFF",
+          customerId: null,
+          expiresAt: new Date(Date.now() + 60_000),
+          revokedAt: null,
+        }),
+      },
     } as unknown as PrismaClient;
-    const protectedConfig = { ...config, INTERNAL_API_KEY: "a".repeat(32) };
+    const protectedConfig = {
+      ...config,
+      INTERNAL_API_KEY: "a".repeat(32),
+      ACCESS_TOKEN_SECRET: "b".repeat(32),
+    };
     const app = await buildApp(protectedConfig, { prisma, storage: {} as ObjectStorage });
 
     const login = await app.inject({
