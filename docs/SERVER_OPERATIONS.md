@@ -15,7 +15,7 @@ docker compose -f ../docker-compose.server.yml up -d
 cp .env.example .env
 npm ci
 npm run db:generate
-npm run db:push
+npm run db:migrate
 npm run db:seed
 npm run dev
 ```
@@ -97,7 +97,28 @@ docker compose -f docker-compose.deploy.yml exec -T postgres \
 4. Выполнить `docker compose -f docker-compose.deploy.yml up -d --build`.
 5. Повторить health-check и просмотр логов.
 
-Текущий каркас использует `prisma db push`. До первой боевой миграции нужно зафиксировать версионируемые Prisma migrations и перейти на `prisma migrate deploy`.
+Production использует только версионируемые миграции через `prisma migrate deploy`.
+`prisma db push` нельзя использовать для обновления общей или production-БД.
+
+### Одноразовый переход существующей Mia с db push
+
+Релизы до `v0.1.0` создавали схему через `prisma db push`, поэтому в базе нет
+таблицы истории Prisma migrations. Перед первым релизом с migrations:
+
+1. Снять и проверить backup PostgreSQL.
+2. Убедиться, что фактическая схема совпадает с `server/prisma/schema.prisma`.
+3. Пометить baseline уже применённым, не выполняя его SQL повторно:
+
+```bash
+docker compose --env-file /opt/autoservice/.env \
+  -f /opt/autoservice/current/docker-compose.deploy.yml \
+  run --rm migrate npx prisma migrate resolve \
+  --applied 20260915000000_baseline
+```
+
+4. Проверить `npm run db:migrate:status` через тот же контейнер и только затем
+   запускать новый релиз. На новой пустой базе baseline применяется обычным
+   `prisma migrate deploy` автоматически.
 
 ## Backup
 
@@ -129,10 +150,9 @@ API пишет структурированные JSON-логи Fastify. У work
 
 ## Обязательно до публичного запуска
 
-- production-авторизация и ротация токенов;
+- подтверждение телефона и ротация/отзыв токенов;
 - HTTPS и reverse proxy;
 - отдельные S3 credentials с минимальными правами вместо root credentials;
-- версионируемые migrations;
 - автоматические off-host backups с регулярной проверкой restore;
 - monitoring диска, PostgreSQL, очереди и HTTP 5xx;
 - rate limiting и политика хранения/удаления медиа.

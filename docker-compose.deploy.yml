@@ -39,7 +39,7 @@ services:
     build:
       context: ./server
       target: build
-    command: npm run db:push
+    command: npm run db:migrate:deploy
     depends_on:
       postgres:
         condition: service_healthy
