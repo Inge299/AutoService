@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BrandMark, Icon } from "@/components/icons";
-import { loginAction } from "@/app/login/actions";
+import { loginAction, requestStaffCodeAction, verifyStaffCodeAction } from "@/app/login/actions";
 
 export const metadata: Metadata = { title: "Вход" };
 
@@ -10,10 +10,14 @@ const errors: Record<string, string> = {
   not_configured: "Авторизация ещё не настроена на сервере.",
   access_revoked: "Доступ к учётной записи отключён администратором.",
   server_unavailable: "Сервер авторизации временно недоступен.",
+  invalid_phone: "Проверьте номер телефона.",
+  sms_unavailable: "Вход по SMS временно недоступен.",
+  invalid_code: "Неверный или просроченный код.",
+  session_expired: "Сессия завершена. Войдите снова.",
 };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; mode?: string; challenge?: string }> }) {
+  const { error, mode, challenge } = await searchParams;
   return (
     <main className="login-page">
       <section className="login-story">
@@ -30,13 +34,25 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <span className="mobile-login-brand"><BrandMark /></span>
           <p className="eyebrow">Добро пожаловать</p>
           <h2>Вход в AutoService</h2>
-          <p className="muted login-subtitle">Используйте учётные данные, выданные администратором.</p>
+          <p className="muted login-subtitle">{mode === "code" ? "Введите код из SMS." : mode === "sms" ? "Получите одноразовый код на рабочий номер." : "Войдите по SMS или используйте пароль."}</p>
           {error && <div className="form-error"><Icon name="alert" />{errors[error] ?? "Не удалось войти."}</div>}
-          <form action={loginAction} className="login-form">
-            <label>Логин<input name="login" autoComplete="username" required maxLength={128} placeholder="admin" /></label>
-            <label>Пароль<input name="password" type="password" autoComplete="current-password" required maxLength={256} placeholder="••••••••" /></label>
-            <button type="submit" className="button button-primary">Войти <Icon name="arrow-right" /></button>
-          </form>
+          {mode === "code" && challenge ? <form action={verifyStaffCodeAction} className="login-form">
+            <input type="hidden" name="challenge" value={challenge} />
+            <label>Код из SMS<input name="code" inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} pattern="[0-9]{6}" placeholder="000000" /></label>
+            <button type="submit" className="button button-primary">Подтвердить <Icon name="arrow-right" /></button>
+            <Link className="text-link" href="/login?mode=sms">Запросить новый код</Link>
+          </form> : mode === "sms" ? <form action={requestStaffCodeAction} className="login-form">
+            <label>Телефон<input name="phone" type="tel" autoComplete="tel" required maxLength={32} placeholder="+7 999 123-45-67" /></label>
+            <button type="submit" className="button button-primary">Получить код <Icon name="arrow-right" /></button>
+            <Link className="text-link" href="/login">Войти по паролю</Link>
+          </form> : <>
+            <form action={loginAction} className="login-form">
+              <label>Логин<input name="login" autoComplete="username" required maxLength={128} placeholder="admin" /></label>
+              <label>Пароль<input name="password" type="password" autoComplete="current-password" required maxLength={256} placeholder="••••••••" /></label>
+              <button type="submit" className="button button-primary">Войти <Icon name="arrow-right" /></button>
+            </form>
+            <Link className="button button-secondary" href="/login?mode=sms">Войти по SMS</Link>
+          </>}
           <p className="security-note">Сессия хранится в зашифрованной HttpOnly cookie. Служебные идентификаторы недоступны клиентскому JavaScript и не вводятся пользователем.</p>
         </div>
       </section>

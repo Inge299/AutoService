@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { FindingPriority, FindingStatus, VisitStatus } from "@/lib/domain";
-import type { WebSession } from "@/lib/auth/session";
+import type { BackendTokens, WebSession } from "@/lib/auth/session";
 import type { CustomerWebSession } from "@/lib/auth/session";
 
 export type BackendConnection =
@@ -86,7 +86,7 @@ export interface ApiWorkshop {
   phone: string | null;
 }
 
-export interface ApiSessionIdentity {
+export interface ApiSessionIdentity extends BackendTokens {
   userId: string;
   workshopId: string;
   displayName: string;
@@ -128,8 +128,7 @@ export interface PublicApproval {
   decision: { value: ApprovalDecisionValue; createdAt: string } | null;
 }
 
-export interface CustomerAccountIdentity {
-  accessToken: string;
+export interface CustomerAccountIdentity extends BackendTokens {
   expiresAtEpochMs: number;
   customer: { id: string; name: string; phone: string; email: string | null };
 }
@@ -152,7 +151,7 @@ function apiBaseUrl(): string | null {
   return value ? value.replace(/\/$/, "") : null;
 }
 
-function internalApiKey(): string {
+function developmentInternalApiKey(): string {
   const value = process.env.AUTOSERVICE_INTERNAL_API_KEY?.trim();
   if (!value) throw new Error("AUTOSERVICE_INTERNAL_API_KEY is not configured");
   return value;
@@ -170,9 +169,11 @@ async function request<T>(
     ...init,
     headers: {
       "content-type": "application/json",
-      "x-internal-api-key": internalApiKey(),
-      "x-workshop-id": session.workshopId,
-      "x-user-id": session.userId,
+      ...(session.isDemo ? {
+        "x-internal-api-key": developmentInternalApiKey(),
+        "x-workshop-id": session.workshopId,
+        "x-user-id": session.userId,
+      } : { authorization: `Bearer ${session.accessToken}` }),
       ...init.headers,
     },
     cache: "no-store",
@@ -182,7 +183,7 @@ async function request<T>(
     const body = await response.text();
     throw new AutoServiceApiError(response.status, body);
   }
-
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -268,7 +269,7 @@ export async function authenticateApiUser(login: string, password: string): Prom
   if (!baseUrl) throw new Error("AUTOSERVICE_API_URL is not configured");
   const response = await fetch(`${baseUrl}/v1/auth/login`, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-internal-api-key": internalApiKey() },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify({ login, password }),
     cache: "no-store",
   });
@@ -279,6 +280,23 @@ export async function authenticateApiUser(login: string, password: string): Prom
 
 export function getApiSession(session: WebSession) {
   return request<{ id: string; login: string | null; displayName: string; workshopId: string; role: "ADMIN" | "EMPLOYEE" }>("/v1/session", session);
+}
+
+export async function getApiSessionWithAccessToken(accessToken: string) {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) throw new Error("AUTOSERVICE_API_URL is not configured");
+  const response = await fetch(`${baseUrl}/v1/session`, {
+    headers: { authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!response.ok) throw new AutoServiceApiError(response.status, await response.text());
+  return response.json() as Promise<{
+    id: string;
+    login: string | null;
+    displayName: string;
+    workshopId: string;
+    role: "ADMIN" | "EMPLOYEE";
+  }>;
 }
 
 export function listApiAdminUsers(session: WebSession) {
@@ -343,13 +361,50 @@ async function customerRequest<T>(path: string, init: RequestInit = {}): Promise
     cache: "no-store",
   });
   if (!response.ok) throw new AutoServiceApiError(response.status, await response.text());
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
-export function registerCustomerAccount(approvalToken: string, email: string, password: string) {
+export interface PhoneCodeChallenge {
+  challengeId: string;
+  expiresInSeconds: number;
+  resendAfterEpochMs: number;
+}
+
+export function requestPhoneCode(payload:
+  | { audience: "STAFF" | "CUSTOMER"; phone: string }
+  | { audience: "CUSTOMER_REGISTRATION"; approvalToken: string }
+) {
+  return customerRequest<PhoneCodeChallenge>("/public/v1/auth/phone/request-code", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function verifyPhoneCode(challengeId: string, code: string) {
+  return customerRequest<BackendTokens & { expiresAtEpochMs: number }>("/public/v1/auth/phone/verify-code", {
+    method: "POST",
+    body: JSON.stringify({ challengeId, code }),
+  });
+}
+
+export function refreshAuthTokens(refreshToken: string) {
+  return customerRequest<BackendTokens & { expiresAtEpochMs: number }>("/public/v1/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify({ refreshToken }),
+  });
+}
+
+export function registerCustomerAccount(
+  approvalToken: string,
+  challengeId: string,
+  code: string,
+  email: string,
+  password: string,
+) {
   return customerRequest<CustomerAccountIdentity>("/public/v1/customer-accounts/register", {
     method: "POST",
-    body: JSON.stringify({ approvalToken, email, password }),
+    body: JSON.stringify({ approvalToken, challengeId, code, email, password }),
   });
 }
 
@@ -361,12 +416,28 @@ export function loginCustomerAccount(identity: string, password: string) {
 }
 
 export async function getCustomerPortal(session: CustomerWebSession): Promise<CustomerPortal | null> {
+  return getCustomerPortalWithAccessToken(session.accessToken);
+}
+
+export async function getCustomerPortalWithAccessToken(accessToken: string): Promise<CustomerPortal | null> {
   try {
     return await customerRequest<CustomerPortal>("/public/v1/customer-accounts/me", {
-      headers: { authorization: `Bearer ${session.accessToken}` },
+      headers: { authorization: `Bearer ${accessToken}` },
     });
   } catch (error) {
     if (error instanceof AutoServiceApiError && error.status === 401) return null;
     throw error;
   }
+}
+
+export async function logoutStaffSession(session: WebSession): Promise<void> {
+  if (session.isDemo) return;
+  await request<never>("/v1/auth/logout", session, { method: "POST" });
+}
+
+export async function logoutCustomerSession(session: CustomerWebSession): Promise<void> {
+  await customerRequest<never>("/public/v1/customer-accounts/logout", {
+    method: "POST",
+    headers: { authorization: `Bearer ${session.accessToken}` },
+  });
 }

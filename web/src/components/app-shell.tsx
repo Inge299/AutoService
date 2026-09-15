@@ -6,6 +6,7 @@ import { logoutAction } from "@/app/login/actions";
 import { BrandMark, Icon, type IconName } from "@/components/icons";
 import type { ApiWorkshop, BackendConnection } from "@/lib/api/autoservice-api";
 import type { WebSession } from "@/lib/auth/session";
+import { SessionRefresher } from "@/components/session-refresher";
 
 const navigation: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/dashboard", label: "Сегодня", icon: "dashboard" },
@@ -19,7 +20,7 @@ function isActive(pathname: string, href: string) {
   return href === "/dashboard" ? pathname === href : pathname.startsWith(href);
 }
 
-export function AppShell({ session, backend, workshop, reminderCount, children }: { session: WebSession; backend: BackendConnection; workshop: ApiWorkshop; reminderCount: number; children: React.ReactNode }) {
+export function AppShell({ session, accessTokenExpiresAtEpochMs, backend, workshop, reminderCount, children }: { session: Pick<WebSession, "displayName" | "role">; accessTokenExpiresAtEpochMs: number; backend: BackendConnection; workshop: ApiWorkshop; reminderCount: number; children: React.ReactNode }) {
   const pathname = usePathname();
   const workshopInitials = workshop.name
     .split(/\s+/)
@@ -29,6 +30,7 @@ export function AppShell({ session, backend, workshop, reminderCount, children }
     .join("") || "АС";
   return (
     <div className="app-frame">
+      <SessionRefresher scope="staff" accessTokenExpiresAtEpochMs={accessTokenExpiresAtEpochMs} />
       <aside className="sidebar">
         <Link href="/dashboard" className="sidebar-brand"><BrandMark /></Link>
         <div className="workshop-card">

@@ -18,5 +18,5 @@ export default async function WorkshopLayout({ children }: { children: React.Rea
     getApiWorkshop(verifiedSession),
     workshopRepository.listReminders(),
   ]);
-  return <AppShell session={verifiedSession} backend={backend} workshop={workshop} reminderCount={reminders.length}>{children}</AppShell>;
+  return <AppShell session={{ displayName: verifiedSession.displayName, role: verifiedSession.role }} accessTokenExpiresAtEpochMs={session.accessTokenExpiresAtEpochMs} backend={backend} workshop={workshop} reminderCount={reminders.length}>{children}</AppShell>;
 }
