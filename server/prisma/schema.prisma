@@ -68,38 +68,53 @@ enum JobState {
   DEAD
 }
 
+enum AuthScope {
+  STAFF
+  CUSTOMER
+}
+
+enum OtpPurpose {
+  STAFF_LOGIN
+  CUSTOMER_LOGIN
+  CUSTOMER_REGISTRATION
+}
+
 model Workshop {
-  id          String       @id @db.Uuid
-  name        String
-  phone       String?
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
-  memberships Membership[]
-  customers   Customer[]
-  vehicles    Vehicle[]
-  visits      Visit[]
-  findings    Finding[]
-  media       MediaAsset[]
-  approvals   ApprovalVersion[]
-  jobs        BackgroundJob[]
-  auditEvents AuditEvent[]
+  id            String            @id @db.Uuid
+  name          String
+  phone         String?
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  memberships   Membership[]
+  customers     Customer[]
+  vehicles      Vehicle[]
+  visits        Visit[]
+  findings      Finding[]
+  media         MediaAsset[]
+  approvals     ApprovalVersion[]
+  jobs          BackgroundJob[]
+  auditEvents   AuditEvent[]
+  authSessions  AuthSession[]
+  otpChallenges OtpChallenge[]
 
   @@map("workshops")
 }
 
 model User {
-  id          String       @id @db.Uuid
-  login       String?      @unique
-  phone       String?      @unique
-  email       String?      @unique
-  passwordHash String?     @map("password_hash")
-  isActive    Boolean      @default(true) @map("is_active")
-  displayName String       @map("display_name")
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at")
-  memberships Membership[]
-  customerProfiles Customer[] @relation("CustomerAccount")
-  devices     Device[]
+  id               String         @id @db.Uuid
+  login            String?        @unique
+  phone            String?        @unique
+  email            String?        @unique
+  passwordHash     String?        @map("password_hash")
+  isActive         Boolean        @default(true) @map("is_active")
+  displayName      String         @map("display_name")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at")
+  memberships      Membership[]
+  customerProfiles Customer[]     @relation("CustomerAccount")
+  devices          Device[]
+  authSessions     AuthSession[]
+  otpChallenges    OtpChallenge[]
 
   @@map("users")
 }
@@ -118,33 +133,80 @@ model Membership {
 }
 
 model Device {
-  id          String   @id @db.Uuid
-  userId      String   @map("user_id") @db.Uuid
-  installationId String @unique @map("installation_id")
-  lastSeenAt  DateTime @default(now()) @map("last_seen_at")
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String   @id @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  installationId String   @unique @map("installation_id")
+  lastSeenAt     DateTime @default(now()) @map("last_seen_at")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("devices")
 }
 
 model Customer {
-  id          String    @id @db.Uuid
-  workshopId  String    @map("workshop_id") @db.Uuid
-  name        String
-  phone       String
-  email       String?
-  accountUserId String?    @unique @map("account_user_id") @db.Uuid
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  workshop    Workshop  @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  accountUser User?     @relation("CustomerAccount", fields: [accountUserId], references: [id], onDelete: SetNull)
-  vehicles    Vehicle[]
-  visits      Visit[]
+  id            String         @id @db.Uuid
+  workshopId    String         @map("workshop_id") @db.Uuid
+  name          String
+  phone         String
+  email         String?
+  accountUserId String?        @unique @map("account_user_id") @db.Uuid
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  workshop      Workshop       @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  accountUser   User?          @relation("CustomerAccount", fields: [accountUserId], references: [id], onDelete: SetNull)
+  vehicles      Vehicle[]
+  visits        Visit[]
+  authSessions  AuthSession[]
+  otpChallenges OtpChallenge[]
 
   @@unique([workshopId, phone])
   @@index([workshopId])
   @@map("customers")
+}
+
+model AuthSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  workshopId       String    @map("workshop_id") @db.Uuid
+  customerId       String?   @map("customer_id") @db.Uuid
+  scope            AuthScope
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  lastUsedAt       DateTime  @default(now()) @map("last_used_at")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workshop         Workshop  @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  customer         Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model OtpChallenge {
+  id            String     @id @default(uuid()) @db.Uuid
+  purpose       OtpPurpose
+  phone         String
+  codeHash      String     @map("code_hash")
+  requestIpHash String     @map("request_ip_hash")
+  userId        String?    @map("user_id") @db.Uuid
+  workshopId    String?    @map("workshop_id") @db.Uuid
+  customerId    String?    @map("customer_id") @db.Uuid
+  attempts      Int        @default(0)
+  maxAttempts   Int        @default(5) @map("max_attempts")
+  expiresAt     DateTime   @map("expires_at")
+  resendAfter   DateTime   @map("resend_after")
+  consumedAt    DateTime?  @map("consumed_at")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  user          User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workshop      Workshop?  @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  customer      Customer?  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([phone, purpose, createdAt])
+  @@index([requestIpHash, createdAt])
+  @@index([expiresAt])
+  @@map("otp_challenges")
 }
 
 model Vehicle {
@@ -164,45 +226,45 @@ model Vehicle {
 }
 
 model Visit {
-  id             String      @id @db.Uuid
-  workshopId     String      @map("workshop_id") @db.Uuid
-  customerId     String?     @map("customer_id") @db.Uuid
-  vehicleId      String?     @map("vehicle_id") @db.Uuid
-  customerName   String      @map("customer_name")
-  customerPhone  String      @map("customer_phone")
-  vehicleLabel   String      @map("vehicle_label")
-  licensePlate   String      @map("license_plate")
-  mileageKm      Int?        @map("mileage_km")
-  complaint      String
-  status         VisitStatus @default(DRAFT)
-  serverVersion  Int         @default(1) @map("server_version")
-  createdAt      DateTime    @map("created_at")
-  updatedAt      DateTime    @map("updated_at")
-  workshop       Workshop    @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  customer       Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  vehicle        Vehicle?    @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
-  findings       Finding[]
-  media          MediaAsset[]
-  approvals      ApprovalVersion[]
+  id            String            @id @db.Uuid
+  workshopId    String            @map("workshop_id") @db.Uuid
+  customerId    String?           @map("customer_id") @db.Uuid
+  vehicleId     String?           @map("vehicle_id") @db.Uuid
+  customerName  String            @map("customer_name")
+  customerPhone String            @map("customer_phone")
+  vehicleLabel  String            @map("vehicle_label")
+  licensePlate  String            @map("license_plate")
+  mileageKm     Int?              @map("mileage_km")
+  complaint     String
+  status        VisitStatus       @default(DRAFT)
+  serverVersion Int               @default(1) @map("server_version")
+  createdAt     DateTime          @map("created_at")
+  updatedAt     DateTime          @map("updated_at")
+  workshop      Workshop          @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  customer      Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  vehicle       Vehicle?          @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  findings      Finding[]
+  media         MediaAsset[]
+  approvals     ApprovalVersion[]
 
   @@index([workshopId, status, updatedAt])
   @@map("visits")
 }
 
 model Finding {
-  id            String          @id @db.Uuid
-  workshopId    String          @map("workshop_id") @db.Uuid
-  visitId       String          @map("visit_id") @db.Uuid
+  id            String            @id @db.Uuid
+  workshopId    String            @map("workshop_id") @db.Uuid
+  visitId       String            @map("visit_id") @db.Uuid
   title         String
   description   String
-  priceRub      Int?            @map("price_rub")
+  priceRub      Int?              @map("price_rub")
   priority      FindingPriority
-  status        FindingStatus   @default(DRAFT)
-  serverVersion Int             @default(1) @map("server_version")
-  createdAt     DateTime        @map("created_at")
-  updatedAt     DateTime        @map("updated_at")
-  workshop      Workshop        @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  visit         Visit           @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  status        FindingStatus     @default(DRAFT)
+  serverVersion Int               @default(1) @map("server_version")
+  createdAt     DateTime          @map("created_at")
+  updatedAt     DateTime          @map("updated_at")
+  workshop      Workshop          @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  visit         Visit             @relation(fields: [visitId], references: [id], onDelete: Cascade)
   media         MediaAsset[]
   approvals     ApprovalVersion[]
 
@@ -211,23 +273,23 @@ model Finding {
 }
 
 model MediaAsset {
-  id            String      @id @db.Uuid
-  operationId   String      @unique @map("operation_id") @db.Uuid
-  workshopId    String      @map("workshop_id") @db.Uuid
-  visitId       String      @map("visit_id") @db.Uuid
-  findingId     String?     @map("finding_id") @db.Uuid
-  kind          MediaKind
-  mimeType      String      @map("mime_type")
-  byteCount     BigInt      @map("byte_count")
-  sha256        String
-  objectKey     String      @unique @map("object_key")
-  state         MediaState  @default(PENDING_UPLOAD)
-  lastError     String?     @map("last_error")
-  createdAt     DateTime    @default(now()) @map("created_at")
-  updatedAt     DateTime    @updatedAt @map("updated_at")
-  workshop      Workshop    @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  visit         Visit       @relation(fields: [visitId], references: [id], onDelete: Cascade)
-  finding       Finding?    @relation(fields: [findingId], references: [id], onDelete: SetNull)
+  id          String     @id @db.Uuid
+  operationId String     @unique @map("operation_id") @db.Uuid
+  workshopId  String     @map("workshop_id") @db.Uuid
+  visitId     String     @map("visit_id") @db.Uuid
+  findingId   String?    @map("finding_id") @db.Uuid
+  kind        MediaKind
+  mimeType    String     @map("mime_type")
+  byteCount   BigInt     @map("byte_count")
+  sha256      String
+  objectKey   String     @unique @map("object_key")
+  state       MediaState @default(PENDING_UPLOAD)
+  lastError   String?    @map("last_error")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  workshop    Workshop   @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  visit       Visit      @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  finding     Finding?   @relation(fields: [findingId], references: [id], onDelete: SetNull)
 
   @@index([workshopId, visitId])
   @@index([state])
@@ -235,21 +297,21 @@ model MediaAsset {
 }
 
 model ApprovalVersion {
-  id            String         @id @default(uuid()) @db.Uuid
-  workshopId    String         @map("workshop_id") @db.Uuid
-  visitId       String         @map("visit_id") @db.Uuid
-  findingId     String         @map("finding_id") @db.Uuid
-  version       Int
-  title         String
-  description   String
-  priceRub      Int            @map("price_rub")
-  mediaIds      String[]       @map("media_ids") @db.Uuid
-  createdAt     DateTime       @default(now()) @map("created_at")
-  workshop      Workshop       @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  visit         Visit          @relation(fields: [visitId], references: [id], onDelete: Cascade)
-  finding       Finding        @relation(fields: [findingId], references: [id], onDelete: Restrict)
-  link          ApprovalLink?
-  decision      ApprovalDecision?
+  id          String            @id @default(uuid()) @db.Uuid
+  workshopId  String            @map("workshop_id") @db.Uuid
+  visitId     String            @map("visit_id") @db.Uuid
+  findingId   String            @map("finding_id") @db.Uuid
+  version     Int
+  title       String
+  description String
+  priceRub    Int               @map("price_rub")
+  mediaIds    String[]          @map("media_ids") @db.Uuid
+  createdAt   DateTime          @default(now()) @map("created_at")
+  workshop    Workshop          @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  visit       Visit             @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  finding     Finding           @relation(fields: [findingId], references: [id], onDelete: Restrict)
+  link        ApprovalLink?
+  decision    ApprovalDecision?
 
   @@unique([findingId, version])
   @@index([workshopId])
@@ -299,15 +361,15 @@ model BackgroundJob {
 }
 
 model AuditEvent {
-  id          String    @id @default(uuid()) @db.Uuid
-  workshopId  String    @map("workshop_id") @db.Uuid
-  actorUserId String?   @map("actor_user_id") @db.Uuid
+  id          String   @id @default(uuid()) @db.Uuid
+  workshopId  String   @map("workshop_id") @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
   action      String
-  entityType  String    @map("entity_type")
-  entityId    String    @map("entity_id")
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
   metadata    Json?
-  createdAt   DateTime  @default(now()) @map("created_at")
-  workshop    Workshop  @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @map("created_at")
+  workshop    Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
 
   @@index([workshopId, createdAt])
   @@map("audit_events")

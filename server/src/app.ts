@@ -14,20 +14,46 @@ import { publicApprovalRoutes } from "./http/routes/public-approvals.js";
 import { visitRoutes } from "./http/routes/visits.js";
 import { workshopRoutes } from "./http/routes/workshops.js";
 import type { ObjectStorage } from "./infrastructure/object-storage.js";
+import {
+  debugVerificationDelivery,
+  disabledVerificationDelivery,
+  type VerificationDelivery,
+} from "./infrastructure/verification-delivery.js";
+import { phoneAuthRoutes } from "./http/routes/phone-auth.js";
 
 export interface AppDependencies {
   prisma: PrismaClient;
   storage: ObjectStorage;
+  verificationDelivery?: VerificationDelivery;
 }
 
 export async function buildApp(config: Config, dependencies: AppDependencies): Promise<FastifyInstance> {
   const app = Fastify({ logger: { level: config.LOG_LEVEL } });
   registerErrorHandler(app);
-  registerActorContext(app, dependencies.prisma, config.NODE_ENV, config.INTERNAL_API_KEY);
+  const verificationDelivery = dependencies.verificationDelivery ?? (
+    config.SMS_PROVIDER === "debug" ? debugVerificationDelivery(app.log) : disabledVerificationDelivery
+  );
+  registerActorContext(
+    app,
+    dependencies.prisma,
+    config.NODE_ENV,
+    config.INTERNAL_API_KEY,
+    config.ACCESS_TOKEN_SECRET,
+  );
   await app.register(healthRoutes(dependencies.prisma));
   await app.register(publicApprovalRoutes(dependencies.prisma));
-  await app.register(customerAccountRoutes(dependencies.prisma, config.INTERNAL_API_KEY));
-  await app.register(authRoutes(dependencies.prisma, config.INTERNAL_API_KEY));
+  await app.register(customerAccountRoutes(
+    dependencies.prisma,
+    config.ACCESS_TOKEN_SECRET,
+    config.OTP_HASH_SECRET,
+  ));
+  await app.register(authRoutes(dependencies.prisma, config.ACCESS_TOKEN_SECRET));
+  await app.register(phoneAuthRoutes(
+    dependencies.prisma,
+    config.ACCESS_TOKEN_SECRET,
+    config.OTP_HASH_SECRET,
+    verificationDelivery,
+  ));
   await app.register(adminUserRoutes(dependencies.prisma));
   await app.register(workshopRoutes(dependencies.prisma));
   await app.register(customerRoutes(dependencies.prisma));

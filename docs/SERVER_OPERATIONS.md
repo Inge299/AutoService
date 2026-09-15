@@ -56,6 +56,10 @@ docker compose -f docker-compose.deploy.yml config --quiet
 POSTGRES_PASSWORD=<random-long-password>
 MINIO_ROOT_USER=<random-access-key>
 MINIO_ROOT_PASSWORD=<random-long-secret>
+INTERNAL_API_KEY=<random-32+-character-service-key>
+ACCESS_TOKEN_SECRET=<different-random-32+-character-signing-key>
+OTP_HASH_SECRET=<third-random-32+-character-hmac-key>
+SMS_PROVIDER=disabled
 ```
 
 ```bash
@@ -64,7 +68,9 @@ docker compose -f docker-compose.deploy.yml config --quiet
 docker compose -f docker-compose.deploy.yml up -d --build
 ```
 
-API публикуется только на `127.0.0.1:8080`. PostgreSQL и MinIO не публикуют host-порты. До внедрения production-auth API нельзя проксировать в публичную сеть.
+API публикуется только на `127.0.0.1:8080`. PostgreSQL и MinIO не публикуют
+host-порты. При `SMS_PROVIDER=disabled` парольный вход работает, но запрос SMS-кода
+возвращает `503`; публичный запуск требует реального provider adapter и TLS.
 
 ## Проверка после запуска
 
@@ -150,7 +156,7 @@ API пишет структурированные JSON-логи Fastify. У work
 
 ## Обязательно до публичного запуска
 
-- подтверждение телефона и ротация/отзыв токенов;
+- production-адаптер выбранного SMS-провайдера и проверка доставки;
 - HTTPS и reverse proxy;
 - отдельные S3 credentials с минимальными правами вместо root credentials;
 - автоматические off-host backups с регулярной проверкой restore;

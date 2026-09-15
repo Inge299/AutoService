@@ -2,12 +2,17 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { createAccessToken, verifyAccessToken } from "../../security/access-token.js";
+import { verifyAccessToken } from "../../security/access-token.js";
+import { issueSession, revokeSession } from "../../security/auth-session.js";
+import { hashOtpCode, otpHashesEqual } from "../../security/otp.js";
 import { hashPassword, verifyPassword } from "../../security/password.js";
+import { normalizePhone } from "../../security/phone.js";
 
 const approvalTokenSchema = z.string().min(32).max(200).regex(/^[A-Za-z0-9_-]+$/);
 const registerSchema = z.object({
   approvalToken: approvalTokenSchema,
+  challengeId: z.string().uuid(),
+  code: z.string().regex(/^\d{6}$/),
   email: z.string().trim().email().max(254).transform((value) => value.toLocaleLowerCase("ru-RU")),
   password: z.string().min(8).max(256),
 });
@@ -17,6 +22,7 @@ const loginSchema = z.object({
 });
 
 interface CustomerActor {
+  sessionId: string;
   userId: string;
   workshopId: string;
   customerId: string;
@@ -44,6 +50,25 @@ async function customerActor(
     accessDenied(reply);
     return null;
   }
+  const session = await prisma.authSession.findUnique({
+    where: { id: parsed.sessionId },
+    select: {
+      userId: true,
+      workshopId: true,
+      customerId: true,
+      scope: true,
+      expiresAt: true,
+      revokedAt: true,
+    },
+  });
+  if (
+    !session || session.revokedAt || session.expiresAt <= new Date() ||
+    session.scope !== "CUSTOMER" || session.userId !== parsed.userId ||
+    session.workshopId !== parsed.workshopId || session.customerId !== parsed.customerId
+  ) {
+    accessDenied(reply);
+    return null;
+  }
   const customer = await prisma.customer.findFirst({
     where: {
       id: parsed.customerId,
@@ -57,17 +82,26 @@ async function customerActor(
     accessDenied(reply);
     return null;
   }
-  return { userId: parsed.userId, workshopId: parsed.workshopId, customerId: parsed.customerId };
+  return {
+    sessionId: parsed.sessionId,
+    userId: parsed.userId,
+    workshopId: parsed.workshopId,
+    customerId: parsed.customerId,
+  };
 }
 
 function unavailable(link: { expiresAt: Date; revokedAt: Date | null }): boolean {
   return Boolean(link.revokedAt) || link.expiresAt.getTime() <= Date.now();
 }
 
-export function customerAccountRoutes(prisma: PrismaClient, secret?: string): FastifyPluginAsync {
+export function customerAccountRoutes(
+  prisma: PrismaClient,
+  secret?: string,
+  otpHashSecret?: string,
+): FastifyPluginAsync {
   return async (app) => {
     app.post("/public/v1/customer-accounts/register", async (request, reply) => {
-      if (!secret) return reply.code(503).send({ error: "customer_accounts_unavailable" });
+      if (!secret || !otpHashSecret) return reply.code(503).send({ error: "customer_accounts_unavailable" });
       const body = registerSchema.parse(request.body);
       const link = await prisma.approvalLink.findUnique({
         where: { tokenHash: tokenHash(body.approvalToken) },
@@ -83,24 +117,53 @@ export function customerAccountRoutes(prisma: PrismaClient, secret?: string): Fa
       if (!link || unavailable(link)) return reply.code(410).send({ error: "approval_link_unavailable" });
 
       const visit = link.approvalVersion.visit;
+      const verifiedPhone = normalizePhone(visit.customerPhone);
+      const now = new Date();
+      const challenge = await prisma.otpChallenge.findUnique({ where: { id: body.challengeId } });
+      const validChallenge = challenge && challenge.purpose === "CUSTOMER_REGISTRATION" &&
+        !challenge.consumedAt && challenge.expiresAt > now && challenge.attempts < challenge.maxAttempts &&
+        challenge.workshopId === link.approvalVersion.workshopId &&
+        challenge.phone === verifiedPhone &&
+        (!challenge.customerId || challenge.customerId === visit.customerId) &&
+        otpHashesEqual(challenge.codeHash, hashOtpCode(challenge.id, body.code, otpHashSecret));
+      if (!validChallenge) {
+        if (challenge && !challenge.consumedAt && challenge.expiresAt > now) {
+          await prisma.otpChallenge.updateMany({
+            where: { id: challenge.id, consumedAt: null, attempts: { lt: challenge.maxAttempts } },
+            data: { attempts: { increment: 1 } },
+          });
+        }
+        return reply.code(401).send({ error: "invalid_or_expired_code" });
+      }
+      const passwordHash = await hashPassword(body.password);
       const registration = await prisma.$transaction(async (tx) => {
+        const consumed = await tx.otpChallenge.updateMany({
+          where: {
+            id: challenge.id,
+            consumedAt: null,
+            attempts: { lt: challenge.maxAttempts },
+            expiresAt: { gt: now },
+          },
+          data: { consumedAt: now },
+        });
+        if (consumed.count !== 1) return { state: "invalid_code" as const };
         const customer = visit.customerId
           ? await tx.customer.findUnique({ where: { id: visit.customerId } })
           : await tx.customer.upsert({
-              where: { workshopId_phone: { workshopId: link.approvalVersion.workshopId, phone: visit.customerPhone } },
+              where: { workshopId_phone: { workshopId: link.approvalVersion.workshopId, phone: verifiedPhone } },
               update: { name: visit.customerName },
               create: {
                 id: randomUUID(),
                 workshopId: link.approvalVersion.workshopId,
                 name: visit.customerName,
-                phone: visit.customerPhone,
+                phone: verifiedPhone,
               },
             });
         if (!customer) throw new Error("Customer linked to approval was not found");
         if (customer.accountUserId) return { state: "claimed" as const };
 
         const duplicate = await tx.user.findFirst({
-          where: { OR: [{ phone: customer.phone }, { email: body.email }] },
+          where: { OR: [{ phone: verifiedPhone }, { email: body.email }] },
           select: { id: true },
         });
         if (duplicate) return { state: "identity_taken" as const };
@@ -109,39 +172,40 @@ export function customerAccountRoutes(prisma: PrismaClient, secret?: string): Fa
         await tx.user.create({
           data: {
             id: userId,
-            phone: customer.phone,
+            phone: verifiedPhone,
             email: body.email,
             displayName: customer.name,
-            passwordHash: await hashPassword(body.password),
+            passwordHash,
           },
         });
         await tx.customer.update({
           where: { id: customer.id },
-          data: { accountUserId: userId, email: body.email },
+          data: { accountUserId: userId, email: body.email, phone: verifiedPhone },
         });
         await tx.visit.updateMany({
           where: {
             workshopId: link.approvalVersion.workshopId,
             customerId: null,
-            customerPhone: customer.phone,
+            customerPhone: visit.customerPhone,
           },
           data: { customerId: customer.id },
         });
         return { state: "created" as const, customerId: customer.id, userId, customer };
       });
+      if (registration.state === "invalid_code") return reply.code(401).send({ error: "invalid_or_expired_code" });
       if (registration.state === "claimed") return reply.code(409).send({ error: "account_already_registered" });
       if (registration.state === "identity_taken") return reply.code(409).send({ error: "identity_taken" });
 
-      const access = createAccessToken({
+      const tokens = await issueSession(prisma, {
         userId: registration.userId,
         workshopId: link.approvalVersion.workshopId,
         scope: "CUSTOMER",
         customerId: registration.customerId,
       }, secret);
       return reply.code(201).send({
-        accessToken: access.token,
-        expiresAtEpochMs: access.expiresAt,
-        customer: { id: registration.customerId, name: registration.customer.name, phone: registration.customer.phone, email: body.email },
+        ...tokens,
+        expiresAtEpochMs: tokens.accessTokenExpiresAtEpochMs,
+        customer: { id: registration.customerId, name: registration.customer.name, phone: verifiedPhone, email: body.email },
       });
     });
 
@@ -157,17 +221,24 @@ export function customerAccountRoutes(prisma: PrismaClient, secret?: string): Fa
       const customer = user?.customerProfiles[0];
       if (!valid || !customer) return reply.code(401).send({ error: "invalid_credentials" });
 
-      const access = createAccessToken({
+      const tokens = await issueSession(prisma, {
         userId: user.id,
         workshopId: customer.workshopId,
         scope: "CUSTOMER",
         customerId: customer.id,
       }, secret);
       return reply.send({
-        accessToken: access.token,
-        expiresAtEpochMs: access.expiresAt,
+        ...tokens,
+        expiresAtEpochMs: tokens.accessTokenExpiresAtEpochMs,
         customer: { id: customer.id, name: customer.name, phone: customer.phone, email: customer.email },
       });
+    });
+
+    app.post("/public/v1/customer-accounts/logout", async (request, reply) => {
+      const actor = await customerActor(request, reply, prisma, secret);
+      if (!actor) return;
+      await revokeSession(prisma, actor.sessionId);
+      return reply.code(204).send();
     });
 
     app.get("/public/v1/customer-accounts/me", async (request, reply) => {
