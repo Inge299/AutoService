@@ -66,7 +66,11 @@ export function authRoutes(prisma: PrismaClient, accessTokenSecret?: string): Fa
       };
       if (!accessTokenSecret) return session;
 
-      const tokens = await issueSession(prisma, { ...session, scope: "STAFF" }, accessTokenSecret);
+      const tokens = await issueSession(prisma, {
+        userId: session.userId,
+        workshopId: session.workshopId,
+        scope: "STAFF",
+      }, accessTokenSecret);
       return {
         ...session,
         ...tokens,
