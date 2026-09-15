@@ -63,6 +63,8 @@
   .customer-help{margin-top:0}
 }
 
+.customer-footer .text-link{padding:0;border:0;background:none;cursor:pointer}
+
 @media (max-width:720px){
   .customer-car{width:100%;grid-template-columns:36px minmax(0,1fr)}
   .customer-car>.status-pill{grid-column:2;justify-self:start}

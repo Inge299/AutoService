@@ -1,31 +1,32 @@
 import "server-only";
 
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-} from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-const COOKIE_NAME = "autoservice_session";
-const CUSTOMER_COOKIE_NAME = "autoservice_customer_session";
-const SESSION_TTL_SECONDS = 60 * 60 * 12;
+export const STAFF_SESSION_COOKIE = "autoservice_session";
+export const CUSTOMER_SESSION_COOKIE = "autoservice_customer_session";
+export const ACCESS_REFRESH_MARGIN_MS = 60_000;
+const DEMO_TTL_MS = 12 * 60 * 60_000;
 
-export interface WebSession {
+export interface BackendTokens {
+  accessToken: string;
+  accessTokenExpiresAtEpochMs: number;
+  refreshToken: string;
+  refreshTokenExpiresAtEpochMs: number;
+}
+
+export interface WebSession extends BackendTokens {
   userId: string;
   workshopId: string;
   displayName: string;
   role: "ADMIN" | "EMPLOYEE";
-  expiresAt: number;
+  isDemo?: true;
 }
 
-export interface CustomerWebSession {
-  accessToken: string;
+export interface CustomerWebSession extends BackendTokens {
   customerId: string;
   displayName: string;
-  expiresAt: number;
 }
 
 function encryptionKey(secret: string): Buffer {
@@ -37,33 +38,13 @@ function sessionSecret(): string | null {
   return secret && secret.length >= 32 ? secret : null;
 }
 
-function demoSession(): WebSession | null {
-  const demoEnabled =
-    process.env.NODE_ENV !== "production" &&
-    process.env.AUTOSERVICE_DEMO_MODE === "true";
-  if (!demoEnabled) return null;
-
-  return {
-    userId: "22222222-2222-4222-8222-222222222222",
-    workshopId: "11111111-1111-4111-8111-111111111111",
-    displayName: "Евгений",
-    role: "ADMIN",
-    expiresAt: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
-  };
-}
-
-export function createSessionToken(session: Omit<WebSession, "expiresAt">): string {
+function encryptSession(session: WebSession | CustomerWebSession): string {
   const secret = sessionSecret();
   if (!secret) throw new Error("WEB_SESSION_SECRET must contain at least 32 characters");
-
-  const payload = Buffer.from(JSON.stringify({
-    ...session,
-    expiresAt: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
-  }), "utf8");
+  const payload = Buffer.from(JSON.stringify(session), "utf8");
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", encryptionKey(secret), iv);
   const encrypted = Buffer.concat([cipher.update(payload), cipher.final()]);
-
   return [
     iv.toString("base64url"),
     encrypted.toString("base64url"),
@@ -71,38 +52,67 @@ export function createSessionToken(session: Omit<WebSession, "expiresAt">): stri
   ].join(".");
 }
 
-export function verifySessionToken(token: string): WebSession | null {
+function decryptSession(token: string): unknown {
   const secret = sessionSecret();
-  const [ivValue, encryptedValue, authTagValue] = token.split(".");
-  if (!secret || !ivValue || !encryptedValue || !authTagValue) return null;
-
+  const [ivValue, encryptedValue, authTagValue, extra] = token.split(".");
+  if (!secret || !ivValue || !encryptedValue || !authTagValue || extra) return null;
   try {
-    const decipher = createDecipheriv(
-      "aes-256-gcm",
-      encryptionKey(secret),
-      Buffer.from(ivValue, "base64url"),
-    );
+    const decipher = createDecipheriv("aes-256-gcm", encryptionKey(secret), Buffer.from(ivValue, "base64url"));
     decipher.setAuthTag(Buffer.from(authTagValue, "base64url"));
     const decrypted = Buffer.concat([
       decipher.update(Buffer.from(encryptedValue, "base64url")),
       decipher.final(),
     ]);
-    const session = JSON.parse(decrypted.toString("utf8")) as WebSession;
-    if (session.expiresAt <= Math.floor(Date.now() / 1000)) return null;
-    if (!session.userId || !session.workshopId || !session.displayName) return null;
-    if (session.role !== "ADMIN" && session.role !== "EMPLOYEE") return null;
-    return session;
+    return JSON.parse(decrypted.toString("utf8"));
   } catch {
     return null;
   }
 }
 
+function hasBackendTokens(value: unknown): value is BackendTokens {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<BackendTokens>;
+  return typeof candidate.accessToken === "string" &&
+    typeof candidate.refreshToken === "string" &&
+    typeof candidate.accessTokenExpiresAtEpochMs === "number" &&
+    typeof candidate.refreshTokenExpiresAtEpochMs === "number" &&
+    candidate.refreshTokenExpiresAtEpochMs > Date.now();
+}
+
+function demoSession(): WebSession | null {
+  const demoEnabled = process.env.NODE_ENV !== "production" && process.env.AUTOSERVICE_DEMO_MODE === "true";
+  if (!demoEnabled) return null;
+  const expiresAt = Date.now() + DEMO_TTL_MS;
+  return {
+    userId: "22222222-2222-4222-8222-222222222222",
+    workshopId: "11111111-1111-4111-8111-111111111111",
+    displayName: "Евгений",
+    role: "ADMIN",
+    accessToken: "",
+    refreshToken: "",
+    accessTokenExpiresAtEpochMs: expiresAt,
+    refreshTokenExpiresAtEpochMs: expiresAt,
+    isDemo: true,
+  };
+}
+
+export function createSessionToken(session: WebSession): string {
+  return encryptSession(session);
+}
+
+export function verifySessionToken(token: string): WebSession | null {
+  const session = decryptSession(token);
+  if (!hasBackendTokens(session)) return null;
+  const candidate = session as Partial<WebSession>;
+  if (!candidate.userId || !candidate.workshopId || !candidate.displayName) return null;
+  if (candidate.role !== "ADMIN" && candidate.role !== "EMPLOYEE") return null;
+  return candidate as WebSession;
+}
+
 export async function getSession(): Promise<WebSession | null> {
   const demo = demoSession();
   if (demo) return demo;
-
-  const cookieStore = await cookies();
-  const token = cookieStore.get(COOKIE_NAME)?.value;
+  const token = (await cookies()).get(STAFF_SESSION_COOKIE)?.value;
   return token ? verifySessionToken(token) : null;
 }
 
@@ -112,54 +122,39 @@ export async function requireSession(): Promise<WebSession> {
   return session;
 }
 
-export async function persistSession(token: string): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.set(COOKIE_NAME, token, {
+function cookieMaxAge(refreshTokenExpiresAtEpochMs: number): number {
+  return Math.max(0, Math.floor((refreshTokenExpiresAtEpochMs - Date.now()) / 1_000));
+}
+
+export async function persistSession(token: string, refreshExpiresAt: number): Promise<void> {
+  (await cookies()).set(STAFF_SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: SESSION_TTL_SECONDS,
+    maxAge: cookieMaxAge(refreshExpiresAt),
+    priority: "high",
   });
 }
 
 export async function clearSession(): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.delete(COOKIE_NAME);
+  (await cookies()).delete(STAFF_SESSION_COOKIE);
 }
 
-export function createCustomerSessionToken(session: Omit<CustomerWebSession, "expiresAt">): string {
-  const secret = sessionSecret();
-  if (!secret) throw new Error("WEB_SESSION_SECRET must contain at least 32 characters");
-  const payload = Buffer.from(JSON.stringify({
-    ...session,
-    expiresAt: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
-  }), "utf8");
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey(secret), iv);
-  const encrypted = Buffer.concat([cipher.update(payload), cipher.final()]);
-  return [iv.toString("base64url"), encrypted.toString("base64url"), cipher.getAuthTag().toString("base64url")].join(".");
+export function createCustomerSessionToken(session: CustomerWebSession): string {
+  return encryptSession(session);
 }
 
 export function verifyCustomerSessionToken(token: string): CustomerWebSession | null {
-  const secret = sessionSecret();
-  const [ivValue, encryptedValue, authTagValue] = token.split(".");
-  if (!secret || !ivValue || !encryptedValue || !authTagValue) return null;
-  try {
-    const decipher = createDecipheriv("aes-256-gcm", encryptionKey(secret), Buffer.from(ivValue, "base64url"));
-    decipher.setAuthTag(Buffer.from(authTagValue, "base64url"));
-    const decrypted = Buffer.concat([decipher.update(Buffer.from(encryptedValue, "base64url")), decipher.final()]);
-    const session = JSON.parse(decrypted.toString("utf8")) as CustomerWebSession;
-    if (session.expiresAt <= Math.floor(Date.now() / 1000) || !session.accessToken || !session.customerId || !session.displayName) return null;
-    return session;
-  } catch {
-    return null;
-  }
+  const session = decryptSession(token);
+  if (!hasBackendTokens(session)) return null;
+  const candidate = session as Partial<CustomerWebSession>;
+  if (!candidate.customerId || !candidate.displayName) return null;
+  return candidate as CustomerWebSession;
 }
 
 export async function getCustomerSession(): Promise<CustomerWebSession | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(CUSTOMER_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(CUSTOMER_SESSION_COOKIE)?.value;
   return token ? verifyCustomerSessionToken(token) : null;
 }
 
@@ -169,18 +164,17 @@ export async function requireCustomerSession(): Promise<CustomerWebSession> {
   return session;
 }
 
-export async function persistCustomerSession(token: string): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.set(CUSTOMER_COOKIE_NAME, token, {
+export async function persistCustomerSession(token: string, refreshExpiresAt: number): Promise<void> {
+  (await cookies()).set(CUSTOMER_SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: SESSION_TTL_SECONDS,
+    maxAge: cookieMaxAge(refreshExpiresAt),
+    priority: "high",
   });
 }
 
 export async function clearCustomerSession(): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.delete(CUSTOMER_COOKIE_NAME);
+  (await cookies()).delete(CUSTOMER_SESSION_COOKIE);
 }
