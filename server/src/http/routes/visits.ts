@@ -122,6 +122,38 @@ export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
                 createdAt: new Date(body.createdAtEpochMs),
               },
             });
+        if (!existing) {
+          const reminder = await tx.reminder.findFirst({
+            where: {
+              workshopId,
+              customerPhone: body.customerPhone,
+              returnVisitId: null,
+              visitId: { not: saved.id },
+              state: { in: ["PENDING", "SENT", "DELIVERED"] },
+            },
+            orderBy: { dueAt: "asc" },
+            select: { id: true, state: true },
+          });
+          if (reminder) {
+            await tx.reminder.update({
+              where: { id: reminder.id },
+              data: {
+                returnVisitId: saved.id,
+                ...(reminder.state === "PENDING" ? { state: "CANCELLED", cancelledAt: new Date() } : {}),
+              },
+            });
+            await tx.auditEvent.create({
+              data: {
+                workshopId,
+                actorUserId: request.actor.userId,
+                action: "REMINDER_RETURN_VISIT_LINKED",
+                entityType: "reminder",
+                entityId: reminder.id,
+                metadata: { returnVisitId: saved.id },
+              },
+            });
+          }
+        }
         return { conflict: false as const, visit: saved };
       });
 
