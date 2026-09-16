@@ -194,6 +194,7 @@ exponential backoff до 60 секунд, не более 5 попыток. Пр
 | `SMS_PROVIDER` | `disabled` | `disabled`, development-only `debug` или production `smsru` |
 | `SMS_RU_API_ID` | — | API-ключ SMS.RU; обязателен при `SMS_PROVIDER=smsru` |
 | `SMS_RU_FROM` | account default | Согласованное имя отправителя SMS.RU |
+| `SMS_RU_VERIFICATION_MODE` | `callcheck` | `callcheck` для входящего звонка или `sms` для одноразового кода |
 | `DATABASE_URL` | — | PostgreSQL connection string, обязателен |
 | `S3_ENDPOINT` | AWS SDK default | URL S3-compatible API |
 | `S3_PUBLIC_ENDPOINT` | `S3_ENDPOINT` | Публичный HTTPS endpoint для presigned upload URL Android |
