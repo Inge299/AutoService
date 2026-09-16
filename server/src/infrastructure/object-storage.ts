@@ -15,6 +15,11 @@ export interface UploadTarget {
   headers: Record<string, string>;
 }
 
+export interface DownloadTarget {
+  url: string;
+  expiresInSeconds: number;
+}
+
 export class ObjectStorage {
   private readonly client: S3Client;
   private readonly uploadClient: S3Client;
@@ -60,6 +65,18 @@ export class ObjectStorage {
         "content-length": String(input.byteCount),
         "x-amz-meta-sha256": input.sha256,
       },
+    };
+  }
+
+  async createDownloadTarget(objectKey: string): Promise<DownloadTarget> {
+    const expiresInSeconds = 15 * 60;
+    const command = new GetObjectCommand({
+      Bucket: this.config.S3_BUCKET,
+      Key: objectKey,
+    });
+    return {
+      url: await getSignedUrl(this.uploadClient, command, { expiresIn: expiresInSeconds }),
+      expiresInSeconds,
     };
   }
 

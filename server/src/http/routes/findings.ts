@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { FindingPriority, FindingStatus, PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
@@ -17,6 +18,21 @@ const bodySchema = z.object({
   updatedAtEpochMs: z.number().int().nonnegative(),
   baseServerVersion: z.number().int().positive().nullable().default(null),
 });
+
+const approvalSchema = z.object({
+  operationId: z.string().uuid(),
+  token: z.string().min(43).max(200).regex(/^[A-Za-z0-9_-]+$/),
+  mediaIds: z.array(z.string().uuid()).min(1).max(20),
+  expiresInDays: z.number().int().min(1).max(30).default(7),
+}).superRefine((value, context) => {
+  if (new Set(value.mediaIds).size !== value.mediaIds.length) {
+    context.addIssue({ code: "custom", path: ["mediaIds"], message: "Media ids must be unique" });
+  }
+});
+
+function tokenHash(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
 
 export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
   return async (app) => {
@@ -54,6 +70,146 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
       if (!result) return reply.code(404).send({ error: "not_found" });
       if (result.conflict) return reply.code(409).send({ error: "version_conflict", server: result.finding });
       return reply.send(result.finding);
+    });
+
+    app.post("/v1/findings/:id/approval-link", async (request, reply) => {
+      const { id } = paramsSchema.parse(request.params);
+      const body = approvalSchema.parse(request.body);
+      const { workshopId, userId } = request.actor;
+      const expiresAt = new Date(Date.now() + body.expiresInDays * 24 * 60 * 60_000);
+      const hashedToken = tokenHash(body.token);
+
+      const result = await prisma.$transaction(async (tx) => {
+        const existing = await tx.approvalVersion.findUnique({
+          where: { operationId: body.operationId },
+          include: { link: true },
+        });
+        if (existing) {
+          if (
+            existing.workshopId !== workshopId || existing.findingId !== id ||
+            !existing.link || existing.link.tokenHash !== hashedToken
+          ) {
+            return { kind: "operation_conflict" as const };
+          }
+          return { kind: "existing" as const, link: existing.link, approvalVersionId: existing.id };
+        }
+
+        const finding = await tx.finding.findFirst({
+          where: { id, workshopId, status: "READY_FOR_APPROVAL" },
+          select: {
+            id: true,
+            visitId: true,
+            title: true,
+            description: true,
+            priceRub: true,
+          },
+        });
+        if (!finding) return { kind: "finding_unavailable" as const };
+        if (finding.priceRub === null) return { kind: "price_required" as const };
+
+        const media = await tx.mediaAsset.findMany({
+          where: {
+            id: { in: body.mediaIds },
+            workshopId,
+            visitId: finding.visitId,
+            findingId: id,
+            state: { in: ["VERIFIED", "READY"] },
+          },
+          select: { id: true },
+        });
+        if (media.length !== body.mediaIds.length) return { kind: "media_unavailable" as const };
+
+        const previous = await tx.approvalVersion.findFirst({
+          where: { findingId: id },
+          orderBy: { version: "desc" },
+          select: { version: true },
+        });
+        // Claim the READY state atomically. This prevents two concurrent staff
+        // requests from publishing different links for the same finding.
+        const claimed = await tx.finding.updateMany({
+          where: { id, workshopId, status: "READY_FOR_APPROVAL" },
+          data: { status: "SENT_TO_CUSTOMER", updatedAt: new Date(), serverVersion: { increment: 1 } },
+        });
+        if (claimed.count !== 1) return { kind: "finding_unavailable" as const };
+        const approvalVersion = await tx.approvalVersion.create({
+          data: {
+            operationId: body.operationId,
+            workshopId,
+            visitId: finding.visitId,
+            findingId: id,
+            version: (previous?.version ?? 0) + 1,
+            title: finding.title,
+            description: finding.description,
+            priceRub: finding.priceRub,
+            mediaIds: body.mediaIds,
+          },
+        });
+        const link = await tx.approvalLink.create({
+          data: {
+            approvalVersionId: approvalVersion.id,
+            tokenHash: hashedToken,
+            expiresAt,
+          },
+        });
+        await tx.visit.update({
+          where: { id: finding.visitId },
+          data: { status: "WAITING_APPROVAL", updatedAt: new Date(), serverVersion: { increment: 1 } },
+        });
+        await tx.auditEvent.create({
+          data: {
+            workshopId,
+            actorUserId: userId,
+            action: "APPROVAL_LINK_CREATED",
+            entityType: "finding",
+            entityId: id,
+            metadata: { approvalVersionId: approvalVersion.id, mediaCount: body.mediaIds.length },
+          },
+        });
+        return { kind: "created" as const, link, approvalVersionId: approvalVersion.id };
+      });
+
+      if (result.kind === "finding_unavailable") return reply.code(409).send({ error: "finding_not_ready" });
+      if (result.kind === "price_required") return reply.code(409).send({ error: "price_required" });
+      if (result.kind === "media_unavailable") return reply.code(409).send({ error: "approval_media_unavailable" });
+      if (result.kind === "operation_conflict") return reply.code(409).send({ error: "operation_conflict" });
+
+      return reply.code(result.kind === "created" ? 201 : 200).send({
+        approvalVersionId: result.approvalVersionId,
+        token: body.token,
+        publicPath: `/a/${body.token}`,
+        expiresAt: result.link.expiresAt,
+        reused: result.kind === "existing",
+      });
+    });
+
+    app.delete("/v1/findings/:id/approval-link", async (request, reply) => {
+      const { id } = paramsSchema.parse(request.params);
+      const { workshopId, userId } = request.actor;
+      const approval = await prisma.approvalVersion.findFirst({
+        where: { findingId: id, workshopId, link: { is: { revokedAt: null } } },
+        orderBy: { version: "desc" },
+        include: { link: true },
+      });
+      if (!approval?.link) return reply.code(404).send({ error: "active_approval_not_found" });
+
+      await prisma.$transaction(async (tx) => {
+        await tx.approvalLink.update({ where: { id: approval.link!.id }, data: { revokedAt: new Date() } });
+        await tx.finding.updateMany({
+          where: { id, workshopId, status: "SENT_TO_CUSTOMER" },
+          data: { status: "READY_FOR_APPROVAL", updatedAt: new Date(), serverVersion: { increment: 1 } },
+        });
+        await tx.auditEvent.create({
+          data: {
+            workshopId,
+            actorUserId: userId,
+            action: "APPROVAL_LINK_REVOKED",
+            entityType: "finding",
+            entityId: id,
+            metadata: { approvalVersionId: approval.id },
+          },
+        });
+      });
+      return reply.code(204).send();
     });
   };
 }

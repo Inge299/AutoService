@@ -43,7 +43,7 @@ function approvalLink(decision: { value: string; createdAt: Date } | null = null
       title: "Тормозные колодки",
       description: "Требуется замена",
       priceRub: 12_800,
-      mediaIds: [],
+      mediaIds: [] as string[],
       createdAt: new Date(),
       workshop: { name: "АвтоСфера", phone: "+70000000000" },
       visit: {
@@ -109,6 +109,36 @@ describe("public approval routes", () => {
       data: expect.objectContaining({ status: "IN_REPAIR" }),
     }));
     expect(auditCreate).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
+  it("returns only signed URLs for the media frozen in the approval snapshot", async () => {
+    const link = approvalLink();
+    link.approvalVersion.mediaIds = ["11111111-1111-4111-8111-111111111106"];
+    const update = vi.fn().mockResolvedValue({});
+    const createDownloadTarget = vi.fn().mockResolvedValue({ url: "https://media.example/signed", expiresInSeconds: 900 });
+    const prisma = {
+      approvalLink: { findUnique: vi.fn().mockResolvedValue(link), update },
+      mediaAsset: { findMany: vi.fn().mockResolvedValue([{
+        id: "11111111-1111-4111-8111-111111111106",
+        kind: "PHOTO",
+        mimeType: "image/jpeg",
+        objectKey: "private/object-key",
+      }]) },
+    } as unknown as PrismaClient;
+    const app = await buildApp(config, {
+      prisma,
+      storage: { createDownloadTarget } as unknown as ObjectStorage,
+    });
+
+    const response = await app.inject({ method: "GET", url: `/public/v1/approvals/${token}` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().media).toEqual([expect.objectContaining({
+      id: "11111111-1111-4111-8111-111111111106",
+      url: "https://media.example/signed",
+    })]);
+    expect(response.body).not.toContain("private/object-key");
     await app.close();
   });
 });
