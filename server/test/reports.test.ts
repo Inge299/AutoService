@@ -51,7 +51,7 @@ describe("visit reports", () => {
       reportVersion: { findUnique: vi.fn().mockResolvedValue(null), findFirst: vi.fn().mockResolvedValue(null), create: versionCreate },
       report: {
         findFirst: vi.fn().mockResolvedValue({
-          id: reportId, completedWork: "Заменили колодки", recommendations: "Контроль через 10 000 км", nextVisitAt: null,
+          id: reportId, completedWork: "Заменили колодки", recommendations: "Контроль через 10 000 км", nextVisitAt: new Date("2026-11-20T10:00:00.000Z"),
           visit: { id: visitId, customerName: "Иван", customerPhone: "+79991234567", vehicleLabel: "Toyota", licensePlate: "А123АА", mileageKm: 80_000, complaint: "Скрип" },
         }),
         update: vi.fn().mockResolvedValue({}),
@@ -59,6 +59,8 @@ describe("visit reports", () => {
       finding: { findMany: vi.fn().mockResolvedValue([{ id: "77777777-7777-4777-8777-777777777777", title: "Колодки", description: "Износ", priceRub: 12_800, priority: "IMPORTANT", status: "APPROVED" }]) },
       mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: "88888888-8888-4888-8888-888888888888" }]) },
       reportLink: { create: linkCreate },
+      reminder: { create: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999999" }) },
+      backgroundJob: { create: vi.fn().mockResolvedValue({}) },
       visit: { update: vi.fn().mockResolvedValue({}) },
       auditEvent: { create: vi.fn().mockResolvedValue({}) },
     };
@@ -78,6 +80,8 @@ describe("visit reports", () => {
     expect(versionCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ operationId, reportId, visitId, mediaIds: ["88888888-8888-4888-8888-888888888888"] }) }));
     expect(linkCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reportVersionId, tokenHash: createHash("sha256").update(token).digest("hex") }) }));
     expect(transaction.visit.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "COMPLETED" }) }));
+    expect(transaction.reminder.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reportVersionId, visitId, reason: "Контроль через 10 000 км" }) }));
+    expect(transaction.backgroundJob.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: "SEND_REMINDER_SMS", reminderId: "99999999-9999-4999-8999-999999999999" }) }));
     await app.close();
   });
 });

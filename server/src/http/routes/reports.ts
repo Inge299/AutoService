@@ -139,6 +139,32 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
         const link = await tx.reportLink.create({
           data: { reportVersionId: version.id, tokenHash: hashedToken, expiresAt },
         });
+        if (report.nextVisitAt) {
+          const sendAt = new Date(Math.max(Date.now(), report.nextVisitAt.getTime() - 7 * 24 * 60 * 60_000));
+          const reminder = await tx.reminder.create({
+            data: {
+              workshopId,
+              reportVersionId: version.id,
+              visitId: id,
+              customerName: report.visit.customerName,
+              customerPhone: report.visit.customerPhone,
+              vehicleLabel: report.visit.vehicleLabel,
+              reason: report.recommendations || "Плановое обслуживание",
+              dueAt: report.nextVisitAt,
+              sendAt,
+            },
+          });
+          await tx.backgroundJob.create({
+            data: {
+              workshopId,
+              reminderId: reminder.id,
+              type: "SEND_REMINDER_SMS",
+              payload: { reminderId: reminder.id },
+              idempotencyKey: `reminder:${reminder.id}:sms`,
+              runAfter: sendAt,
+            },
+          });
+        }
         await tx.report.update({
           where: { id: report.id },
           data: { status: "PUBLISHED" as ReportStatus, publishedAt: new Date() },

@@ -73,6 +73,14 @@ enum ReportStatus {
   PUBLISHED
 }
 
+enum ReminderState {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
 enum AuthScope {
   STAFF
   CUSTOMER
@@ -99,6 +107,7 @@ model Workshop {
   approvals     ApprovalVersion[]
   reports       Report[]
   reportVersions ReportVersion[]
+  reminders     Reminder[]
   jobs          BackgroundJob[]
   auditEvents   AuditEvent[]
   authSessions  AuthSession[]
@@ -255,6 +264,8 @@ model Visit {
   approvals     ApprovalVersion[]
   report        Report?
   reportVersions ReportVersion[]
+  sourceReminders Reminder[] @relation("ReminderSourceVisit")
+  returnedReminders Reminder[] @relation("ReminderReturnVisit")
 
   @@index([workshopId, status, updatedAt])
   @@map("visits")
@@ -393,6 +404,7 @@ model ReportVersion {
   workshop        Workshop     @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   visit           Visit        @relation(fields: [visitId], references: [id], onDelete: Cascade)
   link            ReportLink?
+  reminder        Reminder?
 
   @@unique([reportId, version])
   @@index([workshopId])
@@ -412,9 +424,42 @@ model ReportLink {
   @@map("report_links")
 }
 
+model Reminder {
+  id              String        @id @default(uuid()) @db.Uuid
+  workshopId      String        @map("workshop_id") @db.Uuid
+  reportVersionId String        @unique @map("report_version_id") @db.Uuid
+  visitId         String        @map("visit_id") @db.Uuid
+  returnVisitId   String?       @map("return_visit_id") @db.Uuid
+  customerName    String        @map("customer_name")
+  customerPhone   String        @map("customer_phone")
+  vehicleLabel    String        @map("vehicle_label")
+  reason          String
+  dueAt           DateTime      @map("due_at")
+  sendAt          DateTime      @map("send_at")
+  state           ReminderState @default(PENDING)
+  providerMessageId String?     @map("provider_message_id")
+  sentAt          DateTime?     @map("sent_at")
+  deliveredAt     DateTime?     @map("delivered_at")
+  cancelledAt     DateTime?     @map("cancelled_at")
+  attempts        Int           @default(0)
+  lastError       String?       @map("last_error")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  workshop        Workshop      @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  reportVersion   ReportVersion @relation(fields: [reportVersionId], references: [id], onDelete: Cascade)
+  visit           Visit         @relation("ReminderSourceVisit", fields: [visitId], references: [id], onDelete: Cascade)
+  returnVisit     Visit?        @relation("ReminderReturnVisit", fields: [returnVisitId], references: [id], onDelete: SetNull)
+  jobs            BackgroundJob[]
+
+  @@index([workshopId, state, sendAt])
+  @@index([workshopId, dueAt])
+  @@map("reminders")
+}
+
 model BackgroundJob {
   id             String    @id @default(uuid()) @db.Uuid
   workshopId     String?   @map("workshop_id") @db.Uuid
+  reminderId     String?   @map("reminder_id") @db.Uuid
   type           String
   payload        Json
   state          JobState  @default(PENDING)
@@ -426,8 +471,10 @@ model BackgroundJob {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   workshop       Workshop? @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  reminder       Reminder? @relation(fields: [reminderId], references: [id], onDelete: Cascade)
 
   @@index([state, runAfter])
+  @@index([reminderId])
   @@map("background_jobs")
 }
 
