@@ -10,29 +10,52 @@ const loginSchema = z.object({
 });
 const refreshSchema = z.object({ refreshToken: z.string().min(40).max(256) });
 
-const attempts = new Map<string, { count: number; resetAt: number }>();
-const MAX_ATTEMPTS = 10;
+type AttemptWindow = { count: number; resetAt: number };
+
+const attemptsByAddress = new Map<string, AttemptWindow>();
+const attemptsByCredential = new Map<string, AttemptWindow>();
+const MAX_ATTEMPTS_PER_CREDENTIAL = 10;
+const MAX_ATTEMPTS_PER_ADDRESS = 20;
 const WINDOW_MS = 15 * 60_000;
 
-function canAttempt(address: string): boolean {
+function consumeAttempt(bucket: Map<string, AttemptWindow>, key: string, maximum: number): boolean {
   const now = Date.now();
-  const current = attempts.get(address);
+  const current = bucket.get(key);
   if (!current || current.resetAt <= now) {
-    attempts.set(address, { count: 1, resetAt: now + WINDOW_MS });
+    bucket.set(key, { count: 1, resetAt: now + WINDOW_MS });
     return true;
   }
   current.count += 1;
-  return current.count <= MAX_ATTEMPTS;
+  return current.count <= maximum;
+}
+
+function credentialAttemptKey(address: string, login: string): string {
+  return `${address}\u0000${login}`;
+}
+
+function canAttempt(address: string, login: string): boolean {
+  const addressAllowed = consumeAttempt(attemptsByAddress, address, MAX_ATTEMPTS_PER_ADDRESS);
+  const credentialAllowed = consumeAttempt(
+    attemptsByCredential,
+    credentialAttemptKey(address, login),
+    MAX_ATTEMPTS_PER_CREDENTIAL,
+  );
+  return addressAllowed && credentialAllowed;
+}
+
+function clearAttempts(address: string, login: string): void {
+  attemptsByAddress.delete(address);
+  attemptsByCredential.delete(credentialAttemptKey(address, login));
 }
 
 export function authRoutes(prisma: PrismaClient, accessTokenSecret?: string): FastifyPluginAsync {
   return async (app) => {
     app.post("/v1/auth/login", async (request, reply) => {
-      if (!canAttempt(request.ip)) {
+      const body = loginSchema.parse(request.body);
+      if (!canAttempt(request.ip, body.login)) {
         return reply.code(429).send({ error: "too_many_attempts" });
       }
 
-      const body = loginSchema.parse(request.body);
       const user = await prisma.user.findUnique({
         where: { login: body.login },
         select: {
@@ -57,7 +80,7 @@ export function authRoutes(prisma: PrismaClient, accessTokenSecret?: string): Fa
         return reply.code(401).send({ error: "invalid_credentials" });
       }
 
-      attempts.delete(request.ip);
+      clearAttempts(request.ip, body.login);
       const session = {
         userId: user.id,
         workshopId: membership.workshopId,

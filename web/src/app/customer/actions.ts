@@ -17,6 +17,7 @@ import {
   requestPhoneCode,
   verifyPhoneCode,
 } from "@/lib/api/autoservice-api";
+import { clientForwardedFor } from "@/lib/auth/client-address";
 
 function errorPath(path: string, code: string, values: Record<string, string | undefined> = {}): never {
   const params = new URLSearchParams({ error: code });
@@ -34,8 +35,14 @@ export async function requestCustomerRegistrationCodeAction(formData: FormData):
   if (!approval) errorPath("/customer/register", "invalid_data");
   let challenge;
   try {
-    challenge = await requestPhoneCode({ audience: "CUSTOMER_REGISTRATION", approvalToken: approval });
-  } catch {
+    challenge = await requestPhoneCode(
+      { audience: "CUSTOMER_REGISTRATION", approvalToken: approval },
+      await clientForwardedFor(),
+    );
+  } catch (error) {
+    if (error instanceof AutoServiceApiError && error.status === 429) {
+      errorPath("/customer/register", "too_many_attempts", { approval });
+    }
     errorPath("/customer/register", "sms_unavailable", { approval });
   }
   redirect(`/customer/register?approval=${encodeURIComponent(approval)}&challenge=${encodeURIComponent(challenge.challengeId)}`);
@@ -88,8 +95,11 @@ export async function requestCustomerLoginCodeAction(formData: FormData): Promis
   }
   let challenge;
   try {
-    challenge = await requestPhoneCode({ audience: "CUSTOMER", phone });
-  } catch {
+    challenge = await requestPhoneCode({ audience: "CUSTOMER", phone }, await clientForwardedFor());
+  } catch (error) {
+    if (error instanceof AutoServiceApiError && error.status === 429) {
+      errorPath("/customer/login", "too_many_attempts", { approval, mode: "sms" });
+    }
     errorPath("/customer/login", "sms_unavailable", { approval, mode: "sms" });
   }
   const params = new URLSearchParams({ mode: "code", challenge: challenge.challengeId });

@@ -10,6 +10,7 @@ export const metadata = { title: "Вход клиента" };
 
 const errors: Record<string, string> = {
   invalid_credentials: "Неверные данные для входа.",
+  too_many_attempts: "Слишком много попыток. Подождите немного и повторите запрос.",
   account_exists: "Кабинет уже создан — войдите в него.",
   invalid_phone: "Проверьте номер телефона.",
   invalid_code: "Неверный или просроченный код.",

@@ -65,6 +65,37 @@ describe("database authentication and administration", () => {
     await app.close();
   });
 
+  it("limits failed password attempts per login without blocking another login", async () => {
+    const prisma = {
+      user: { findUnique: vi.fn().mockResolvedValue(null) },
+    } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/auth/login",
+        payload: { login: "first-user", password: "wrong-password" },
+      });
+      expect(response.statusCode).toBe(401);
+    }
+
+    const limited = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { login: "first-user", password: "wrong-password" },
+    });
+    expect(limited.statusCode).toBe(429);
+
+    const otherLogin = await app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { login: "second-user", password: "wrong-password" },
+    });
+    expect(otherLogin.statusCode).toBe(401);
+    await app.close();
+  });
+
   it("issues a signed token and accepts it without internal headers", async () => {
     const passwordHash = await hashPassword("strong-password");
     const membership = { role: "EMPLOYEE", isActive: true, user: { isActive: true } };
