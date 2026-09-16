@@ -65,18 +65,21 @@ export async function verifyCustomerRegistrationCallAction(formData: FormData): 
   const callPhonePretty = String(formData.get("callPhonePretty") ?? "");
   const state = { approval, challenge, mode: "call", callPhone, callPhonePretty };
   if (!approval || !challenge) errorPath("/customer/register", "invalid_data", state);
+  let result: Awaited<ReturnType<typeof verifyPhoneCall>>;
   try {
-    const result = await verifyPhoneCall(challenge);
-    if ("registrationPending" in result && result.registrationPending) {
-      redirect(`/customer/register?${new URLSearchParams({ approval, challenge, verified: "call" })}`);
-    }
-    if ("status" in result && result.status === "pending") {
-      errorPath("/customer/register", "call_pending", state);
-    }
-    errorPath("/customer/register", "invalid_code", state);
+    result = await verifyPhoneCall(challenge);
   } catch {
     errorPath("/customer/register", "invalid_code", state);
   }
+  // `redirect()` throws a NEXT_REDIRECT sentinel.  Keep it outside the request
+  // try/catch, otherwise a confirmed call is presented to the customer as an error.
+  if ("registrationPending" in result && result.registrationPending) {
+    redirect(`/customer/register?${new URLSearchParams({ approval, challenge, verified: "call" })}`);
+  }
+  if ("status" in result && result.status === "pending") {
+    errorPath("/customer/register", "call_pending", state);
+  }
+  errorPath("/customer/register", "invalid_code", state);
 }
 
 export async function registerCustomerAction(formData: FormData): Promise<void> {
