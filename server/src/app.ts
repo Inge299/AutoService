@@ -11,6 +11,8 @@ import { findingRoutes } from "./http/routes/findings.js";
 import { healthRoutes } from "./http/routes/health.js";
 import { mediaRoutes } from "./http/routes/media.js";
 import { publicApprovalRoutes } from "./http/routes/public-approvals.js";
+import { publicReportRoutes } from "./http/routes/public-reports.js";
+import { reportRoutes } from "./http/routes/reports.js";
 import { visitRoutes } from "./http/routes/visits.js";
 import { workshopRoutes } from "./http/routes/workshops.js";
 import type { ObjectStorage } from "./infrastructure/object-storage.js";
@@ -46,6 +48,7 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
   );
   await app.register(healthRoutes(dependencies.prisma));
   await app.register(publicApprovalRoutes(dependencies.prisma, dependencies.storage));
+  await app.register(publicReportRoutes(dependencies.prisma, dependencies.storage));
   await app.register(customerAccountRoutes(
     dependencies.prisma,
     config.ACCESS_TOKEN_SECRET,
@@ -62,6 +65,7 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
   await app.register(workshopRoutes(dependencies.prisma));
   await app.register(customerRoutes(dependencies.prisma));
   await app.register(visitRoutes(dependencies.prisma));
+  await app.register(reportRoutes(dependencies.prisma));
   await app.register(findingRoutes(dependencies.prisma));
   await app.register(mediaRoutes(dependencies.prisma, dependencies.storage));
   return app;
