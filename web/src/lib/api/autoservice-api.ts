@@ -135,6 +135,54 @@ export interface PublicApproval {
   decision: { value: ApprovalDecisionValue; createdAt: string } | null;
 }
 
+export interface ApiVisitReport {
+  id: string;
+  visitId: string;
+  completedWork: string;
+  recommendations: string;
+  nextVisitAt: string | null;
+  status: "DRAFT" | "PUBLISHED";
+  publishedAt: string | null;
+  versions: Array<{
+    version: number;
+    createdAt: string;
+    link: { expiresAt: string; revokedAt: string | null; openedAt: string | null } | null;
+  }>;
+}
+
+export interface PublicReport {
+  expiresAt: string;
+  openedAt: string;
+  workshop: { name: string; phone: string | null };
+  visit: {
+    customerName: string;
+    vehicleLabel: string;
+    licensePlate: string;
+    mileageKm: number | null;
+    complaint: string;
+  };
+  report: {
+    completedWork: string;
+    recommendations: string;
+    nextVisitAt: string | null;
+    findings: Array<{
+      id: string;
+      title: string;
+      description: string;
+      priceRub: number | null;
+      priority: FindingPriority;
+      status: FindingStatus;
+    }>;
+    media: Array<{
+      id: string;
+      kind: "PHOTO" | "VIDEO" | "VOICE";
+      mimeType: string;
+      url: string;
+      expiresInSeconds: number;
+    }>;
+  };
+}
+
 export interface CustomerAccountIdentity extends BackendTokens {
   expiresAtEpochMs: number;
   customer: { id: string; name: string; phone: string; email: string | null };
@@ -266,6 +314,15 @@ export async function getApiVisit(id: string, session: WebSession): Promise<ApiV
   }
 }
 
+export async function getApiVisitReport(id: string, session: WebSession): Promise<ApiVisitReport | null> {
+  try {
+    return await request<ApiVisitReport>(`/v1/visits/${encodeURIComponent(id)}/report`, session);
+  } catch (error) {
+    if (error instanceof AutoServiceApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
 export function listApiCustomers(session: WebSession, search?: string) {
   const query = new URLSearchParams();
   if (search?.trim()) query.set("q", search.trim());
@@ -354,6 +411,17 @@ export async function getPublicApproval(token: string): Promise<PublicApproval |
   if (response.status === 404 || response.status === 410) return null;
   if (!response.ok) throw new AutoServiceApiError(response.status, await response.text());
   return response.json() as Promise<PublicApproval>;
+}
+
+export async function getPublicReport(token: string): Promise<PublicReport | null> {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) throw new Error("AUTOSERVICE_API_URL is not configured");
+  const response = await fetch(`${baseUrl}/public/v1/reports/${encodeURIComponent(token)}`, {
+    cache: "no-store",
+  });
+  if (response.status === 404 || response.status === 410) return null;
+  if (!response.ok) throw new AutoServiceApiError(response.status, await response.text());
+  return response.json() as Promise<PublicReport>;
 }
 
 export async function submitPublicApprovalDecision(token: string, value: ApprovalDecisionValue) {

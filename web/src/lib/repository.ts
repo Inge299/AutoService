@@ -2,9 +2,10 @@ import "server-only";
 
 import { customers, reminders, visits } from "@/lib/demo-data";
 import { requireSession } from "@/lib/auth/session";
-import type { Customer, Reminder, Visit, VisitStatus } from "@/lib/domain";
+import type { Customer, Reminder, Visit, VisitReport, VisitStatus } from "@/lib/domain";
 import {
   getApiVisit,
+  getApiVisitReport,
   listApiCustomers,
   listApiVisits,
   type ApiCustomer,
@@ -19,6 +20,7 @@ export interface VisitFilters {
 export interface WorkshopRepository {
   listVisits(filters?: VisitFilters): Promise<Visit[]>;
   getVisit(id: string): Promise<Visit | null>;
+  getVisitReport(id: string): Promise<VisitReport | null>;
   listCustomers(query?: string): Promise<Customer[]>;
   listReminders(): Promise<Reminder[]>;
 }
@@ -40,6 +42,12 @@ class DemoWorkshopRepository implements WorkshopRepository {
   async getVisit(id: string): Promise<Visit | null> {
     await requireSession();
     return visits.find((visit) => visit.id === id) ?? null;
+  }
+
+  async getVisitReport(id: string): Promise<VisitReport | null> {
+    void id;
+    await requireSession();
+    return null;
   }
 
   async listCustomers(query?: string): Promise<Customer[]> {
@@ -202,6 +210,26 @@ class ApiWorkshopRepository implements WorkshopRepository {
     const session = await requireSession();
     const visit = await getApiVisit(id, session);
     return visit ? mapVisit(visit) : null;
+  }
+
+  async getVisitReport(id: string): Promise<VisitReport | null> {
+    const session = await requireSession();
+    const report = await getApiVisitReport(id, session);
+    if (!report) return null;
+    const latestVersion = report.versions[0];
+    return {
+      status: report.status,
+      completedWork: report.completedWork,
+      recommendations: report.recommendations,
+      nextVisitAt: report.nextVisitAt,
+      publishedAt: report.publishedAt,
+      latestVersion: latestVersion ? {
+        version: latestVersion.version,
+        createdAt: latestVersion.createdAt,
+        linkOpenedAt: latestVersion.link?.openedAt ?? null,
+        linkRevokedAt: latestVersion.link?.revokedAt ?? null,
+      } : null,
+    };
   }
 
   async listCustomers(query?: string): Promise<Customer[]> {

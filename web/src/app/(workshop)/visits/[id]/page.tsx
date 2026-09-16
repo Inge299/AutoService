@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Карточка визита" };
 
 export default async function VisitPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const visit = await workshopRepository.getVisit(id);
+  const [visit, report] = await Promise.all([workshopRepository.getVisit(id), workshopRepository.getVisitReport(id)]);
   if (!visit) notFound();
   const status = visitStatusMeta[visit.status];
   const approvedTotal = visit.findings.filter((finding) => finding.status === "APPROVED").reduce((sum, finding) => sum + (finding.priceRub ?? 0), 0);
@@ -33,6 +33,12 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
             <div className="section-heading"><div><h2>Приёмка</h2><p>{visit.arrivedAt}</p></div><StatusPill label="Данные сохранены" tone="success" /></div>
             <div className="intake-grid"><div><small>Жалоба клиента</small><strong>{visit.complaint}</strong></div><div><small>Пробег</small><strong>{visit.mileageKm?.toLocaleString("ru-RU") ?? "—"} км</strong></div><div><small>Ответственный</small><strong>{visit.mechanic}</strong></div><div><small>Материалы приёмки</small><strong>{visit.mediaCount} фото и видео</strong></div></div>
           </section>
+
+          {report && <section className="content-card visit-overview-card report-summary-card">
+            <div className="section-heading"><div><h2>Итоговый отчёт</h2><p>{report.status === "PUBLISHED" ? "Опубликованная неизменяемая версия" : "Черновик мастера"}</p></div><StatusPill label={report.status === "PUBLISHED" ? "Опубликован" : "Черновик"} tone={report.status === "PUBLISHED" ? "success" : "neutral"} /></div>
+            <div className="report-summary-grid"><div><small>Выполненные работы</small><strong>{report.completedWork || "Не заполнено"}</strong></div><div><small>Рекомендации</small><strong>{report.recommendations || "Не указаны"}</strong></div><div><small>Следующий визит</small><strong>{report.nextVisitAt ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Moscow" }).format(new Date(report.nextVisitAt)) : "Не запланирован"}</strong></div></div>
+            {report.latestVersion && <p className="report-version-note">Версия {report.latestVersion.version} от {new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Moscow" }).format(new Date(report.latestVersion.createdAt))}{report.latestVersion.linkOpenedAt ? " · клиент открыл ссылку" : " · ссылка ещё не открыта"}{report.latestVersion.linkRevokedAt ? " · ссылка отозвана" : ""}</p>}
+          </section>}
 
           <section className="section-block" id="findings">
             <div className="section-heading"><div><h2>Находки и рекомендации</h2><p>То, что обнаружено во время диагностики</p></div><span className="subtle-action">Добавляются мастером в Android</span></div>
