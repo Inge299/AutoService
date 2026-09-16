@@ -91,6 +91,10 @@ user:     22222222-2222-4222-8222-222222222222
 | `GET /v1/media/{id}` | Прочитать статус | Метаданные и статус |
 | `POST /v1/findings/{id}/approval-link` | Зафиксировать находку и создать ссылку | Токен, `/a/{token}`, TTL |
 | `DELETE /v1/findings/{id}/approval-link` | Отозвать активную ссылку | `204` |
+| `PUT /v1/visits/{id}/report` | Сохранить черновик итогового отчёта | Черновик `Report` |
+| `POST /v1/visits/{id}/report/publish` | Зафиксировать версию отчёта и создать ссылку | Токен, `/r/{token}`, TTL |
+| `DELETE /v1/visits/{id}/report-link` | Отозвать последнюю ссылку отчёта | `204` |
+| `GET /public/v1/reports/{token}` | Публичный снимок итогового отчёта | Данные версии и временные URL медиа |
 | `GET /public/v1/approvals/{token}` | Публичный снимок согласования | Данные версии и временные URL медиа |
 | `POST /public/v1/approvals/{token}/decision` | Зафиксировать одно решение клиента | Решение или уже сохранённый результат |
 | `POST /v1/auth/login` | Вход пользователя | Сессия и bearer-токен для Android |
