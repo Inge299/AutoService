@@ -6,6 +6,7 @@ import type { Customer, Reminder, Visit, VisitReport, VisitStatus } from "@/lib/
 import {
   getApiVisit,
   getApiVisitReport,
+  listApiReminders,
   listApiCustomers,
   listApiVisits,
   type ApiCustomer,
@@ -164,6 +165,23 @@ function mapCustomer(customer: ApiCustomer): Customer {
   };
 }
 
+function mapReminder(reminder: Awaited<ReturnType<typeof listApiReminders>>[number]): Reminder {
+  const sendAt = new Date(reminder.sendAt).getTime();
+  const now = Date.now();
+  const state = sendAt < now - 24 * 60 * 60_000 ? "OVERDUE" : sendAt < now + 24 * 60 * 60_000 ? "TODAY" : "UPCOMING";
+  return {
+    id: reminder.id,
+    customer: reminder.customerName,
+    vehicle: reminder.vehicleLabel,
+    reason: reminder.reason,
+    due: new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Moscow" }).format(new Date(reminder.dueAt)),
+    state,
+    deliveryState: reminder.state,
+    ...(reminder.returnVisit ? { returnedVisitId: reminder.returnVisit.id } : {}),
+    attempts: reminder.attempts,
+  };
+}
+
 function customersFromVisits(apiVisits: ApiVisit[]): Customer[] {
   const grouped = new Map<string, Customer & { lastVisitEpoch: number }>();
   for (const visit of apiVisits) {
@@ -246,8 +264,8 @@ class ApiWorkshopRepository implements WorkshopRepository {
   }
 
   async listReminders(): Promise<Reminder[]> {
-    await requireSession();
-    return [];
+    const session = await requireSession();
+    return (await listApiReminders(session)).map(mapReminder);
   }
 }
 

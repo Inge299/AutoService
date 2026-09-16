@@ -150,6 +150,27 @@ export interface ApiVisitReport {
   }>;
 }
 
+export type ReminderDeliveryState = "PENDING" | "SENT" | "DELIVERED" | "FAILED" | "CANCELLED";
+
+export interface ApiReminder {
+  id: string;
+  customerName: string;
+  customerPhone: string;
+  vehicleLabel: string;
+  reason: string;
+  dueAt: string;
+  sendAt: string;
+  state: ReminderDeliveryState;
+  providerMessageId: string | null;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  attempts: number;
+  lastError: string | null;
+  returnVisit: { id: string; status: VisitStatus; updatedAt: string } | null;
+  reportVersion: { version: number; createdAt: string };
+}
+
 export interface PublicReport {
   expiresAt: string;
   openedAt: string;
@@ -328,6 +349,14 @@ export function listApiCustomers(session: WebSession, search?: string) {
   if (search?.trim()) query.set("q", search.trim());
   const suffix = query.size ? `?${query.toString()}` : "";
   return request<ApiCustomer[]>(`/v1/customers${suffix}`, session);
+}
+
+export function listApiReminders(session: WebSession) {
+  return request<ApiReminder[]>("/v1/reminders", session);
+}
+
+export function cancelApiReminder(session: WebSession, reminderId: string) {
+  return request<never>(`/v1/reminders/${encodeURIComponent(reminderId)}/cancel`, session, { method: "POST" });
 }
 
 export function getApiWorkshop(session: WebSession) {
