@@ -217,7 +217,12 @@ class AutoServiceApi(
             headers.keys().forEach { name -> connection.setRequestProperty(name, headers.getString(name)) }
             file.inputStream().use { input -> connection.outputStream.use { output -> input.copyTo(output) } }
             val status = connection.responseCode
-            if (status !in 200..299) throw ApiException(status, "Хранилище отклонило загрузку ($status)")
+            if (status !in 200..299) {
+                val detail = runCatching {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() }
+                }.getOrNull()?.replace(Regex("\\s+"), " ")?.take(300)
+                throw ApiException(status, "Хранилище отклонило загрузку ($status)${if (detail.isNullOrBlank()) "" else ": $detail"}")
+            }
         } finally {
             connection.disconnect()
         }
