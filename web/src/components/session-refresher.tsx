@@ -26,7 +26,7 @@ export function SessionRefresher({
         const params = new URLSearchParams({ scope, background: "1", returnTo: pathname });
         const response = await fetch(`/api/auth/refresh?${params}`, { cache: "no-store" });
         if (response.status === 401) {
-          window.location.assign(scope === "customer" ? "/customer/login?error=session_expired" : "/login?error=session_expired");
+          window.location.assign(scope === "customer" ? "/customer/login?error=session_expired" : "/staff/login?error=session_expired");
           return;
         }
         const body = await response.json() as { accessTokenExpiresAtEpochMs?: number };

@@ -29,15 +29,16 @@ export default async function CustomerLoginPage({ searchParams }: {
   searchParams: Promise<{ approval?: string; error?: string; mode?: string; challenge?: string; callPhone?: string; callPhonePretty?: string }>;
 }) {
   const { approval, error, mode, challenge, callPhone, callPhonePretty } = await searchParams;
+  const activeMode = mode ?? (approval ? undefined : "sms");
   const dialPhone = callPhone?.replace(/[^\d+]/g, "");
   return <main className="login-page">
     <section className="login-story"><Link href="/" className="login-brand"><BrandMark /></Link><div className="login-message"><span className="eyebrow light">Личный кабинет клиента</span><h1>Ваши автомобили.<br />Ваш ремонт.</h1><p>Следите за статусами, согласовывайте работы и храните историю обслуживания в одном месте.</p></div></section>
     <section className="login-panel"><div className="login-form-wrap">
       <p className="eyebrow">Клиентский кабинет</p>
-      <h2>{mode === "call" ? "Позвоните для входа" : mode === "code" ? "Введите код" : "Войти"}</h2>
-      <p className="muted login-subtitle">{mode === "call" ? "Позвоните с указанного номера — звонок будет сброшен автоматически." : mode === "code" ? "Код из SMS действует 5 минут." : mode === "sms" ? "Подтвердите номер звонком." : "Войдите по звонку или используйте e-mail и пароль."}</p>
+      <h2>{activeMode === "call" ? "Позвоните для входа" : activeMode === "code" ? "Введите код" : "Войти в кабинет"}</h2>
+      <p className="muted login-subtitle">{activeMode === "call" ? "Позвоните с указанного номера — звонок будет сброшен автоматически." : activeMode === "code" ? "Код из SMS действует 5 минут." : activeMode === "sms" ? "Укажите номер — подтвердите вход звонком." : "Войдите с телефоном или e-mail и паролем."}</p>
       {error && <div className="form-error"><Icon name="alert" />{errors[error] ?? "Не удалось войти."}</div>}
-      {mode === "call" && challenge && dialPhone ? <form action={verifyCustomerLoginCallAction} className="login-form">
+      {activeMode === "call" && challenge && dialPhone ? <form action={verifyCustomerLoginCallAction} className="login-form">
         <input type="hidden" name="approval" value={approval ?? ""} />
         <input type="hidden" name="challenge" value={challenge} />
         <input type="hidden" name="callPhone" value={dialPhone} />
@@ -45,13 +46,13 @@ export default async function CustomerLoginPage({ searchParams }: {
         <a className="button button-secondary" href={`tel:${dialPhone}`}>{callPhonePretty ?? dialPhone}</a>
         <button className="button button-primary" type="submit">Я позвонил — проверить</button>
         <Link className="text-link" href={withApproval("/customer/login?mode=sms", approval)}>Указать другой номер</Link>
-      </form> : mode === "code" && challenge ? <form action={verifyCustomerLoginCodeAction} className="login-form">
+      </form> : activeMode === "code" && challenge ? <form action={verifyCustomerLoginCodeAction} className="login-form">
         <input type="hidden" name="approval" value={approval ?? ""} />
         <input type="hidden" name="challenge" value={challenge} />
         <label>Код из SMS<input name="code" inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} pattern="[0-9]{6}" placeholder="000000" /></label>
         <button className="button button-primary" type="submit">Подтвердить и войти</button>
         <Link className="text-link" href={withApproval("/customer/login?mode=sms", approval)}>Запросить новый код</Link>
-      </form> : mode === "sms" ? <form action={requestCustomerLoginCodeAction} className="login-form">
+      </form> : activeMode === "sms" ? <form action={requestCustomerLoginCodeAction} className="login-form">
         <input type="hidden" name="approval" value={approval ?? ""} />
         <label>Телефон<input name="phone" type="tel" autoComplete="tel" required maxLength={32} placeholder="+7 999 123-45-67" /></label>
         <button className="button button-primary" type="submit">Продолжить</button>
