@@ -26,6 +26,7 @@ export interface Finding {
   priority: FindingPriority;
   status: FindingStatus;
   mediaCount: number;
+  mediaIds?: string[];
 }
 
 export interface VisitEvent {

@@ -49,7 +49,10 @@ export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
         include: {
           findings: {
             orderBy: { createdAt: "asc" },
-            include: { _count: { select: { media: true } } },
+            include: {
+              _count: { select: { media: true } },
+              media: { where: { state: { in: ["VERIFIED", "READY"] } }, select: { id: true } },
+            },
           },
           _count: { select: { media: true } },
         },
@@ -63,7 +66,10 @@ export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
         include: {
           findings: {
             orderBy: { createdAt: "asc" },
-            include: { _count: { select: { media: true } } },
+            include: {
+              _count: { select: { media: true } },
+              media: { where: { state: { in: ["VERIFIED", "READY"] } }, select: { id: true } },
+            },
           },
           _count: { select: { media: true } },
         },

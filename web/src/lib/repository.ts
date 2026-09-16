@@ -131,6 +131,7 @@ function mapVisit(visit: ApiVisit): Visit {
       priority: finding.priority,
       status: finding.status,
       mediaCount: finding._count.media,
+      mediaIds: finding.media.map((media) => media.id),
     })),
     mediaCount: visit._count.media,
     events: [
