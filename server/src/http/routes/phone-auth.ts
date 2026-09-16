@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { OtpPurpose, PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import type { VerificationDelivery } from "../../infrastructure/verification-delivery.js";
+import { startVerification, type VerificationDelivery } from "../../infrastructure/verification-delivery.js";
 import { issueSession } from "../../security/auth-session.js";
 import { createOtpCode, hashOtpCode, hashOtpKey, otpHashesEqual } from "../../security/otp.js";
 import { normalizePhone } from "../../security/phone.js";
@@ -21,6 +21,7 @@ const verifySchema = z.object({
   challengeId: z.string().uuid(),
   code: z.string().regex(/^\d{6}$/),
 });
+const verifyCallSchema = z.object({ challengeId: z.string().uuid() });
 
 const CODE_TTL_MS = 5 * 60_000;
 const RESEND_DELAY_MS = 60_000;
@@ -128,6 +129,7 @@ export function phoneAuthRoutes(
           purpose: otpPurpose,
           phone,
           codeHash: hashOtpCode(challengeId, code, otpHashSecret),
+          verificationMethod: "SMS",
           requestIpHash,
           expiresAt,
           resendAfter,
@@ -143,14 +145,27 @@ export function phoneAuthRoutes(
         },
       });
 
+      let verification: { method: "SMS" } | { method: "CALLCHECK"; callPhone: string; callPhonePretty: string } = { method: "SMS" };
       if (recognized) {
         try {
-          await delivery.sendCode({
+          const started = await startVerification(delivery, {
             challengeId,
             phone,
             code,
             expiresInSeconds: CODE_TTL_MS / 1_000,
+            requestIp: request.ip,
           });
+          if (started.method === "CALLCHECK") {
+            await prisma.otpChallenge.update({
+              where: { id: challengeId },
+              data: { verificationMethod: "CALLCHECK", providerCheckId: started.providerCheckId },
+            });
+            verification = {
+              method: "CALLCHECK",
+              callPhone: started.callPhone,
+              callPhonePretty: started.callPhonePretty,
+            };
+          }
         } catch (error) {
           await prisma.otpChallenge.update({ where: { id: challengeId }, data: { expiresAt: now } });
           request.log.error({ err: error, challengeId }, "OTP delivery failed");
@@ -162,6 +177,7 @@ export function phoneAuthRoutes(
         challengeId,
         expiresInSeconds: CODE_TTL_MS / 1_000,
         resendAfterEpochMs: resendAfter.getTime(),
+        verification,
       });
     });
 
@@ -175,6 +191,7 @@ export function phoneAuthRoutes(
       const valid = challenge && !challenge.consumedAt && challenge.expiresAt > now &&
         challenge.attempts < challenge.maxAttempts &&
         challenge.purpose !== "CUSTOMER_REGISTRATION" &&
+        challenge.verificationMethod === "SMS" &&
         otpHashesEqual(challenge.codeHash, hashOtpCode(challenge.id, body.code, otpHashSecret));
       if (!valid || !challenge?.userId || !challenge.workshopId) {
         if (challenge && !challenge.consumedAt && challenge.expiresAt > now) {
@@ -205,6 +222,59 @@ export function phoneAuthRoutes(
         }, accessTokenSecret, now);
       });
       if (!tokens) return reply.code(401).send({ error: "invalid_or_expired_code" });
+      return reply.send({ ...tokens, expiresAtEpochMs: tokens.accessTokenExpiresAtEpochMs });
+    });
+
+    app.post("/public/v1/auth/phone/verify-call", async (request, reply) => {
+      if (!accessTokenSecret || !delivery.available || !delivery.checkCall) {
+        return reply.code(503).send({ error: "phone_authentication_unavailable" });
+      }
+      const body = verifyCallSchema.parse(request.body);
+      const now = new Date();
+      const challenge = await prisma.otpChallenge.findUnique({ where: { id: body.challengeId } });
+      const valid = challenge && !challenge.consumedAt && challenge.expiresAt > now &&
+        challenge.verificationMethod === "CALLCHECK" && challenge.providerCheckId;
+      if (!valid || !challenge) return reply.code(401).send({ error: "invalid_or_expired_call" });
+
+      let callState;
+      try {
+        callState = await delivery.checkCall(challenge.providerCheckId!);
+      } catch (error) {
+        request.log.error({ err: error, challengeId: challenge.id }, "Call verification status failed");
+        return reply.code(502).send({ error: "verification_delivery_failed" });
+      }
+      if (callState === "PENDING") return reply.send({ status: "pending" });
+      if (callState === "EXPIRED") {
+        await prisma.otpChallenge.updateMany({
+          where: { id: challenge.id, consumedAt: null },
+          data: { expiresAt: now },
+        });
+        return reply.code(401).send({ error: "invalid_or_expired_call" });
+      }
+
+      if (challenge.purpose === "CUSTOMER_REGISTRATION") {
+        const verified = await prisma.otpChallenge.updateMany({
+          where: { id: challenge.id, consumedAt: null, expiresAt: { gt: now } },
+          data: { callVerifiedAt: now },
+        });
+        if (verified.count !== 1) return reply.code(401).send({ error: "invalid_or_expired_call" });
+        return reply.send({ status: "confirmed", registrationPending: true });
+      }
+      if (!challenge.userId || !challenge.workshopId) return reply.code(401).send({ error: "invalid_or_expired_call" });
+      const tokens = await prisma.$transaction(async (tx) => {
+        const consumed = await tx.otpChallenge.updateMany({
+          where: { id: challenge.id, consumedAt: null, expiresAt: { gt: now } },
+          data: { consumedAt: now },
+        });
+        if (consumed.count !== 1) return null;
+        return issueSession(tx, {
+          userId: challenge.userId!,
+          workshopId: challenge.workshopId!,
+          scope: challenge.purpose === "STAFF_LOGIN" ? "STAFF" : "CUSTOMER",
+          ...(challenge.customerId ? { customerId: challenge.customerId } : {}),
+        }, accessTokenSecret, now);
+      });
+      if (!tokens) return reply.code(401).send({ error: "invalid_or_expired_call" });
       return reply.send({ ...tokens, expiresAtEpochMs: tokens.accessTokenExpiresAtEpochMs });
     });
   };

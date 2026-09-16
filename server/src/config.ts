@@ -14,6 +14,7 @@ const schema = z.object({
   SMS_PROVIDER: z.enum(["disabled", "debug", "smsru"]).default("disabled"),
   SMS_RU_API_ID: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
   SMS_RU_FROM: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(32).optional()),
+  SMS_RU_VERIFICATION_MODE: z.enum(["callcheck", "sms"]).default("callcheck"),
   DATABASE_URL: z.string().min(1),
   S3_ENDPOINT: z.string().url().optional(),
   S3_PUBLIC_ENDPOINT: z.string().url().optional(),
@@ -25,7 +26,12 @@ const schema = z.object({
   WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1_000),
 });
 
-export type Config = z.infer<typeof schema>;
+type ParsedConfig = z.infer<typeof schema>;
+// Legacy tests and embedders construct Config directly. The parser always supplies
+// this value; keeping it optional here avoids breaking those callers during rollout.
+export type Config = Omit<ParsedConfig, "SMS_RU_VERIFICATION_MODE"> & {
+  SMS_RU_VERIFICATION_MODE?: ParsedConfig["SMS_RU_VERIFICATION_MODE"];
+};
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Config {
   const config = schema.parse(environment);

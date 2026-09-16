@@ -33,7 +33,10 @@ function otpPrisma(user: unknown) {
       findFirst: vi.fn().mockResolvedValue(null),
       count: vi.fn().mockResolvedValue(0),
       create: vi.fn(async ({ data }) => { stored.challenge = { ...data }; return data; }),
-      update: vi.fn().mockResolvedValue({}),
+      update: vi.fn(async ({ data }) => {
+        if (stored.challenge) Object.assign(stored.challenge, data);
+        return stored.challenge ?? {};
+      }),
       findUnique: vi.fn(async () => stored.challenge ? {
         ...stored.challenge,
         attempts: 0,
@@ -108,6 +111,47 @@ describe("phone authentication", () => {
     expect(response.statusCode).toBe(202);
     expect(response.json().challengeId).toEqual(expect.any(String));
     expect(sendCode).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("issues a session only after SMS.RU confirms an incoming call", async () => {
+    const database = otpPrisma({
+      id: userId,
+      isActive: true,
+      memberships: [{ workshopId }],
+      customerProfiles: [],
+    });
+    const app = await buildApp(config, {
+      prisma: database.prisma,
+      storage: {} as ObjectStorage,
+      verificationDelivery: {
+        available: true,
+        async start() {
+          return {
+            method: "CALLCHECK",
+            providerCheckId: "check-1",
+            callPhone: "78005008275",
+            callPhonePretty: "+7 (800) 500-8275",
+          };
+        },
+        async checkCall() { return "CONFIRMED"; },
+      },
+    });
+    const requested = await app.inject({
+      method: "POST",
+      url: "/public/v1/auth/phone/request-code",
+      payload: { phone: "+79991234567", audience: "STAFF" },
+    });
+    expect(requested.statusCode).toBe(202);
+    expect(requested.json().verification).toMatchObject({ method: "CALLCHECK", callPhone: "78005008275" });
+
+    const verified = await app.inject({
+      method: "POST",
+      url: "/public/v1/auth/phone/verify-call",
+      payload: { challengeId: requested.json().challengeId },
+    });
+    expect(verified.statusCode).toBe(200);
+    expect(verified.json()).toMatchObject({ accessToken: expect.any(String), refreshToken: expect.any(String) });
     await app.close();
   });
 

@@ -92,6 +92,11 @@ enum OtpPurpose {
   CUSTOMER_REGISTRATION
 }
 
+enum VerificationMethod {
+  SMS
+  CALLCHECK
+}
+
 model Workshop {
   id            String            @id @db.Uuid
   name          String
@@ -205,6 +210,9 @@ model OtpChallenge {
   purpose       OtpPurpose
   phone         String
   codeHash      String     @map("code_hash")
+  verificationMethod VerificationMethod @default(SMS) @map("verification_method")
+  providerCheckId     String?            @map("provider_check_id")
+  callVerifiedAt      DateTime?          @map("call_verified_at")
   requestIpHash String     @map("request_ip_hash")
   userId        String?    @map("user_id") @db.Uuid
   workshopId    String?    @map("workshop_id") @db.Uuid

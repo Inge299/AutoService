@@ -483,7 +483,17 @@ export interface PhoneCodeChallenge {
   challengeId: string;
   expiresInSeconds: number;
   resendAfterEpochMs: number;
+  verification: { method: "SMS" } | {
+    method: "CALLCHECK";
+    callPhone: string;
+    callPhonePretty: string;
+  };
 }
+
+export type PhoneCallVerification =
+  | (BackendTokens & { expiresAtEpochMs: number })
+  | { status: "pending" }
+  | { status: "confirmed"; registrationPending: true };
 
 export function requestPhoneCode(payload:
   | { audience: "STAFF" | "CUSTOMER"; phone: string }
@@ -504,6 +514,13 @@ export function verifyPhoneCode(challengeId: string, code: string) {
   });
 }
 
+export function verifyPhoneCall(challengeId: string) {
+  return customerRequest<PhoneCallVerification>("/public/v1/auth/phone/verify-call", {
+    method: "POST",
+    body: JSON.stringify({ challengeId }),
+  });
+}
+
 export function refreshAuthTokens(refreshToken: string) {
   return customerRequest<BackendTokens & { expiresAtEpochMs: number }>("/public/v1/auth/refresh", {
     method: "POST",
@@ -514,7 +531,7 @@ export function refreshAuthTokens(refreshToken: string) {
 export function registerCustomerAccount(
   approvalToken: string,
   challengeId: string,
-  code: string,
+  code: string | undefined,
   email: string,
   password: string,
 ) {

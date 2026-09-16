@@ -12,7 +12,7 @@ const approvalTokenSchema = z.string().min(32).max(200).regex(/^[A-Za-z0-9_-]+$/
 const registerSchema = z.object({
   approvalToken: approvalTokenSchema,
   challengeId: z.string().uuid(),
-  code: z.string().regex(/^\d{6}$/),
+  code: z.string().regex(/^\d{6}$/).optional(),
   email: z.string().trim().email().max(254).transform((value) => value.toLocaleLowerCase("ru-RU")),
   password: z.string().min(8).max(256),
 });
@@ -125,9 +125,13 @@ export function customerAccountRoutes(
         challenge.workshopId === link.approvalVersion.workshopId &&
         challenge.phone === verifiedPhone &&
         (!challenge.customerId || challenge.customerId === visit.customerId) &&
-        otpHashesEqual(challenge.codeHash, hashOtpCode(challenge.id, body.code, otpHashSecret));
+        (
+          (challenge.verificationMethod === "CALLCHECK" && Boolean(challenge.callVerifiedAt)) ||
+          ((!challenge.verificationMethod || challenge.verificationMethod === "SMS") && Boolean(body.code) &&
+            otpHashesEqual(challenge.codeHash, hashOtpCode(challenge.id, body.code!, otpHashSecret)))
+        );
       if (!validChallenge) {
-        if (challenge && !challenge.consumedAt && challenge.expiresAt > now) {
+        if (challenge && (!challenge.verificationMethod || challenge.verificationMethod === "SMS") && !challenge.consumedAt && challenge.expiresAt > now) {
           await prisma.otpChallenge.updateMany({
             where: { id: challenge.id, consumedAt: null, attempts: { lt: challenge.maxAttempts } },
             data: { attempts: { increment: 1 } },

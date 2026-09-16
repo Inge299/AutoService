@@ -12,6 +12,7 @@ import {
   getApiSessionWithAccessToken,
   logoutStaffSession,
   requestPhoneCode,
+  verifyPhoneCall,
   verifyPhoneCode,
 } from "@/lib/api/autoservice-api";
 import { clientForwardedFor } from "@/lib/auth/client-address";
@@ -53,7 +54,42 @@ export async function requestStaffCodeAction(formData: FormData): Promise<void> 
     }
     redirect("/login?mode=sms&error=sms_unavailable");
   }
+  if (challenge.verification.method === "CALLCHECK") {
+    const params = new URLSearchParams({
+      mode: "call",
+      challenge: challenge.challengeId,
+      callPhone: challenge.verification.callPhone,
+      callPhonePretty: challenge.verification.callPhonePretty,
+    });
+    redirect(`/login?${params}`);
+  }
   redirect(`/login?mode=code&challenge=${encodeURIComponent(challenge.challengeId)}`);
+}
+
+export async function verifyStaffCallAction(formData: FormData): Promise<void> {
+  const challengeId = String(formData.get("challenge") ?? "");
+  const callPhone = String(formData.get("callPhone") ?? "");
+  const callPhonePretty = String(formData.get("callPhonePretty") ?? "");
+  const state = new URLSearchParams({ mode: "call", challenge: challengeId, callPhone, callPhonePretty });
+  if (!challengeId) redirect(`/login?${state}&error=invalid_code`);
+  try {
+    const result = await verifyPhoneCall(challengeId);
+    if (!("accessToken" in result)) {
+      redirect(`/login?${state}&error=${result.status === "pending" ? "call_pending" : "invalid_code"}`);
+    }
+    const identity = await getApiSessionWithAccessToken(result.accessToken);
+    const session = {
+      ...result,
+      userId: identity.id,
+      workshopId: identity.workshopId,
+      displayName: identity.displayName,
+      role: identity.role,
+    };
+    await persistSession(createSessionToken(session), result.refreshTokenExpiresAtEpochMs);
+  } catch {
+    redirect(`/login?${state}&error=invalid_code`);
+  }
+  redirect("/dashboard");
 }
 
 export async function verifyStaffCodeAction(formData: FormData): Promise<void> {
