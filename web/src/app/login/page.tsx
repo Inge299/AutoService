@@ -35,7 +35,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <section className="login-panel">
         <div className="login-form-wrap">
           <span className="mobile-login-brand"><BrandMark /></span>
-          <p className="eyebrow">Добро пожаловать</p>
+          <p className="eyebrow">Сотрудникам мастерской</p>
           <h2>Вход в AutoService</h2>
           <p className="muted login-subtitle">{mode === "call" ? "Позвоните с вашего рабочего номера. Звонок будет сброшен автоматически." : mode === "code" ? "Введите код из SMS." : mode === "sms" ? "Подтвердите рабочий номер звонком." : "Войдите по звонку или используйте пароль."}</p>
           {error && <div className="form-error"><Icon name="alert" />{errors[error] ?? "Не удалось войти."}</div>}
@@ -64,6 +64,17 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             </form>
             <Link className="button button-secondary" href="/login?mode=sms">Войти по телефону</Link>
           </>}
+          {!mode && <section className="customer-entry" aria-labelledby="customer-entry-title">
+            <div>
+              <p className="eyebrow">Клиентам</p>
+              <h3 id="customer-entry-title">Личный кабинет</h3>
+              <p>Проверьте историю ремонта, согласуйте работы или создайте кабинет по персональной ссылке мастерской.</p>
+            </div>
+            <div className="customer-entry-actions">
+              <Link className="button button-secondary" href="/customer/login">Войти в кабинет</Link>
+              <Link className="text-link" href="/customer/register">Создать кабинет</Link>
+            </div>
+          </section>}
           <p className="security-note">Сессия хранится в зашифрованной HttpOnly cookie. Служебные идентификаторы недоступны клиентскому JavaScript и не вводятся пользователем.</p>
         </div>
       </section>
