@@ -798,13 +798,14 @@ private fun VisitScreen(
             findings.take(3).forEach { finding ->
                 FindingCard(
                     finding = finding,
-                    materialCount = assets.count { it.findingId == finding.id },
+                    findingAssets = assets.filter { it.findingId == finding.id },
                     onOpenCamera = { onOpenFindingCamera(finding.id) },
                     onToggleVoice = { toggleVoice(finding.id) },
                     recordingVoice = recordingVoice && voiceFindingId == finding.id,
                     onPrepare = { onPrepareFinding(finding) },
                     onSendApprovalLink = { onSendApprovalLink(finding) },
                     onEdit = { onEditFinding(finding) },
+                    onRetryUpload = { asset -> viewModel.retry(asset) },
                 )
             }
         }
@@ -874,13 +875,14 @@ private fun TimelineStep(number: String, title: String, detail: String, color: a
 @Composable
 private fun FindingCard(
     finding: FindingEntity,
-    materialCount: Int,
+    findingAssets: List<MediaAssetEntity>,
     onOpenCamera: () -> Unit,
     onToggleVoice: () -> Unit,
     recordingVoice: Boolean,
     onPrepare: () -> Unit,
     onSendApprovalLink: () -> Unit,
     onEdit: () -> Unit,
+    onRetryUpload: (MediaAssetEntity) -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -891,7 +893,21 @@ private fun FindingCard(
                 finding.priceRub?.let { StatusPill("${it} ₽", MaterialTheme.colorScheme.secondaryContainer) }
             }
             StatusPill(finding.status.label(), finding.status.color())
-            Text("Материалов: $materialCount", style = MaterialTheme.typography.bodySmall)
+            val pendingAssets = findingAssets.filter { it.syncState != SyncState.SYNCED }
+            Text(
+                when {
+                    findingAssets.isEmpty() -> "Материалы не прикреплены"
+                    pendingAssets.isEmpty() -> "Материалы загружены на сервер: ${findingAssets.size}"
+                    else -> "Материалы: ${findingAssets.size} · ожидают загрузки: ${pendingAssets.size}"
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+            pendingAssets.forEach { asset ->
+                Text("• ${asset.kind.label()}: ${asset.syncState.label()}", style = MaterialTheme.typography.bodySmall)
+                if (asset.syncState == SyncState.RETRY || asset.syncState == SyncState.BLOCKED) {
+                    TextButton(onClick = { onRetryUpload(asset) }) { Text("Повторить загрузку") }
+                }
+            }
             Spacer(Modifier.height(8.dp))
             Button(onClick = onOpenCamera, modifier = Modifier.fillMaxWidth()) {
                 Text("Фото / видео")

@@ -71,7 +71,6 @@ class FindingRepository(
         val mediaIds = mediaDao.forFinding(finding.id)
             .filter { it.syncState == SyncState.SYNCED }
             .map { it.id }
-        require(mediaIds.isNotEmpty()) { "Сначала дождитесь загрузки хотя бы одного материала" }
 
         val pending = finding.copy(
             approvalOperationId = finding.approvalOperationId ?: UUID.randomUUID().toString(),

@@ -12,7 +12,7 @@ export async function createApprovalLinkAction(formData: FormData): Promise<void
   const session = await requireSession();
   const visit = await getApiVisit(visitId, session);
   const finding = visit?.findings.find((item) => item.id === findingId);
-  if (!visit || !finding || finding.status !== "READY_FOR_APPROVAL" || finding.priceRub === null || finding.media.length === 0) {
+  if (!visit || !finding || finding.status !== "READY_FOR_APPROVAL" || finding.priceRub === null) {
     redirect(`/visits/${encodeURIComponent(visitId)}?error=approval_unavailable`);
   }
   const token = randomBytes(32).toString("base64url");

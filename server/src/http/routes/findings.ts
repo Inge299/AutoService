@@ -24,7 +24,7 @@ const staffWritableFindingStatuses = new Set(["DRAFT", "READY_FOR_APPROVAL"]);
 const approvalSchema = z.object({
   operationId: z.string().uuid(),
   token: z.string().min(43).max(200).regex(/^[A-Za-z0-9_-]+$/),
-  mediaIds: z.array(z.string().uuid()).min(1).max(20),
+  mediaIds: z.array(z.string().uuid()).max(20),
   expiresInDays: z.number().int().min(1).max(30).default(7),
 }).superRefine((value, context) => {
   if (new Set(value.mediaIds).size !== value.mediaIds.length) {
