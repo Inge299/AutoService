@@ -16,11 +16,15 @@
 | Подтверждение файла | `POST /v1/media/{id}/complete` | Реализовано |
 | Статус файла | `GET /v1/media/{id}` | Реализовано |
 | Вход Android | `POST /v1/auth/login` | Реализовано |
-| Вход сотрудника/клиента по SMS | `POST /public/v1/auth/phone/request-code`, `verify-code` | Реализовано через SMS.RU |
+| Вход сотрудника/клиента по SMS | `POST /public/v1/auth/phone/request-code`, `verify-code` | Код реализован; production-доставка включается после настройки SMS.RU |
 | Ротация/отзыв сессии | `POST /public/v1/auth/refresh`, `POST /v1/auth/logout` | Реализовано |
 | Регистрация клиента по защищённой ссылке и SMS | `POST /public/v1/customer-accounts/register` | Реализовано через SMS.RU |
 | Вход клиента по телефону/e-mail | `POST /public/v1/customer-accounts/login` | Реализовано |
 | Кабинет клиента: автомобили и ремонты | `GET /public/v1/customer-accounts/me` | Реализовано |
+| Создать согласование | `POST /v1/findings/{id}/approval-link` | Реализовано |
+| Отозвать активную ссылку | `DELETE /v1/findings/{id}/approval-link` | Реализовано |
+| Прочитать согласование и доказательства | `GET /public/v1/approvals/{token}` | Реализовано |
+| Решение клиента | `POST /public/v1/approvals/{token}/decision` | Реализовано |
 
 Детали запросов, ответов и ошибок описаны в [серверной архитектуре](SERVER_ARCHITECTURE.md).
 
@@ -28,12 +32,13 @@
 
 | Операция | Планируемый path | Статус |
 |---|---|---|
-| Создать согласование | `POST /v1/findings/{id}/approval-link` | Не реализовано |
 | Открыть клиентскую страницу | `GET /a/{token}` | Реализовано веб-слоем |
-| Решение клиента | `POST /public/v1/approvals/{token}/decision` | Реализовано |
 | Отправить SMS/сообщение | `POST /v1/approval-links/{id}/send-message` | Не реализовано |
 
-Для согласований уже заложены таблицы `approval_versions`, `approval_links` и `approval_decisions`. Таблицы доставки сообщений пока нет: её нужно проектировать после выбора провайдера.
+Создание согласования требует `operationId`, 256-битный URL-safe токен и список
+подтверждённых материалов находки. При повторе с теми же `operationId` и токеном API
+возвращает ту же ссылку; в БД хранится только хеш токена. Таблицы доставки сообщений
+пока нет: её нужно проектировать для отдельной SMS-очереди.
 
 ## Правила будущего публичного согласования
 

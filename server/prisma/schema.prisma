@@ -298,6 +298,7 @@ model MediaAsset {
 
 model ApprovalVersion {
   id          String            @id @default(uuid()) @db.Uuid
+  operationId String            @unique @map("operation_id") @db.Uuid
   workshopId  String            @map("workshop_id") @db.Uuid
   visitId     String            @map("visit_id") @db.Uuid
   findingId   String            @map("finding_id") @db.Uuid

@@ -125,6 +125,13 @@ export interface PublicApproval {
     priority: FindingPriority;
     mediaCount: number;
   };
+  media: Array<{
+    id: string;
+    kind: "PHOTO" | "VIDEO" | "VOICE";
+    mimeType: string;
+    url: string;
+    expiresInSeconds: number;
+  }>;
   decision: { value: ApprovalDecisionValue; createdAt: string } | null;
 }
 

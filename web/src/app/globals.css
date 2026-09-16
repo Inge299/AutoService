@@ -125,3 +125,9 @@
   .admin-user-row>form:last-child{grid-column:1/-1;grid-row:auto;justify-self:stretch}
   .admin-user-row>form:last-child .button{width:100%}
 }
+
+.evidence-media{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.evidence-media figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.evidence-media img,.evidence-media video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:#171b1a}
+.evidence-media audio{display:block;width:100%;padding:18px 12px}
+.evidence-media figcaption{display:flex;align-items:center;gap:6px;padding:10px 12px;color:var(--muted);font-size:11px}

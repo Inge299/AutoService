@@ -45,7 +45,7 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
     config.ACCESS_TOKEN_SECRET,
   );
   await app.register(healthRoutes(dependencies.prisma));
-  await app.register(publicApprovalRoutes(dependencies.prisma));
+  await app.register(publicApprovalRoutes(dependencies.prisma, dependencies.storage));
   await app.register(customerAccountRoutes(
     dependencies.prisma,
     config.ACCESS_TOKEN_SECRET,

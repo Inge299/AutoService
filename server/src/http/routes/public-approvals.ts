@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { ApprovalDecisionValue, FindingStatus, PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import type { ObjectStorage } from "../../infrastructure/object-storage.js";
 
 const paramsSchema = z.object({ token: z.string().min(32).max(200).regex(/^[A-Za-z0-9_-]+$/) });
 const decisionSchema = z.object({
@@ -35,7 +36,7 @@ function unavailable(link: { expiresAt: Date; revokedAt: Date | null }): boolean
   return Boolean(link.revokedAt) || link.expiresAt.getTime() <= Date.now();
 }
 
-export function publicApprovalRoutes(prisma: PrismaClient): FastifyPluginAsync {
+export function publicApprovalRoutes(prisma: PrismaClient, storage: ObjectStorage): FastifyPluginAsync {
   return async (app) => {
     app.get("/public/v1/approvals/:token", async (request, reply) => {
       const { token } = paramsSchema.parse(request.params);
@@ -51,6 +52,34 @@ export function publicApprovalRoutes(prisma: PrismaClient): FastifyPluginAsync {
       }
 
       const version = link.approvalVersion;
+      const assets = version.mediaIds.length
+        ? await prisma.mediaAsset.findMany({
+            where: {
+              id: { in: version.mediaIds },
+              workshopId: version.workshopId,
+              visitId: version.visitId,
+              findingId: version.findingId,
+              state: { in: ["VERIFIED", "READY"] },
+            },
+            select: { id: true, kind: true, mimeType: true, objectKey: true },
+          })
+        : [];
+      if (assets.length !== version.mediaIds.length) {
+        return reply.code(410).send({ error: "approval_media_unavailable" });
+      }
+      const byId = new Map(assets.map((asset) => [asset.id, asset]));
+      const media = await Promise.all(version.mediaIds.map(async (mediaId) => {
+        const asset = byId.get(mediaId);
+        if (!asset) throw new Error("Approval media snapshot is incomplete");
+        const target = await storage.createDownloadTarget(asset.objectKey);
+        return {
+          id: asset.id,
+          kind: asset.kind,
+          mimeType: asset.mimeType,
+          url: target.url,
+          expiresInSeconds: target.expiresInSeconds,
+        };
+      }));
       return reply.send({
         expiresAt: link.expiresAt,
         openedAt: link.openedAt ?? new Date(),
@@ -62,8 +91,9 @@ export function publicApprovalRoutes(prisma: PrismaClient): FastifyPluginAsync {
           description: version.description,
           priceRub: version.priceRub,
           priority: version.finding.priority,
-          mediaCount: version.mediaIds.length,
+          mediaCount: media.length,
         },
+        media,
         decision: version.decision,
       });
     });
