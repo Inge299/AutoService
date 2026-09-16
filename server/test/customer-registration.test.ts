@@ -105,4 +105,94 @@ describe("customer account registration", () => {
     });
     await app.close();
   });
+
+  it("completes a verified customer account that has no credentials yet", async () => {
+    const incompleteUserId = "66666666-6666-4666-8666-666666666666";
+    const approval = {
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: null,
+      approvalVersion: {
+        workshopId,
+        visit: {
+          id: "55555555-5555-4555-8555-555555555555",
+          customerId,
+          customerName: "Иван",
+          customerPhone: "+79991234567",
+        },
+      },
+    };
+    const challenge = {
+      id: challengeId,
+      purpose: "CUSTOMER_REGISTRATION",
+      phone: "+79991234567",
+      codeHash: hashOtpCode(challengeId, code, config.OTP_HASH_SECRET!),
+      verificationMethod: "SMS",
+      requestIpHash: "unused",
+      userId: null,
+      workshopId,
+      customerId,
+      attempts: 0,
+      maxAttempts: 5,
+      expiresAt: new Date(Date.now() + 60_000),
+      resendAfter: new Date(),
+      consumedAt: null,
+      createdAt: new Date(),
+    };
+    const consume = vi.fn().mockResolvedValue({ count: 1 });
+    const updateUser = vi.fn().mockResolvedValue({});
+    const updateCustomer = vi.fn().mockResolvedValue({});
+    const findUser = vi.fn(async ({ where }: { where: { id?: string; email?: string } }) => {
+      if (where.id === incompleteUserId) {
+        return {
+          id: incompleteUserId,
+          isActive: true,
+          phone: "+79991234567",
+          email: null,
+          passwordHash: null,
+          memberships: [],
+        };
+      }
+      return null;
+    });
+    const prisma = {
+      approvalLink: { findUnique: vi.fn().mockResolvedValue(approval) },
+      otpChallenge: { findUnique: vi.fn().mockResolvedValue(challenge), updateMany: vi.fn() },
+      authSession: { create: vi.fn().mockResolvedValue({}) },
+      $transaction: vi.fn(async (callback) => callback({
+        otpChallenge: { updateMany: consume },
+        customer: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: customerId,
+            workshopId,
+            name: "Иван",
+            phone: "+79991234567",
+            email: null,
+            accountUserId: incompleteUserId,
+          }),
+          update: updateCustomer,
+        },
+        user: { findUnique: findUser, findFirst: vi.fn(), update: updateUser, create: vi.fn() },
+        visit: { updateMany: vi.fn() },
+      })),
+    } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/public/v1/customer-accounts/register",
+      payload: {
+        approvalToken,
+        challengeId,
+        code,
+        email: "ivan@example.com",
+        password: "strong-password",
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(updateUser).toHaveBeenCalledOnce();
+    expect(updateCustomer).toHaveBeenCalledOnce();
+    expect(response.json()).toMatchObject({ customer: { id: customerId, email: "ivan@example.com" } });
+    await app.close();
+  });
 });
