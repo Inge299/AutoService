@@ -10,7 +10,7 @@ export default async function WorkshopLayout({ children }: { children: React.Rea
   try {
     currentUser = await getApiSession(session);
   } catch {
-    redirect("/login?error=access_revoked");
+    redirect("/staff/login?error=access_revoked");
   }
   const verifiedSession = { ...session, displayName: currentUser.displayName, role: currentUser.role };
   const [backend, workshop, reminders] = await Promise.all([

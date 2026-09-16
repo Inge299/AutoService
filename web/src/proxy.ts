@@ -15,7 +15,7 @@ export function proxy(request: NextRequest) {
     ? customer ? verifyCustomerSessionToken(raw) : verifySessionToken(raw)
     : null;
   if (!session) {
-    return NextResponse.redirect(new URL(customer ? "/customer/login" : "/login", request.url));
+    return NextResponse.redirect(new URL(customer ? "/customer/login" : "/staff/login", request.url));
   }
   if (!("isDemo" in session && session.isDemo) &&
     session.accessTokenExpiresAtEpochMs <= Date.now() + ACCESS_REFRESH_MARGIN_MS) {

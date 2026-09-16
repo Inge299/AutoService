@@ -49,7 +49,7 @@ export async function GET(request: Request) {
     if (customer) await clearCustomerSession();
     else await clearSession();
     if (background) return Response.json({ error: "session_expired" }, { status: 401 });
-    redirect(customer ? "/customer/login?error=session_expired" : "/login?error=session_expired");
+    redirect(customer ? "/customer/login?error=session_expired" : "/staff/login?error=session_expired");
   }
   if (background) return Response.json({ accessTokenExpiresAtEpochMs: refreshedExpiresAt });
   redirect(destination);
