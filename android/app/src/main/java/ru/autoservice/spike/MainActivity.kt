@@ -1,9 +1,9 @@
 package ru.autoservice.spike
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.graphics.BitmapFactory
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -38,7 +38,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Surface
-import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -49,7 +48,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -96,7 +94,6 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     var creatingFindingForVisitId by remember { mutableStateOf<String?>(null) }
     var showCamera by remember { mutableStateOf(false) }
     var captureFindingId by remember { mutableStateOf<String?>(null) }
-    var customerPreviewFinding by remember { mutableStateOf<FindingEntity?>(null) }
     var editingFinding by remember { mutableStateOf<FindingEntity?>(null) }
 
     val capturePermissions = remember {
@@ -242,24 +239,6 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                 modifier = Modifier.padding(padding),
             )
 
-            customerPreviewFinding != null -> CustomerPreviewScreen(
-                finding = customerPreviewFinding!!,
-                viewModel = viewModel,
-                onBack = { customerPreviewFinding = null },
-                onDecision = { decision ->
-                    viewModel.recordCustomerDecision(
-                        finding = customerPreviewFinding!!,
-                        decision = decision,
-                        onSuccess = {
-                            customerPreviewFinding = null
-                            message("Решение клиента сохранено")
-                        },
-                        onFailure = { message(it.message ?: "Не удалось сохранить решение") },
-                    )
-                },
-                modifier = Modifier.padding(padding),
-            )
-
             selectedVisit != null -> VisitScreen(
                 visit = selectedVisit,
                 viewModel = viewModel,
@@ -277,7 +256,20 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                         onFailure = { message(it.message ?: "Не удалось подготовить находку") },
                     )
                 },
-                onOpenCustomerPreview = { finding -> customerPreviewFinding = finding },
+                onSendApprovalLink = { finding ->
+                    viewModel.createApprovalLink(
+                        finding = finding,
+                        onSuccess = { link ->
+                            val share = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, link.publicUrl)
+                            }
+                            context.startActivity(Intent.createChooser(share, "Отправить ссылку клиенту"))
+                            message("Ссылка согласования готова")
+                        },
+                        onFailure = { message(it.message ?: "Не удалось создать ссылку") },
+                    )
+                },
                 onEditFinding = { finding -> editingFinding = finding },
                 onStartRepair = {
                     viewModel.startRepair(
@@ -435,79 +427,6 @@ private fun authErrorMessage(error: Throwable): String = when (error.message) {
     "verification_delivery_failed" -> "Не удалось отправить SMS"
     "phone_authentication_unavailable" -> "Вход по SMS временно недоступен"
     else -> error.message ?: "Не удалось войти"
-}
-
-@Composable
-private fun CustomerPreviewScreen(
-    finding: FindingEntity,
-    viewModel: QueueViewModel,
-    onBack: () -> Unit,
-    onDecision: (FindingStatus) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val assets by viewModel.assets.collectAsState()
-    val photos = assets.filter { it.findingId == finding.id && it.kind == MediaKind.PHOTO }
-
-    LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(bottom = 24.dp),
-        modifier = modifier.fillMaxSize().padding(16.dp),
-    ) {
-        item { Text("Согласование работ", style = MaterialTheme.typography.headlineSmall) }
-        item { Text("Предпросмотр страницы клиента", style = MaterialTheme.typography.bodySmall) }
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(finding.title, style = MaterialTheme.typography.titleLarge)
-                    finding.description.takeIf(String::isNotBlank)?.let { Text(it) }
-                    Text(
-                        finding.priceRub?.let { "Стоимость: $it ₽" } ?: "Стоимость уточняется",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text("Приоритет: ${finding.priority.label()}")
-                }
-            }
-        }
-        item {
-            Text("Фото", style = MaterialTheme.typography.titleMedium)
-            if (photos.isEmpty()) {
-                Text("Фотографий пока нет", style = MaterialTheme.typography.bodySmall)
-            } else {
-                photos.take(3).forEach { asset -> LocalPhoto(asset.localPath) }
-            }
-        }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = { onDecision(FindingStatus.APPROVED) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Согласовать")
-                }
-                Button(onClick = { onDecision(FindingStatus.DECLINED) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Отклонить")
-                }
-                Button(onClick = { onDecision(FindingStatus.DEFERRED) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Отложить")
-                }
-                TextButton(onClick = { onDecision(FindingStatus.CALL_REQUESTED) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Нужен звонок")
-                }
-                TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Назад мастеру") }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LocalPhoto(path: String) {
-    val image = remember(path) { BitmapFactory.decodeFile(path)?.asImageBitmap() }
-    if (image != null) {
-        Image(
-            bitmap = image,
-            contentDescription = "Фото неисправности",
-            modifier = Modifier.fillMaxWidth().height(220.dp),
-        )
-    } else {
-        Text("Фото недоступно на этом устройстве", style = MaterialTheme.typography.bodySmall)
-    }
 }
 
 @Composable
@@ -766,7 +685,7 @@ private fun VisitScreen(
     onOpenCamera: () -> Unit,
     onOpenFindingCamera: (String) -> Unit,
     onPrepareFinding: (FindingEntity) -> Unit,
-    onOpenCustomerPreview: (FindingEntity) -> Unit,
+    onSendApprovalLink: (FindingEntity) -> Unit,
     onEditFinding: (FindingEntity) -> Unit,
     onStartRepair: () -> Unit,
     onCreateFinding: () -> Unit,
@@ -884,7 +803,7 @@ private fun VisitScreen(
                     onToggleVoice = { toggleVoice(finding.id) },
                     recordingVoice = recordingVoice && voiceFindingId == finding.id,
                     onPrepare = { onPrepareFinding(finding) },
-                    onOpenCustomerPreview = { onOpenCustomerPreview(finding) },
+                    onSendApprovalLink = { onSendApprovalLink(finding) },
                     onEdit = { onEditFinding(finding) },
                 )
             }
@@ -960,7 +879,7 @@ private fun FindingCard(
     onToggleVoice: () -> Unit,
     recordingVoice: Boolean,
     onPrepare: () -> Unit,
-    onOpenCustomerPreview: () -> Unit,
+    onSendApprovalLink: () -> Unit,
     onEdit: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
@@ -985,9 +904,13 @@ private fun FindingCard(
                     Text("Подготовить согласование")
                 }
                 FindingStatus.READY_FOR_APPROVAL -> Button(
-                    onClick = onOpenCustomerPreview,
+                    onClick = onSendApprovalLink,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Открыть для клиента") }
+                ) { Text("Отправить ссылку клиенту") }
+                FindingStatus.SENT_TO_CUSTOMER -> Button(
+                    onClick = onSendApprovalLink,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Отправить ссылку повторно") }
                 else -> Unit
             }
             if (finding.status == FindingStatus.DRAFT) {

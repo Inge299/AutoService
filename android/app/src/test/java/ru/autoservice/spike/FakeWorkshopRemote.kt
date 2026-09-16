@@ -6,6 +6,7 @@ import ru.autoservice.spike.data.SyncState
 import ru.autoservice.spike.data.VisitEntity
 import ru.autoservice.spike.network.WorkshopRemote
 import ru.autoservice.spike.network.WorkshopSnapshot
+import ru.autoservice.spike.network.ApprovalLink
 
 class FakeWorkshopRemote : WorkshopRemote {
     val visits = mutableListOf<VisitEntity>()
@@ -24,6 +25,13 @@ class FakeWorkshopRemote : WorkshopRemote {
             findings.removeAll { current -> current.id == it.id }
             findings += it
         }
+
+    override suspend fun createApprovalLink(
+        findingId: String,
+        operationId: String,
+        token: String,
+        mediaIds: List<String>,
+    ) = ApprovalLink("https://example.test/a/$token", 1_800_000L)
 
     override suspend fun uploadMedia(asset: MediaAssetEntity) = Unit
 }

@@ -119,4 +119,8 @@ data class FindingEntity(
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
     val serverVersion: Int = 0,
+    val approvalOperationId: String? = null,
+    val approvalToken: String? = null,
+    val approvalPublicUrl: String? = null,
+    val approvalExpiresAtEpochMs: Long? = null,
 )
