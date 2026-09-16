@@ -1,10 +1,14 @@
 package ru.autoservice.spike.data
 
 import ru.autoservice.spike.network.WorkshopRemote
+import ru.autoservice.spike.network.ApprovalLink
+import java.security.SecureRandom
+import java.util.Base64
 import java.util.UUID
 
 class FindingRepository(
     private val findingDao: FindingDao,
+    private val mediaDao: MediaDao,
     private val api: WorkshopRemote,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
@@ -55,14 +59,40 @@ class FindingRepository(
         return saved
     }
 
-    suspend fun recordCustomerDecision(finding: FindingEntity, decision: FindingStatus) {
-        require(decision in customerDecisions) { "Некорректное решение клиента" }
-        require(finding.status in setOf(FindingStatus.READY_FOR_APPROVAL, FindingStatus.SENT_TO_CUSTOMER)) {
-            "Находка не готова к решению клиента"
+    suspend fun createApprovalLink(finding: FindingEntity): ApprovalLink {
+        if (finding.status == FindingStatus.SENT_TO_CUSTOMER && finding.approvalPublicUrl != null) {
+            return ApprovalLink(
+                publicUrl = finding.approvalPublicUrl,
+                expiresAtEpochMs = finding.approvalExpiresAtEpochMs ?: 0L,
+            )
         }
-        findingDao.update(api.saveFinding(
-            finding.copy(status = decision, updatedAtEpochMs = clock()),
-        ))
+        require(finding.status == FindingStatus.READY_FOR_APPROVAL) { "Находка не готова к отправке" }
+        require(finding.priceRub != null) { "Укажите цену перед согласованием" }
+        val mediaIds = mediaDao.forFinding(finding.id)
+            .filter { it.syncState == SyncState.SYNCED }
+            .map { it.id }
+        require(mediaIds.isNotEmpty()) { "Сначала дождитесь загрузки хотя бы одного материала" }
+
+        val pending = finding.copy(
+            approvalOperationId = finding.approvalOperationId ?: UUID.randomUUID().toString(),
+            approvalToken = finding.approvalToken ?: newApprovalToken(),
+        )
+        if (pending != finding) findingDao.update(pending)
+        val link = api.createApprovalLink(
+            findingId = pending.id,
+            operationId = requireNotNull(pending.approvalOperationId),
+            token = requireNotNull(pending.approvalToken),
+            mediaIds = mediaIds,
+        )
+        findingDao.update(
+            pending.copy(
+                status = FindingStatus.SENT_TO_CUSTOMER,
+                approvalPublicUrl = link.publicUrl,
+                approvalExpiresAtEpochMs = link.expiresAtEpochMs,
+                updatedAtEpochMs = clock(),
+            ),
+        )
+        return link
     }
 
     suspend fun synchronizeLocal(serverFindings: List<FindingEntity>) {
@@ -71,17 +101,23 @@ class FindingRepository(
             .forEach { findingDao.update(api.saveFinding(it)) }
         serverFindings.forEach { remote ->
             val local = findingDao.all().firstOrNull { it.id == remote.id }
-            if (local == null) findingDao.insert(remote) else findingDao.update(remote)
+            if (local == null) {
+                findingDao.insert(remote)
+            } else {
+                findingDao.update(remote.copy(
+                    approvalOperationId = local.approvalOperationId,
+                    approvalToken = local.approvalToken,
+                    approvalPublicUrl = local.approvalPublicUrl,
+                    approvalExpiresAtEpochMs = local.approvalExpiresAtEpochMs,
+                ))
+            }
         }
     }
 
-    private companion object {
-        val customerDecisions = setOf(
-            FindingStatus.APPROVED,
-            FindingStatus.DECLINED,
-            FindingStatus.CALL_REQUESTED,
-            FindingStatus.DEFERRED,
-        )
+    private fun newApprovalToken(): String {
+        val bytes = ByteArray(32)
+        SecureRandom().nextBytes(bytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 }
 

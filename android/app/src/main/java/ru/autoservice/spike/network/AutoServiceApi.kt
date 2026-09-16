@@ -32,10 +32,21 @@ data class OtpChallenge(
     val resendAfterEpochMs: Long,
 )
 
+data class ApprovalLink(
+    val publicUrl: String,
+    val expiresAtEpochMs: Long,
+)
+
 interface WorkshopRemote {
     suspend fun loadWorkshop(): WorkshopSnapshot
     suspend fun saveVisit(visit: VisitEntity): VisitEntity
     suspend fun saveFinding(finding: FindingEntity): FindingEntity
+    suspend fun createApprovalLink(
+        findingId: String,
+        operationId: String,
+        token: String,
+        mediaIds: List<String>,
+    ): ApprovalLink
     suspend fun uploadMedia(asset: MediaAssetEntity)
 }
 
@@ -152,6 +163,26 @@ class AutoServiceApi(
         request("PUT", "/v1/findings/${finding.id}", body).toFinding()
     }
 
+    override suspend fun createApprovalLink(
+        findingId: String,
+        operationId: String,
+        token: String,
+        mediaIds: List<String>,
+    ): ApprovalLink = withContext(Dispatchers.IO) {
+        val json = request(
+            "POST",
+            "/v1/findings/$findingId/approval-link",
+            JSONObject()
+                .put("operationId", operationId)
+                .put("token", token)
+                .put("mediaIds", JSONArray(mediaIds)),
+        )
+        ApprovalLink(
+            publicUrl = "$baseUrl${json.getString("publicPath")}",
+            expiresAtEpochMs = Instant.parse(json.getString("expiresAt")).toEpochMilli(),
+        )
+    }
+
     override suspend fun uploadMedia(asset: MediaAssetEntity): Unit = withContext(Dispatchers.IO) {
         val sessionBody = JSONObject()
             .put("operationId", asset.operationId)
@@ -167,7 +198,7 @@ class AutoServiceApi(
 
         repeat(20) {
             val state = request("GET", "/v1/media/${asset.id}").getString("state")
-            if (state in setOf("VERIFIED", "PROCESSING", "READY")) return@withContext
+            if (state in setOf("VERIFIED", "READY")) return@withContext
             if (state == "BLOCKED") throw IllegalArgumentException("Сервер отклонил повреждённый файл")
             Thread.sleep(500)
         }

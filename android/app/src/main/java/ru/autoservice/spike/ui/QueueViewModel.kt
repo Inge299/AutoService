@@ -21,6 +21,7 @@ import ru.autoservice.spike.data.VisitDraft
 import ru.autoservice.spike.data.VisitEntity
 import ru.autoservice.spike.network.AuthSession
 import ru.autoservice.spike.network.OtpChallenge
+import ru.autoservice.spike.network.ApprovalLink
 import java.io.File
 
 class QueueViewModel(application: Application) : AndroidViewModel(application) {
@@ -190,15 +191,14 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun recordCustomerDecision(
+    fun createApprovalLink(
         finding: FindingEntity,
-        decision: ru.autoservice.spike.data.FindingStatus,
-        onSuccess: () -> Unit,
+        onSuccess: (ApprovalLink) -> Unit,
         onFailure: (Throwable) -> Unit,
     ) {
         viewModelScope.launch {
-            runCatching { container.findingRepository.recordCustomerDecision(finding, decision) }
-                .onSuccess { onSuccess() }
+            runCatching { container.findingRepository.createApprovalLink(finding) }
+                .onSuccess(onSuccess)
                 .onFailure(onFailure)
         }
     }

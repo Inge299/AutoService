@@ -8,7 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [VisitEntity::class, MediaAssetEntity::class, DictionaryValueEntity::class, FindingEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -59,6 +59,15 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `visits` ADD COLUMN `serverVersion` INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE `findings` ADD COLUMN `serverVersion` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `findings` ADD COLUMN `approvalOperationId` TEXT")
+                db.execSQL("ALTER TABLE `findings` ADD COLUMN `approvalToken` TEXT")
+                db.execSQL("ALTER TABLE `findings` ADD COLUMN `approvalPublicUrl` TEXT")
+                db.execSQL("ALTER TABLE `findings` ADD COLUMN `approvalExpiresAtEpochMs` INTEGER")
             }
         }
     }

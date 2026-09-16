@@ -12,12 +12,16 @@ import ru.autoservice.spike.data.FindingEntity
 import ru.autoservice.spike.data.FindingPriority
 import ru.autoservice.spike.data.FindingRepository
 import ru.autoservice.spike.data.FindingStatus
+import ru.autoservice.spike.data.MediaAssetEntity
+import ru.autoservice.spike.data.MediaDao
+import ru.autoservice.spike.data.MediaKind
+import ru.autoservice.spike.data.SyncState
 
 class FindingRepositoryTest {
     @Test
     fun `creates local finding with price and priority`() = runTest {
         val dao = FakeFindingDao()
-        val repository = FindingRepository(dao, FakeWorkshopRemote(), clock = { 456L })
+        val repository = FindingRepository(dao, FakeMediaDao(), FakeWorkshopRemote(), clock = { 456L })
 
         val finding = repository.createFinding(
             FindingDraft(
@@ -40,7 +44,7 @@ class FindingRepositoryTest {
 
     @Test
     fun `rejects finding without title`() = runTest {
-        val repository = FindingRepository(FakeFindingDao(), FakeWorkshopRemote())
+        val repository = FindingRepository(FakeFindingDao(), FakeMediaDao(), FakeWorkshopRemote())
 
         var rejected = false
         try {
@@ -62,7 +66,7 @@ class FindingRepositoryTest {
     @Test
     fun `prepares priced finding for customer approval`() = runTest {
         val dao = FakeFindingDao()
-        val repository = FindingRepository(dao, FakeWorkshopRemote(), clock = { 789L })
+        val repository = FindingRepository(dao, FakeMediaDao(), FakeWorkshopRemote(), clock = { 789L })
         val finding = repository.createFinding(
             FindingDraft(
                 visitId = "visit-1",
@@ -77,6 +81,32 @@ class FindingRepositoryTest {
 
         assertEquals(FindingStatus.READY_FOR_APPROVAL, dao.saved?.status)
         assertEquals(789L, dao.saved?.updatedAtEpochMs)
+    }
+
+    @Test
+    fun `creates a reusable client link only after finding media has synced`() = runTest {
+        val dao = FakeFindingDao()
+        val mediaDao = FakeMediaDao(listOf(mediaAsset("finding-1", SyncState.SYNCED)))
+        val repository = FindingRepository(dao, mediaDao, FakeWorkshopRemote(), clock = { 1_000L })
+        val finding = FindingEntity(
+            id = "finding-1",
+            visitId = "visit-1",
+            title = "Колодки",
+            description = "",
+            priceRub = 4_000,
+            priority = FindingPriority.IMPORTANT,
+            status = FindingStatus.READY_FOR_APPROVAL,
+            createdAtEpochMs = 1L,
+            updatedAtEpochMs = 1L,
+            serverVersion = 2,
+        )
+
+        val link = repository.createApprovalLink(finding)
+
+        assertTrue(link.publicUrl.startsWith("https://example.test/a/"))
+        assertEquals(FindingStatus.SENT_TO_CUSTOMER, dao.saved?.status)
+        assertTrue(dao.saved?.approvalOperationId?.isNotBlank() == true)
+        assertTrue(dao.saved?.approvalToken?.length ?: 0 >= 43)
     }
 
     private class FakeFindingDao : FindingDao {
@@ -104,4 +134,33 @@ class FindingRepositoryTest {
             saved = findings.value.firstOrNull { it.id == findingId }
         }
     }
+
+    private class FakeMediaDao(private val assets: List<MediaAssetEntity> = emptyList()) : MediaDao {
+        override suspend fun insert(asset: MediaAssetEntity) = Unit
+        override fun observeAll(): Flow<List<MediaAssetEntity>> = MutableStateFlow(assets)
+        override suspend fun find(id: String): MediaAssetEntity? = assets.firstOrNull { it.id == id }
+        override suspend fun forFinding(findingId: String): List<MediaAssetEntity> = assets.filter { it.findingId == findingId }
+        override suspend fun allLocalPaths(): List<String> = emptyList()
+        override suspend fun pending(): List<MediaAssetEntity> = emptyList()
+        override suspend fun updateProgress(id: String, state: SyncState, attempts: Int, error: String?, updatedAt: Long) = Unit
+        override suspend fun markSynced(id: String, remoteKey: String, updatedAt: Long) = Unit
+    }
+
+    private fun mediaAsset(findingId: String, state: SyncState) = MediaAssetEntity(
+        id = "media-1",
+        operationId = "operation-1",
+        visitId = "visit-1",
+        findingId = findingId,
+        kind = MediaKind.PHOTO,
+        mimeType = "image/jpeg",
+        localPath = "/tmp/media-1.jpg",
+        byteCount = 1L,
+        sha256 = "0".repeat(64),
+        syncState = state,
+        uploadAttempts = 0,
+        remoteKey = "remote/media-1",
+        lastError = null,
+        createdAtEpochMs = 1L,
+        updatedAtEpochMs = 1L,
+    )
 }
