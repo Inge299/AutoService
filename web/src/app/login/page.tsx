@@ -7,6 +7,7 @@ export const metadata: Metadata = { title: "Вход" };
 
 const errors: Record<string, string> = {
   invalid_credentials: "Неверный логин или пароль.",
+  too_many_attempts: "Слишком много попыток. Подождите 15 минут и попробуйте снова.",
   not_configured: "Авторизация ещё не настроена на сервере.",
   access_revoked: "Доступ к учётной записи отключён администратором.",
   server_unavailable: "Сервер авторизации временно недоступен.",

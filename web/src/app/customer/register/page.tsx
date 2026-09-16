@@ -7,6 +7,7 @@ export const metadata = { title: "Создать кабинет клиента" 
 const errors: Record<string, string> = {
   invalid_data: "Проверьте заполненные поля.",
   invalid_code: "Неверный или просроченный код.",
+  too_many_attempts: "Слишком много запросов. Подождите немного и повторите попытку.",
   sms_unavailable: "Не удалось отправить SMS. Попробуйте позже.",
   registration_failed: "Не удалось создать кабинет. Проверьте данные или войдите в существующий.",
 };

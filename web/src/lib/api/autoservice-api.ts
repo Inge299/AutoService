@@ -146,6 +146,12 @@ export class AutoServiceApiError extends Error {
   }
 }
 
+function forwardedForHeader(value?: string): Record<string, string> {
+  const normalized = value?.trim();
+  if (!normalized || normalized.length > 512 || /[\r\n]/.test(normalized)) return {};
+  return { "x-forwarded-for": normalized };
+}
+
 function apiBaseUrl(): string | null {
   const value = process.env.AUTOSERVICE_API_URL?.trim();
   return value ? value.replace(/\/$/, "") : null;
@@ -264,12 +270,16 @@ export function getApiWorkshop(session: WebSession) {
   return request<ApiWorkshop>("/v1/workshop", session);
 }
 
-export async function authenticateApiUser(login: string, password: string): Promise<ApiSessionIdentity | null> {
+export async function authenticateApiUser(
+  login: string,
+  password: string,
+  forwardedFor?: string,
+): Promise<ApiSessionIdentity | null> {
   const baseUrl = apiBaseUrl();
   if (!baseUrl) throw new Error("AUTOSERVICE_API_URL is not configured");
   const response = await fetch(`${baseUrl}/v1/auth/login`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...forwardedForHeader(forwardedFor) },
     body: JSON.stringify({ login, password }),
     cache: "no-store",
   });
@@ -373,10 +383,12 @@ export interface PhoneCodeChallenge {
 
 export function requestPhoneCode(payload:
   | { audience: "STAFF" | "CUSTOMER"; phone: string }
-  | { audience: "CUSTOMER_REGISTRATION"; approvalToken: string }
+  | { audience: "CUSTOMER_REGISTRATION"; approvalToken: string },
+  forwardedFor?: string,
 ) {
   return customerRequest<PhoneCodeChallenge>("/public/v1/auth/phone/request-code", {
     method: "POST",
+    headers: forwardedForHeader(forwardedFor),
     body: JSON.stringify(payload),
   });
 }

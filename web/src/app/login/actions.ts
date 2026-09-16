@@ -7,12 +7,14 @@ import {
   persistSession,
 } from "@/lib/auth/session";
 import {
+  AutoServiceApiError,
   authenticateApiUser,
   getApiSessionWithAccessToken,
   logoutStaffSession,
   requestPhoneCode,
   verifyPhoneCode,
 } from "@/lib/api/autoservice-api";
+import { clientForwardedFor } from "@/lib/auth/client-address";
 import { redirect } from "next/navigation";
 
 export async function loginAction(formData: FormData): Promise<void> {
@@ -25,8 +27,11 @@ export async function loginAction(formData: FormData): Promise<void> {
 
   let identity;
   try {
-    identity = await authenticateApiUser(login, password);
-  } catch {
+    identity = await authenticateApiUser(login, password, await clientForwardedFor());
+  } catch (error) {
+    if (error instanceof AutoServiceApiError && error.status === 429) {
+      redirect("/login?error=too_many_attempts");
+    }
     redirect("/login?error=server_unavailable");
   }
   if (!identity) redirect("/login?error=invalid_credentials");
@@ -41,8 +46,11 @@ export async function requestStaffCodeAction(formData: FormData): Promise<void> 
   if (phone.length < 8 || phone.length > 32) redirect("/login?mode=sms&error=invalid_phone");
   let challenge;
   try {
-    challenge = await requestPhoneCode({ audience: "STAFF", phone });
-  } catch {
+    challenge = await requestPhoneCode({ audience: "STAFF", phone }, await clientForwardedFor());
+  } catch (error) {
+    if (error instanceof AutoServiceApiError && error.status === 429) {
+      redirect("/login?mode=sms&error=too_many_attempts");
+    }
     redirect("/login?mode=sms&error=sms_unavailable");
   }
   redirect(`/login?mode=code&challenge=${encodeURIComponent(challenge.challengeId)}`);
