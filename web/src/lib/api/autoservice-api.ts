@@ -54,6 +54,7 @@ export interface ApiFinding {
   createdAt: string;
   updatedAt: string;
   _count: { media: number };
+  media: Array<{ id: string }>;
 }
 
 export interface ApiVisit {
@@ -296,6 +297,13 @@ export function upsertVisit(id: string, payload: VisitUpsertPayload, session: We
 export function upsertFinding(id: string, payload: FindingUpsertPayload, session: WebSession) {
   return request<Record<string, unknown>>(`/v1/findings/${id}`, session, {
     method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createApprovalLink(id: string, payload: { operationId: string; token: string; mediaIds: string[]; expiresInDays: number }, session: WebSession) {
+  return request<{ publicPath: string; expiresAt: string }>(`/v1/findings/${encodeURIComponent(id)}/approval-link`, session, {
+    method: "POST",
     body: JSON.stringify(payload),
   });
 }
