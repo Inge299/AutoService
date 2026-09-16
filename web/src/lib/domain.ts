@@ -82,6 +82,9 @@ export interface Reminder {
   reason: string;
   due: string;
   state: "OVERDUE" | "TODAY" | "UPCOMING";
+  deliveryState?: "PENDING" | "SENT" | "DELIVERED" | "FAILED" | "CANCELLED";
+  returnedVisitId?: string;
+  attempts?: number;
 }
 
 export const visitStatusMeta: Record<VisitStatus, { label: string; tone: string }> = {
