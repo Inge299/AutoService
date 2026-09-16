@@ -162,9 +162,40 @@ export function customerAccountRoutes(
                 name: visit.customerName,
                 phone: verifiedPhone,
               },
-            });
+        });
         if (!customer) throw new Error("Customer linked to approval was not found");
-        if (customer.accountUserId) return { state: "claimed" as const };
+        if (customer.accountUserId) {
+          const existingAccount = await tx.user.findUnique({
+            where: { id: customer.accountUserId },
+            include: { memberships: { select: { workshopId: true }, take: 1 } },
+          });
+          // A legacy/incomplete customer profile can already point at a user that
+          // has no credentials. The verified approval link is sufficient to finish
+          // that account, but never to take over an active or staff account.
+          const canCompleteExistingAccount = existingAccount &&
+            existingAccount.isActive &&
+            existingAccount.phone === verifiedPhone &&
+            !existingAccount.email &&
+            !existingAccount.passwordHash &&
+            existingAccount.memberships.length === 0;
+          if (!canCompleteExistingAccount) return { state: "claimed" as const };
+
+          const emailOwner = await tx.user.findUnique({
+            where: { email: body.email },
+            select: { id: true },
+          });
+          if (emailOwner && emailOwner.id !== existingAccount.id) return { state: "identity_taken" as const };
+
+          await tx.user.update({
+            where: { id: existingAccount.id },
+            data: { email: body.email, passwordHash, displayName: customer.name },
+          });
+          await tx.customer.update({
+            where: { id: customer.id },
+            data: { email: body.email, phone: verifiedPhone },
+          });
+          return { state: "created" as const, customerId: customer.id, userId: existingAccount.id, customer };
+        }
 
         const duplicate = await tx.user.findFirst({
           where: { OR: [{ phone: verifiedPhone }, { email: body.email }] },
