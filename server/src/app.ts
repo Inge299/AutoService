@@ -13,6 +13,7 @@ import { mediaRoutes } from "./http/routes/media.js";
 import { publicApprovalRoutes } from "./http/routes/public-approvals.js";
 import { publicReportRoutes } from "./http/routes/public-reports.js";
 import { reportRoutes } from "./http/routes/reports.js";
+import { reminderRoutes } from "./http/routes/reminders.js";
 import { visitRoutes } from "./http/routes/visits.js";
 import { workshopRoutes } from "./http/routes/workshops.js";
 import type { ObjectStorage } from "./infrastructure/object-storage.js";
@@ -66,6 +67,7 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
   await app.register(customerRoutes(dependencies.prisma));
   await app.register(visitRoutes(dependencies.prisma));
   await app.register(reportRoutes(dependencies.prisma));
+  await app.register(reminderRoutes(dependencies.prisma));
   await app.register(findingRoutes(dependencies.prisma));
   await app.register(mediaRoutes(dependencies.prisma, dependencies.storage));
   return app;
