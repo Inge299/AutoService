@@ -56,6 +56,15 @@ export interface Visit {
   events: VisitEvent[];
 }
 
+export interface VisitReport {
+  status: "DRAFT" | "PUBLISHED";
+  completedWork: string;
+  recommendations: string;
+  nextVisitAt: string | null;
+  publishedAt: string | null;
+  latestVersion: { version: number; createdAt: string; linkOpenedAt: string | null; linkRevokedAt: string | null } | null;
+}
+
 export interface Customer {
   id: string;
   name: string;
