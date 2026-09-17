@@ -1,14 +1,17 @@
 package ru.autoservice.spike.data
 
 import ru.autoservice.spike.media.MediaFileStore
+import ru.autoservice.spike.network.WorkshopRemote
 import ru.autoservice.spike.sync.UploadScheduler
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 
 class MediaRepository(
     private val mediaDao: MediaDao,
     private val fileStore: MediaFileStore,
     private val scheduler: UploadScheduler,
+    private val api: WorkshopRemote,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     val assets = mediaDao.observeAll()
@@ -71,6 +74,14 @@ class MediaRepository(
                 )
             }
         reschedulePending()
+    }
+
+    suspend fun delete(asset: MediaAssetEntity) {
+        scheduler.cancel(asset.id)
+        api.deleteMedia(asset.id)
+        val file = File(asset.localPath)
+        if (file.exists() && !file.delete()) throw IOException("Не удалось удалить локальный файл")
+        mediaDao.delete(asset.id)
     }
 
 }

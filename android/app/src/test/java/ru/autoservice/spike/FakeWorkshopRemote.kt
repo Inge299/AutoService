@@ -35,4 +35,6 @@ class FakeWorkshopRemote : WorkshopRemote {
     ) = ApprovalLink("https://example.test/a/$token", 1_800_000L)
 
     override suspend fun uploadMedia(asset: MediaAssetEntity) = Unit
+
+    override suspend fun deleteMedia(assetId: String) = Unit
 }

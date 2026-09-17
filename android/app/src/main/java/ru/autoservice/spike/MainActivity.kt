@@ -765,6 +765,7 @@ private fun VisitScreen(
     var recordingVoice by remember { mutableStateOf(false) }
     var voiceFindingId by remember { mutableStateOf<String?>(null) }
     var renewalFinding by remember { mutableStateOf<FindingEntity?>(null) }
+    var deletionAsset by remember { mutableStateOf<MediaAssetEntity?>(null) }
     var observedFindingStatuses by remember(visit.id) {
         mutableStateOf<Map<String, FindingStatus>?>(null)
     }
@@ -887,6 +888,7 @@ private fun VisitScreen(
                     onRenewApprovalLink = { renewalFinding = finding },
                     onEdit = { onEditFinding(finding) },
                     onRetryUpload = { asset -> viewModel.retry(asset) },
+                    onDelete = { asset -> deletionAsset = asset },
                 )
             }
         }
@@ -911,6 +913,29 @@ private fun VisitScreen(
                 },
             )
         }
+        deletionAsset?.let { asset ->
+            AlertDialog(
+                onDismissRequest = { deletionAsset = null },
+                title = { Text("Удалить материал?") },
+                text = {
+                    Text(
+                        "${asset.kind.label()} будет удалён с телефона и с сервера. " +
+                            "После удаления он не попадёт в ссылку клиенту.",
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        deletionAsset = null
+                        viewModel.deleteMedia(
+                            asset = asset,
+                            onSuccess = { onMessage("Материал удалён") },
+                            onFailure = { onMessage(it.message ?: "Не удалось удалить материал") },
+                        )
+                    }) { Text("Удалить") }
+                },
+                dismissButton = { TextButton(onClick = { deletionAsset = null }) { Text("Отмена") } },
+            )
+        }
         Spacer(Modifier.height(18.dp))
         if (visitAssets.isNotEmpty()) {
             Spacer(Modifier.height(18.dp))
@@ -924,7 +949,13 @@ private fun VisitScreen(
             )
             Spacer(Modifier.height(8.dp))
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                visitAssets.forEach { asset -> QueueItem(asset = asset, onRetry = { viewModel.retry(asset) }) }
+                visitAssets.forEach { asset ->
+                    QueueItem(
+                        asset = asset,
+                        onRetry = { viewModel.retry(asset) },
+                        onDelete = { deletionAsset = asset },
+                    )
+                }
             }
         }
     }
@@ -993,6 +1024,7 @@ private fun FindingCard(
     onRenewApprovalLink: () -> Unit,
     onEdit: () -> Unit,
     onRetryUpload: (MediaAssetEntity) -> Unit,
+    onDelete: (MediaAssetEntity) -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -1012,6 +1044,8 @@ private fun FindingCard(
                 FindingMediaGallery(
                     assets = findingAssets,
                     onRetryUpload = onRetryUpload,
+                    onDelete = onDelete,
+                    allowDelete = finding.status in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL),
                 )
             }
             if (pendingAssets.isNotEmpty() && finding.status in setOf(FindingStatus.READY_FOR_APPROVAL, FindingStatus.SENT_TO_CUSTOMER)) {
@@ -1058,6 +1092,8 @@ private fun FindingCard(
 private fun FindingMediaGallery(
     assets: List<MediaAssetEntity>,
     onRetryUpload: (MediaAssetEntity) -> Unit,
+    onDelete: (MediaAssetEntity) -> Unit,
+    allowDelete: Boolean,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1066,13 +1102,21 @@ private fun FindingMediaGallery(
             .horizontalScroll(rememberScrollState()),
     ) {
         assets.forEach { asset ->
-            FindingMediaPreview(asset = asset, onRetryUpload = { onRetryUpload(asset) })
+            FindingMediaPreview(
+                asset = asset,
+                onRetryUpload = { onRetryUpload(asset) },
+                onDelete = if (allowDelete) ({ onDelete(asset) }) else null,
+            )
         }
     }
 }
 
 @Composable
-private fun FindingMediaPreview(asset: MediaAssetEntity, onRetryUpload: () -> Unit) {
+private fun FindingMediaPreview(
+    asset: MediaAssetEntity,
+    onRetryUpload: () -> Unit,
+    onDelete: (() -> Unit)?,
+) {
     var showImage by remember(asset.id) { mutableStateOf(false) }
     var showVideo by remember(asset.id) { mutableStateOf(false) }
     val localFileExists = remember(asset.localPath) { File(asset.localPath).isFile }
@@ -1097,6 +1141,9 @@ private fun FindingMediaPreview(asset: MediaAssetEntity, onRetryUpload: () -> Un
             }
             if (asset.syncState == SyncState.RETRY || asset.syncState == SyncState.BLOCKED) {
                 TextButton(onClick = onRetryUpload, modifier = Modifier.fillMaxWidth()) { Text("Повторить") }
+            }
+            onDelete?.let { delete ->
+                TextButton(onClick = delete, modifier = Modifier.fillMaxWidth()) { Text("Удалить") }
             }
         }
     }
@@ -1299,7 +1346,7 @@ private fun VoicePlayer(path: String) {
 private fun Int.asDurationLabel(): String = "%d:%02d".format(this / 60_000, (this / 1_000) % 60)
 
 @Composable
-private fun QueueItem(asset: MediaAssetEntity, onRetry: () -> Unit) {
+private fun QueueItem(asset: MediaAssetEntity, onRetry: () -> Unit, onDelete: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text("${asset.kind.label()} · ${asset.syncState.label()}")
@@ -1311,6 +1358,7 @@ private fun QueueItem(asset: MediaAssetEntity, onRetry: () -> Unit) {
             if (asset.syncState == SyncState.RETRY || asset.syncState == SyncState.BLOCKED) {
                 Button(onClick = onRetry) { Text("Повторить") }
             }
+            TextButton(onClick = onDelete) { Text("Удалить") }
         }
     }
 }

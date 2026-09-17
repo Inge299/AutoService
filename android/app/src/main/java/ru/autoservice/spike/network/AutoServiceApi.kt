@@ -49,6 +49,7 @@ interface WorkshopRemote {
         replaceActive: Boolean = false,
     ): ApprovalLink
     suspend fun uploadMedia(asset: MediaAssetEntity)
+    suspend fun deleteMedia(assetId: String)
 }
 
 class AutoServiceApi(
@@ -196,7 +197,13 @@ class AutoServiceApi(
             .put("byteCount", asset.byteCount)
             .put("sha256", asset.sha256)
         val target = request("POST", "/v1/media/${asset.id}/upload-session", sessionBody)
-        uploadFile(target.getString("url"), target.getJSONObject("headers"), File(asset.localPath))
+        val file = File(asset.localPath)
+        try {
+            uploadFile(target.getString("url"), target.getJSONObject("headers"), file)
+        } catch (directError: IOException) {
+            if (directError is ApiException && directError.statusCode == 413) throw directError
+            uploadFileThroughApi(asset.id, file)
+        }
         request("POST", "/v1/media/${asset.id}/complete", JSONObject())
 
         repeat(20) {
@@ -206,6 +213,14 @@ class AutoServiceApi(
             Thread.sleep(500)
         }
         throw IOException("Сервер ещё проверяет файл")
+    }
+
+    override suspend fun deleteMedia(assetId: String): Unit = withContext(Dispatchers.IO) {
+        try {
+            requestText("DELETE", "/v1/media/$assetId", body = null, authenticated = true)
+        } catch (error: ApiException) {
+            if (error.statusCode != 404) throw error
+        }
     }
 
     private fun uploadFile(url: String, headers: JSONObject, file: File) {
@@ -230,6 +245,40 @@ class AutoServiceApi(
                 }
                 throw ApiException(status, "Не удалось загрузить файл ($status). $explanation")
             }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private suspend fun uploadFileThroughApi(assetId: String, file: File) {
+        var session = validAccessSession()
+        var response = uploadBinary("/v1/media/$assetId/content", file, session.accessToken)
+        if (response.status == 401) {
+            session = rotateSession(session.accessToken)
+            response = uploadBinary("/v1/media/$assetId/content", file, session.accessToken)
+        }
+        if (response.status !in 200..299) {
+            throw ApiException(response.status, "Не удалось передать файл через сервер (${response.status})")
+        }
+    }
+
+    private fun uploadBinary(path: String, file: File, accessToken: String): ApiResponse {
+        if (!file.isFile) throw IOException("Локальный файл не найден")
+        val connection = URL("$baseUrl$path").openConnection() as HttpURLConnection
+        return try {
+            connection.requestMethod = "PUT"
+            connection.doOutput = true
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 90_000
+            connection.setRequestProperty("Authorization", "Bearer $accessToken")
+            connection.setRequestProperty("Content-Type", "application/octet-stream")
+            connection.setFixedLengthStreamingMode(file.length())
+            file.inputStream().use { input -> connection.outputStream.use { output -> input.copyTo(output) } }
+            ApiResponse(
+                status = connection.responseCode,
+                body = (if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream)
+                    ?.bufferedReader()?.use { it.readText() }.orEmpty(),
+            )
         } finally {
             connection.disconnect()
         }

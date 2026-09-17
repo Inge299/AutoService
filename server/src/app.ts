@@ -38,6 +38,11 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
     // Trusting exactly that hop keeps per-client authentication limits effective.
     trustProxy: config.NODE_ENV === "production" ? trustSingleProxyHop : false,
   });
+  // Android uses this only as a reliable fallback when a direct presigned S3
+  // upload is interrupted by a mobile network or proxy.
+  app.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_request, body, done) => {
+    done(null, body);
+  });
   registerErrorHandler(app);
   const verificationDelivery = dependencies.verificationDelivery ?? createVerificationDelivery(config, app.log);
   registerActorContext(
