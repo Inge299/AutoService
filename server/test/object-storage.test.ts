@@ -19,7 +19,7 @@ const config: Config = {
 };
 
 describe("ObjectStorage upload targets", () => {
-  it("does not duplicate hoisted S3 metadata in Android request headers", async () => {
+  it("signs the Android content type and does not duplicate hoisted S3 metadata", async () => {
     const sha256 = "a".repeat(64);
     const target = await new ObjectStorage(config).createUploadTarget({
       objectKey: "workshops/test/asset",
@@ -30,6 +30,7 @@ describe("ObjectStorage upload targets", () => {
 
     const url = new URL(target.url);
     expect(target.headers).toEqual({ "content-type": "audio/mp4", "content-length": "4" });
+    expect(url.searchParams.get("X-Amz-SignedHeaders")).toContain("content-type");
     expect(url.searchParams.get("x-amz-meta-sha256")).toBe(sha256);
   });
 });

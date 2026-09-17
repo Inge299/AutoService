@@ -58,7 +58,14 @@ export class ObjectStorage {
     });
 
     return {
-      url: await getSignedUrl(this.uploadClient, command, { expiresIn: expiresInSeconds }),
+      // MinIO rejects any x-amz-* or content headers that are sent by the
+      // client but absent from SignedHeaders. The Android client must send the
+      // MIME type, so sign that header explicitly instead of leaving it as an
+      // unsigned optional HTTP header.
+      url: await getSignedUrl(this.uploadClient, command, {
+        expiresIn: expiresInSeconds,
+        signableHeaders: new Set(["content-type"]),
+      }),
       expiresInSeconds,
       headers: {
         "content-type": input.mimeType,
