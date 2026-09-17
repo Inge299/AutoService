@@ -40,6 +40,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ru.autoservice.spike.data.MediaAssetEntity
 import ru.autoservice.spike.data.MediaKind
@@ -161,11 +163,27 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
         return
     }
 
+    // Approval decisions are recorded on the server by a public link. Keep the
+    // foreground app current even when the master does not leave this screen.
+    LaunchedEffect(session?.accessToken) {
+        while (true) {
+            delay(30_000)
+            viewModel.refresh()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("AutoService · ${session?.displayName}") },
-                actions = { TextButton(onClick = viewModel::logout) { Text("Выйти") } },
+                actions = {
+                    TextButton(onClick = {
+                        viewModel.refresh { error ->
+                            message(error.message ?: "Не удалось обновить данные")
+                        }
+                    }) { Text("Обновить") }
+                    TextButton(onClick = viewModel::logout) { Text("Выйти") }
+                },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHost) },
@@ -700,6 +718,21 @@ private fun VisitScreen(
     val voiceRecorder = remember { VoiceRecorder(context) }
     var recordingVoice by remember { mutableStateOf(false) }
     var voiceFindingId by remember { mutableStateOf<String?>(null) }
+    var observedFindingStatuses by remember(visit.id) {
+        mutableStateOf<Map<String, FindingStatus>?>(null)
+    }
+
+    LaunchedEffect(findings) {
+        observedFindingStatuses?.let { previous ->
+            findings.forEach { finding ->
+                val before = previous[finding.id]
+                if (before == FindingStatus.SENT_TO_CUSTOMER && finding.status.isCustomerDecision()) {
+                    onMessage("Клиент: ${finding.status.decisionLabel()} — ${finding.title}")
+                }
+            }
+        }
+        observedFindingStatuses = findings.associate { it.id to it.status }
+    }
 
     fun toggleVoice(findingId: String? = null) {
         if (!recordingVoice) {
@@ -1031,4 +1064,19 @@ private fun ru.autoservice.spike.data.FindingStatus.label(): String = when (this
     ru.autoservice.spike.data.FindingStatus.DECLINED -> "Отклонено"
     ru.autoservice.spike.data.FindingStatus.CALL_REQUESTED -> "Нужен звонок"
     ru.autoservice.spike.data.FindingStatus.DEFERRED -> "Отложено"
+}
+
+private fun FindingStatus.isCustomerDecision(): Boolean = this in setOf(
+    FindingStatus.APPROVED,
+    FindingStatus.DECLINED,
+    FindingStatus.CALL_REQUESTED,
+    FindingStatus.DEFERRED,
+)
+
+private fun FindingStatus.decisionLabel(): String = when (this) {
+    FindingStatus.APPROVED -> "согласовал работы"
+    FindingStatus.DECLINED -> "отклонил работы"
+    FindingStatus.CALL_REQUESTED -> "просит позвонить"
+    FindingStatus.DEFERRED -> "отложил решение"
+    else -> label()
 }
