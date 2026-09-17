@@ -120,6 +120,16 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
         scope.launch { snackbarHost.showSnackbar(text) }
     }
 
+    // A customer decides in the browser, so refresh an opened visit while the
+    // master is looking at it instead of requiring a manual "Обновить" tap.
+    LaunchedEffect(selectedVisitId, session?.accessToken) {
+        if (selectedVisitId == null || session == null) return@LaunchedEffect
+        while (true) {
+            delay(15_000)
+            viewModel.refresh()
+        }
+    }
+
     if (session == null) {
         Scaffold(
             topBar = { TopAppBar(title = { Text("AutoService") }) },
@@ -715,6 +725,7 @@ private fun VisitScreen(
     val context = LocalContext.current
     val allAssets by viewModel.assets.collectAsState()
     val assets = allAssets.filter { it.visitId == visit.id }
+    val visitAssets = assets.filter { it.findingId == null }
     val findings by viewModel.findingsForVisit(visit.id).collectAsState(initial = emptyList())
     val voiceRecorder = remember { VoiceRecorder(context) }
     var recordingVoice by remember { mutableStateOf(false) }
@@ -811,7 +822,7 @@ private fun VisitScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Button(onClick = onOpenCamera, modifier = Modifier.fillMaxWidth()) {
-                    Text("Фото / видео")
+                    Text("Фото / видео к визиту")
                 }
                 Button(onClick = onCreateFinding, modifier = Modifier.fillMaxWidth()) {
                     Text("Добавить находку")
@@ -819,7 +830,7 @@ private fun VisitScreen(
                 Button(
                     onClick = { toggleVoice() },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (recordingVoice) "Остановить запись" else "Записать голос") }
+                ) { Text(if (recordingVoice) "Остановить запись" else "Голосовая заметка к визиту") }
             }
         }
 
@@ -829,7 +840,7 @@ private fun VisitScreen(
         if (findings.isEmpty()) {
             Text("Пока нет находок. Добавьте проблему и ориентировочную цену.")
         } else {
-            findings.take(3).forEach { finding ->
+            findings.forEach { finding ->
                 FindingCard(
                     finding = finding,
                     findingAssets = assets.filter { it.findingId == finding.id },
@@ -844,13 +855,20 @@ private fun VisitScreen(
             }
         }
         Spacer(Modifier.height(18.dp))
-        Text(
-            "Материалы: ${assets.size} · ожидают: ${assets.count { it.syncState != SyncState.SYNCED }}",
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Spacer(Modifier.height(8.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            assets.forEach { asset -> QueueItem(asset = asset, onRetry = { viewModel.retry(asset) }) }
+        if (visitAssets.isNotEmpty()) {
+            Spacer(Modifier.height(18.dp))
+            Text(
+                "Материалы визита без находки: ${visitAssets.size} · ожидают: ${visitAssets.count { it.syncState != SyncState.SYNCED }}",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                "Они не войдут в согласование отдельной находки.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(8.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                visitAssets.forEach { asset -> QueueItem(asset = asset, onRetry = { viewModel.retry(asset) }) }
+            }
         }
     }
 }
@@ -927,27 +945,31 @@ private fun FindingCard(
                 finding.priceRub?.let { StatusPill("${it} ₽", MaterialTheme.colorScheme.secondaryContainer) }
             }
             StatusPill(finding.status.label(), finding.status.color())
+            val syncedAssets = findingAssets.filter { it.syncState == SyncState.SYNCED }
             val pendingAssets = findingAssets.filter { it.syncState != SyncState.SYNCED }
-            Text(
-                when {
-                    findingAssets.isEmpty() -> "Материалы не прикреплены"
-                    pendingAssets.isEmpty() -> "Материалы загружены на сервер: ${findingAssets.size}"
-                    else -> "Материалы: ${findingAssets.size} · ожидают загрузки: ${pendingAssets.size}"
-                },
-                style = MaterialTheme.typography.bodySmall,
-            )
-            pendingAssets.forEach { asset ->
+            Text("Материалы этой находки", style = MaterialTheme.typography.labelLarge)
+            if (findingAssets.isEmpty()) {
+                Text("Не прикреплены", style = MaterialTheme.typography.bodySmall)
+            }
+            findingAssets.forEach { asset ->
                 Text("• ${asset.kind.label()}: ${asset.syncState.label()}", style = MaterialTheme.typography.bodySmall)
                 if (asset.syncState == SyncState.RETRY || asset.syncState == SyncState.BLOCKED) {
                     TextButton(onClick = { onRetryUpload(asset) }) { Text("Повторить загрузку") }
                 }
             }
+            if (pendingAssets.isNotEmpty() && finding.status in setOf(FindingStatus.READY_FOR_APPROVAL, FindingStatus.SENT_TO_CUSTOMER)) {
+                Text(
+                    "В ссылку войдут ${syncedAssets.size} из ${findingAssets.size} материалов. Дождитесь загрузки, если голос или фото должны увидеть клиент.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             Spacer(Modifier.height(8.dp))
             Button(onClick = onOpenCamera, modifier = Modifier.fillMaxWidth()) {
-                Text("Фото / видео")
+                Text("Добавить фото / видео к находке")
             }
             TextButton(onClick = onToggleVoice, modifier = Modifier.fillMaxWidth()) {
-                Text(if (recordingVoice) "Остановить голос" else "Записать голос")
+                Text(if (recordingVoice) "Остановить голос" else "Записать голос для клиента")
             }
             when (finding.status) {
                 FindingStatus.DRAFT -> Button(onClick = onPrepare, modifier = Modifier.fillMaxWidth()) {

@@ -124,10 +124,19 @@ export function publicApprovalRoutes(prisma: PrismaClient, storage: ObjectStorag
           where: { id: link.approvalVersion.findingId },
           data: { status: findingStatus, updatedAt: new Date(), serverVersion: { increment: 1 } },
         });
+        const unansweredApprovals = await tx.finding.count({
+          where: {
+            workshopId: link.approvalVersion.workshopId,
+            visitId: link.approvalVersion.visitId,
+            status: "SENT_TO_CUSTOMER",
+          },
+        });
         await tx.visit.update({
           where: { id: link.approvalVersion.visitId },
           data: {
-            ...(body.value === "APPROVED" ? { status: "IN_REPAIR" as const } : {}),
+            // A visit is waiting only while there is at least one unanswered link.
+            // A declined, deferred, or call-requested last decision must also release it.
+            status: unansweredApprovals === 0 ? "IN_REPAIR" : "WAITING_APPROVAL",
             updatedAt: new Date(),
             serverVersion: { increment: 1 },
           },
@@ -138,7 +147,7 @@ export function publicApprovalRoutes(prisma: PrismaClient, storage: ObjectStorag
             action: "APPROVAL_DECISION_RECORDED",
             entityType: "finding",
             entityId: link.approvalVersion.findingId,
-            metadata: { value, approvalVersionId: link.approvalVersionId },
+            metadata: { value, approvalVersionId: link.approvalVersionId, unansweredApprovals },
           },
         });
         return saved;
