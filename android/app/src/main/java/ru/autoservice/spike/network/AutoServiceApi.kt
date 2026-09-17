@@ -217,7 +217,7 @@ class AutoServiceApi(
 
     override suspend fun deleteMedia(assetId: String): Unit = withContext(Dispatchers.IO) {
         try {
-            requestText("DELETE", "/v1/media/$assetId", body = null)
+            requestText("DELETE", "/v1/media/$assetId", body = null, authenticated = true)
         } catch (error: ApiException) {
             if (error.statusCode != 404) throw error
         }
