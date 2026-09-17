@@ -203,6 +203,18 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun renewApprovalLink(
+        finding: FindingEntity,
+        onSuccess: (ApprovalLink) -> Unit,
+        onFailure: (Throwable) -> Unit,
+    ) {
+        viewModelScope.launch {
+            runCatching { container.findingRepository.renewApprovalLink(finding) }
+                .onSuccess(onSuccess)
+                .onFailure(onFailure)
+        }
+    }
+
     fun newCaptureFile(visitId: String, kind: MediaKind, findingId: String? = null): File =
         container.fileStore.newCaptureFile(visitId, kind, findingId)
 

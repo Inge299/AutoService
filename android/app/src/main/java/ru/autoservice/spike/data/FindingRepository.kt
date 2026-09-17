@@ -59,22 +59,26 @@ class FindingRepository(
         return saved
     }
 
-    suspend fun createApprovalLink(finding: FindingEntity): ApprovalLink {
-        if (finding.status == FindingStatus.SENT_TO_CUSTOMER && finding.approvalPublicUrl != null) {
+    suspend fun createApprovalLink(finding: FindingEntity, replaceActive: Boolean = false): ApprovalLink {
+        if (!replaceActive && finding.status == FindingStatus.SENT_TO_CUSTOMER && finding.approvalPublicUrl != null) {
             return ApprovalLink(
                 publicUrl = finding.approvalPublicUrl,
                 expiresAtEpochMs = finding.approvalExpiresAtEpochMs ?: 0L,
             )
         }
-        require(finding.status == FindingStatus.READY_FOR_APPROVAL) { "Находка не готова к отправке" }
+        require(
+            finding.status == FindingStatus.READY_FOR_APPROVAL ||
+                (replaceActive && finding.status == FindingStatus.SENT_TO_CUSTOMER),
+        ) { "Находка не готова к отправке" }
         require(finding.priceRub != null) { "Укажите цену перед согласованием" }
         val mediaIds = mediaDao.forFinding(finding.id)
             .filter { it.syncState == SyncState.SYNCED }
             .map { it.id }
 
         val pending = finding.copy(
-            approvalOperationId = finding.approvalOperationId ?: UUID.randomUUID().toString(),
-            approvalToken = finding.approvalToken ?: newApprovalToken(),
+            approvalOperationId = if (replaceActive) UUID.randomUUID().toString()
+                else finding.approvalOperationId ?: UUID.randomUUID().toString(),
+            approvalToken = if (replaceActive) newApprovalToken() else finding.approvalToken ?: newApprovalToken(),
         )
         if (pending != finding) findingDao.update(pending)
         val link = api.createApprovalLink(
@@ -82,6 +86,7 @@ class FindingRepository(
             operationId = requireNotNull(pending.approvalOperationId),
             token = requireNotNull(pending.approvalToken),
             mediaIds = mediaIds,
+            replaceActive = replaceActive,
         )
         findingDao.update(
             pending.copy(
@@ -92,6 +97,15 @@ class FindingRepository(
             ),
         )
         return link
+    }
+
+    suspend fun renewApprovalLink(finding: FindingEntity): ApprovalLink {
+        require(finding.status == FindingStatus.SENT_TO_CUSTOMER) {
+            "Обновить можно только отправленное согласование"
+        }
+        // The server revokes the old token and creates the new immutable
+        // snapshot in one transaction, so a transport failure keeps the old link usable.
+        return createApprovalLink(finding, replaceActive = true)
     }
 
     suspend fun synchronizeLocal(serverFindings: List<FindingEntity>) {

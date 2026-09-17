@@ -46,6 +46,7 @@ interface WorkshopRemote {
         operationId: String,
         token: String,
         mediaIds: List<String>,
+        replaceActive: Boolean = false,
     ): ApprovalLink
     suspend fun uploadMedia(asset: MediaAssetEntity)
 }
@@ -168,6 +169,7 @@ class AutoServiceApi(
         operationId: String,
         token: String,
         mediaIds: List<String>,
+        replaceActive: Boolean,
     ): ApprovalLink = withContext(Dispatchers.IO) {
         val json = request(
             "POST",
@@ -176,6 +178,7 @@ class AutoServiceApi(
                 .put("operationId", operationId)
                 .put("token", token)
                 .put("mediaIds", JSONArray(mediaIds)),
+                .put("replaceActive", replaceActive),
         )
         ApprovalLink(
             publicUrl = "$baseUrl${json.getString("publicPath")}",
