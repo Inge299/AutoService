@@ -139,6 +139,7 @@ class FindingRepositoryTest {
         override suspend fun insert(asset: MediaAssetEntity) = Unit
         override fun observeAll(): Flow<List<MediaAssetEntity>> = MutableStateFlow(assets)
         override suspend fun find(id: String): MediaAssetEntity? = assets.firstOrNull { it.id == id }
+        override suspend fun delete(id: String) = Unit
         override suspend fun forFinding(findingId: String): List<MediaAssetEntity> = assets.filter { it.findingId == findingId }
         override suspend fun allLocalPaths(): List<String> = emptyList()
         override suspend fun pending(): List<MediaAssetEntity> = emptyList()
