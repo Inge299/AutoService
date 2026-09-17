@@ -31,6 +31,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -297,6 +298,20 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                             message("Ссылка согласования готова")
                         },
                         onFailure = { message(it.message ?: "Не удалось создать ссылку") },
+                    )
+                },
+                onRenewApprovalLink = { finding ->
+                    viewModel.renewApprovalLink(
+                        finding = finding,
+                        onSuccess = { link ->
+                            val share = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, link.publicUrl)
+                            }
+                            context.startActivity(Intent.createChooser(share, "Отправить новую ссылку клиенту"))
+                            message("Создана новая ссылка с актуальными материалами")
+                        },
+                        onFailure = { message(it.message ?: "Не удалось обновить ссылку") },
                     )
                 },
                 onEditFinding = { finding -> editingFinding = finding },
@@ -715,6 +730,7 @@ private fun VisitScreen(
     onOpenFindingCamera: (String) -> Unit,
     onPrepareFinding: (FindingEntity) -> Unit,
     onSendApprovalLink: (FindingEntity) -> Unit,
+    onRenewApprovalLink: (FindingEntity) -> Unit,
     onEditFinding: (FindingEntity) -> Unit,
     onStartRepair: () -> Unit,
     onCreateFinding: () -> Unit,
@@ -730,6 +746,7 @@ private fun VisitScreen(
     val voiceRecorder = remember { VoiceRecorder(context) }
     var recordingVoice by remember { mutableStateOf(false) }
     var voiceFindingId by remember { mutableStateOf<String?>(null) }
+    var renewalFinding by remember { mutableStateOf<FindingEntity?>(null) }
     var observedFindingStatuses by remember(visit.id) {
         mutableStateOf<Map<String, FindingStatus>?>(null)
     }
@@ -849,10 +866,32 @@ private fun VisitScreen(
                     recordingVoice = recordingVoice && voiceFindingId == finding.id,
                     onPrepare = { onPrepareFinding(finding) },
                     onSendApprovalLink = { onSendApprovalLink(finding) },
+                    onRenewApprovalLink = { renewalFinding = finding },
                     onEdit = { onEditFinding(finding) },
                     onRetryUpload = { asset -> viewModel.retry(asset) },
                 )
             }
+        }
+        renewalFinding?.let { finding ->
+            AlertDialog(
+                onDismissRequest = { renewalFinding = null },
+                title = { Text("Обновить ссылку?") },
+                text = {
+                    Text(
+                        "Предыдущая ссылка станет недействительной. Новая ссылка включит только " +
+                            "материалы, которые уже загружены на сервер.",
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        renewalFinding = null
+                        onRenewApprovalLink(finding)
+                    }) { Text("Создать новую") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { renewalFinding = null }) { Text("Отмена") }
+                },
+            )
         }
         Spacer(Modifier.height(18.dp))
         if (visitAssets.isNotEmpty()) {
@@ -933,6 +972,7 @@ private fun FindingCard(
     recordingVoice: Boolean,
     onPrepare: () -> Unit,
     onSendApprovalLink: () -> Unit,
+    onRenewApprovalLink: () -> Unit,
     onEdit: () -> Unit,
     onRetryUpload: (MediaAssetEntity) -> Unit,
 ) {
@@ -987,6 +1027,11 @@ private fun FindingCard(
             }
             if (finding.status == FindingStatus.DRAFT) {
                 TextButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text("Изменить") }
+            }
+            if (finding.status == FindingStatus.SENT_TO_CUSTOMER) {
+                TextButton(onClick = onRenewApprovalLink, modifier = Modifier.fillMaxWidth()) {
+                    Text("Обновить ссылку с материалами")
+                }
             }
         }
     }

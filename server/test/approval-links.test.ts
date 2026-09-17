@@ -125,6 +125,54 @@ describe("approval link creation", () => {
     await app.close();
   });
 
+  it("atomically revokes the prior link when creating a fresh material snapshot", async () => {
+    const revoke = vi.fn().mockResolvedValue({});
+    const transaction = {
+      approvalVersion: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        findFirst: vi.fn()
+          .mockResolvedValueOnce({ version: 1 })
+          .mockResolvedValueOnce({ id: "77777777-7777-4777-8777-777777777777", link: { id: "88888888-8888-8888-8888-888888888888" } }),
+        create: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999999" }),
+      },
+      finding: {
+        findFirst: vi.fn().mockResolvedValue({ id: findingId, visitId, title: "Колодки", description: "Замена", priceRub: 12_800 }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: mediaId }]) },
+      approvalLink: {
+        update: revoke,
+        create: vi.fn().mockResolvedValue({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", expiresAt: new Date("2026-10-01T12:00:00.000Z") }),
+      },
+      visit: { update: vi.fn().mockResolvedValue({}) },
+      auditEvent: { create: vi.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      membership: { findUnique: vi.fn().mockResolvedValue({ role: "EMPLOYEE", isActive: true, user: { isActive: true } }) },
+      $transaction: vi.fn(async (callback) => callback(transaction)),
+    } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/v1/findings/${findingId}/approval-link`,
+      headers,
+      payload: {
+        operationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab",
+        token: "replacement_token_abcdefghijklmnopqrstuvwxyz012345",
+        mediaIds: [mediaId],
+        replaceActive: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(revoke).toHaveBeenCalledWith({
+      where: { id: "88888888-8888-8888-8888-888888888888" },
+      data: { revokedAt: expect.any(Date) },
+    });
+    await app.close();
+  });
+
   it("revokes the active public link and restores an undecided finding to ready", async () => {
     const linkUpdate = vi.fn().mockResolvedValue({});
     const findingUpdateMany = vi.fn().mockResolvedValue({ count: 1 });

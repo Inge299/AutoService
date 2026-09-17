@@ -26,6 +26,7 @@ const approvalSchema = z.object({
   token: z.string().min(43).max(200).regex(/^[A-Za-z0-9_-]+$/),
   mediaIds: z.array(z.string().uuid()).max(20),
   expiresInDays: z.number().int().min(1).max(30).default(7),
+  replaceActive: z.boolean().default(false),
 }).superRefine((value, context) => {
   if (new Set(value.mediaIds).size !== value.mediaIds.length) {
     context.addIssue({ code: "custom", path: ["mediaIds"], message: "Media ids must be unique" });
@@ -102,7 +103,11 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
         }
 
         const finding = await tx.finding.findFirst({
-          where: { id, workshopId, status: "READY_FOR_APPROVAL" },
+          where: {
+            id,
+            workshopId,
+            status: body.replaceActive ? "SENT_TO_CUSTOMER" : "READY_FOR_APPROVAL",
+          },
           select: {
             id: true,
             visitId: true,
@@ -131,13 +136,31 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
           orderBy: { version: "desc" },
           select: { version: true },
         });
+        const activeLink = body.replaceActive
+          ? await tx.approvalVersion.findFirst({
+              where: { findingId: id, link: { is: { revokedAt: null } } },
+              include: { link: true },
+              orderBy: { version: "desc" },
+            })
+          : null;
+        if (body.replaceActive && !activeLink?.link) return { kind: "finding_unavailable" as const };
         // Claim the READY state atomically. This prevents two concurrent staff
         // requests from publishing different links for the same finding.
         const claimed = await tx.finding.updateMany({
-          where: { id, workshopId, status: "READY_FOR_APPROVAL" },
+          where: {
+            id,
+            workshopId,
+            status: body.replaceActive ? "SENT_TO_CUSTOMER" : "READY_FOR_APPROVAL",
+          },
           data: { status: "SENT_TO_CUSTOMER", updatedAt: new Date(), serverVersion: { increment: 1 } },
         });
         if (claimed.count !== 1) return { kind: "finding_unavailable" as const };
+        if (activeLink?.link) {
+          await tx.approvalLink.update({
+            where: { id: activeLink.link.id },
+            data: { revokedAt: new Date() },
+          });
+        }
         const approvalVersion = await tx.approvalVersion.create({
           data: {
             operationId: body.operationId,
