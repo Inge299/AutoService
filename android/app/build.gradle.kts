@@ -4,6 +4,14 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val ciVersionCode = providers.environmentVariable("AUTOSERVICE_VERSION_CODE").orNull?.toIntOrNull()
+val signingStoreFile = providers.environmentVariable("AUTOSERVICE_KEYSTORE_FILE").orNull
+val signingStorePassword = providers.environmentVariable("AUTOSERVICE_KEYSTORE_PASSWORD").orNull
+val signingKeyAlias = providers.environmentVariable("AUTOSERVICE_KEY_ALIAS").orNull
+val signingKeyPassword = providers.environmentVariable("AUTOSERVICE_KEY_PASSWORD").orNull
+val hasStableSigning = listOf(signingStoreFile, signingStorePassword, signingKeyAlias, signingKeyPassword)
+    .all { !it.isNullOrBlank() }
+
 android {
     namespace = "ru.autoservice.spike"
     compileSdk = 37
@@ -12,8 +20,8 @@ android {
         applicationId = "ru.autoservice.spike"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0-spike"
+        versionCode = ciVersionCode ?: 1
+        versionName = "0.1.0-spike+${ciVersionCode ?: 1}"
 
         val apiBaseUrl = providers.gradleProperty("AUTOSERVICE_API_BASE_URL")
             .orElse("https://autoservice.135.106.211.119.sslip.io")
@@ -31,6 +39,27 @@ android {
                 "proguard-rules.pro",
             )
         }
+    }
+
+    signingConfigs {
+        if (hasStableSigning) {
+            getByName("debug") {
+                storeFile = file(signingStoreFile!!)
+                storePassword = signingStorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
+            create("release") {
+                storeFile = file(signingStoreFile!!)
+                storePassword = signingStorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
+        }
+    }
+
+    buildTypes.named("release") {
+        if (hasStableSigning) signingConfig = signingConfigs.getByName("release")
     }
 
     compileOptions {
