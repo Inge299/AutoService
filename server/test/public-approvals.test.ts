@@ -89,7 +89,7 @@ describe("public approval routes", () => {
       approvalLink: { findUnique: vi.fn().mockResolvedValue(approvalLink()) },
       $transaction: vi.fn(async (callback) => callback({
         approvalDecision: { create },
-        finding: { update: findingUpdate },
+        finding: { update: findingUpdate, count: vi.fn().mockResolvedValue(0) },
         visit: { update: visitUpdate },
         auditEvent: { create: auditCreate },
       })),
@@ -112,7 +112,33 @@ describe("public approval routes", () => {
     await app.close();
   });
 
-  it("returns only signed URLs for the media frozen in the approval snapshot", async () => {
+  it("keeps a visit waiting while another approval link still needs a decision", async () => {
+    const visitUpdate = vi.fn().mockResolvedValue({});
+    const prisma = {
+      approvalLink: { findUnique: vi.fn().mockResolvedValue(approvalLink()) },
+      $transaction: vi.fn(async (callback) => callback({
+        approvalDecision: { create: vi.fn().mockResolvedValue({ value: "DEFERRED", createdAt: new Date() }) },
+        finding: { update: vi.fn().mockResolvedValue({}), count: vi.fn().mockResolvedValue(1) },
+        visit: { update: visitUpdate },
+        auditEvent: { create: vi.fn().mockResolvedValue({}) },
+      })),
+    } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/public/v1/approvals/${token}/decision`,
+      payload: { value: "DEFERRED" },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(visitUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "WAITING_APPROVAL" }),
+    }));
+    await app.close();
+  });
+
+  it("returns signed URLs for voice material frozen in the approval snapshot", async () => {
     const link = approvalLink();
     link.approvalVersion.mediaIds = ["11111111-1111-4111-8111-111111111106"];
     const update = vi.fn().mockResolvedValue({});
@@ -121,8 +147,8 @@ describe("public approval routes", () => {
       approvalLink: { findUnique: vi.fn().mockResolvedValue(link), update },
       mediaAsset: { findMany: vi.fn().mockResolvedValue([{
         id: "11111111-1111-4111-8111-111111111106",
-        kind: "PHOTO",
-        mimeType: "image/jpeg",
+        kind: "VOICE",
+        mimeType: "audio/mp4",
         objectKey: "private/object-key",
       }]) },
     } as unknown as PrismaClient;
@@ -136,6 +162,7 @@ describe("public approval routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().media).toEqual([expect.objectContaining({
       id: "11111111-1111-4111-8111-111111111106",
+      kind: "VOICE",
       url: "https://media.example/signed",
     })]);
     expect(response.body).not.toContain("private/object-key");
