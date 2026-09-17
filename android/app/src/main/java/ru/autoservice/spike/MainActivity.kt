@@ -3,11 +3,19 @@ package ru.autoservice.spike
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
+import android.media.MediaPlayer
 import android.os.Bundle
+import android.widget.MediaController
+import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,7 +26,9 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -50,16 +60,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import ru.autoservice.spike.data.MediaAssetEntity
 import ru.autoservice.spike.data.MediaKind
 import ru.autoservice.spike.data.FindingDraft
@@ -990,12 +1008,11 @@ private fun FindingCard(
             Text("Материалы этой находки", style = MaterialTheme.typography.labelLarge)
             if (findingAssets.isEmpty()) {
                 Text("Не прикреплены", style = MaterialTheme.typography.bodySmall)
-            }
-            findingAssets.forEach { asset ->
-                Text("• ${asset.kind.label()}: ${asset.syncState.label()}", style = MaterialTheme.typography.bodySmall)
-                if (asset.syncState == SyncState.RETRY || asset.syncState == SyncState.BLOCKED) {
-                    TextButton(onClick = { onRetryUpload(asset) }) { Text("Повторить загрузку") }
-                }
+            } else {
+                FindingMediaGallery(
+                    assets = findingAssets,
+                    onRetryUpload = onRetryUpload,
+                )
             }
             if (pendingAssets.isNotEmpty() && finding.status in setOf(FindingStatus.READY_FOR_APPROVAL, FindingStatus.SENT_TO_CUSTOMER)) {
                 Text(
@@ -1036,6 +1053,250 @@ private fun FindingCard(
         }
     }
 }
+
+@Composable
+private fun FindingMediaGallery(
+    assets: List<MediaAssetEntity>,
+    onRetryUpload: (MediaAssetEntity) -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+    ) {
+        assets.forEach { asset ->
+            FindingMediaPreview(asset = asset, onRetryUpload = { onRetryUpload(asset) })
+        }
+    }
+}
+
+@Composable
+private fun FindingMediaPreview(asset: MediaAssetEntity, onRetryUpload: () -> Unit) {
+    var showImage by remember(asset.id) { mutableStateOf(false) }
+    var showVideo by remember(asset.id) { mutableStateOf(false) }
+    val localFileExists = remember(asset.localPath) { File(asset.localPath).isFile }
+
+    Card(modifier = Modifier.width(156.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(8.dp)) {
+            when (asset.kind) {
+                MediaKind.PHOTO -> PhotoThumbnail(
+                    path = asset.localPath,
+                    onOpen = { showImage = true },
+                )
+                MediaKind.VIDEO -> VideoThumbnail(
+                    path = asset.localPath,
+                    onOpen = { showVideo = true },
+                )
+                MediaKind.VOICE -> VoicePlayer(path = asset.localPath)
+            }
+            Text(asset.kind.label(), style = MaterialTheme.typography.labelLarge)
+            Text(asset.syncState.label(), style = MaterialTheme.typography.bodySmall)
+            if (!localFileExists) {
+                Text("Файл недоступен на телефоне", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            if (asset.syncState == SyncState.RETRY || asset.syncState == SyncState.BLOCKED) {
+                TextButton(onClick = onRetryUpload, modifier = Modifier.fillMaxWidth()) { Text("Повторить") }
+            }
+        }
+    }
+
+    if (showImage) ImagePreviewDialog(path = asset.localPath, onDismiss = { showImage = false })
+    if (showVideo) VideoPreviewDialog(path = asset.localPath, onDismiss = { showVideo = false })
+}
+
+@Composable
+private fun PhotoThumbnail(path: String, onOpen: () -> Unit) {
+    val bitmap = rememberPreviewBitmap(path = path, isVideo = false)
+    PreviewSurface(onClick = onOpen) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Открыть фото",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Text("Фото\nнедоступно", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun VideoThumbnail(path: String, onOpen: () -> Unit) {
+    val bitmap = rememberPreviewBitmap(path = path, isVideo = true)
+    PreviewSurface(onClick = onOpen) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Открыть видео",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
+            shape = CircleShape,
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            Text("▶", modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+        }
+    }
+}
+
+@Composable
+private fun PreviewSurface(onClick: () -> Unit, content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
+    androidx.compose.foundation.layout.Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(96.dp)
+            .clickable(onClick = onClick),
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxSize(),
+        ) {}
+        content()
+    }
+}
+
+@Composable
+private fun rememberPreviewBitmap(path: String, isVideo: Boolean): Bitmap? {
+    var bitmap by remember(path, isVideo) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(path, isVideo) {
+        bitmap = withContext(Dispatchers.IO) {
+            if (isVideo) videoFrame(path) else sampledPhoto(path)
+        }
+    }
+    return bitmap
+}
+
+private fun sampledPhoto(path: String): Bitmap? {
+    if (!File(path).isFile) return null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(path, bounds)
+    val widestSide = maxOf(bounds.outWidth, bounds.outHeight)
+    var sampleSize = 1
+    while (widestSide / sampleSize > 512) sampleSize *= 2
+    return BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sampleSize })
+}
+
+private fun videoFrame(path: String): Bitmap? {
+    if (!File(path).isFile) return null
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(path)
+        retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+    } catch (_: RuntimeException) {
+        null
+    } finally {
+        retriever.release()
+    }
+}
+
+@Composable
+private fun ImagePreviewDialog(path: String, onDismiss: () -> Unit) {
+    val bitmap = rememberPreviewBitmap(path = path, isVideo = false)
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = MaterialTheme.shapes.large) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                if (bitmap != null) {
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "Фото находки",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+                    )
+                } else {
+                    Text("Не удалось открыть фото")
+                }
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Закрыть") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VideoPreviewDialog(path: String, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = MaterialTheme.shapes.large) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                AndroidView(
+                    factory = { context ->
+                        VideoView(context).apply {
+                            setVideoPath(path)
+                            setMediaController(MediaController(context).also { controller -> controller.setAnchorView(this) })
+                            setOnPreparedListener { player ->
+                                player.isLooping = false
+                                start()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(280.dp),
+                )
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Закрыть") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoicePlayer(path: String) {
+    var player by remember(path) { mutableStateOf<MediaPlayer?>(null) }
+    var ready by remember(path) { mutableStateOf(false) }
+    var playing by remember(path) { mutableStateOf(false) }
+    var durationMs by remember(path) { mutableStateOf(0) }
+
+    DisposableEffect(path) {
+        if (!File(path).isFile) {
+            onDispose {}
+        } else {
+            val mediaPlayer = MediaPlayer()
+            player = mediaPlayer
+            runCatching {
+                mediaPlayer.setDataSource(path)
+                mediaPlayer.setOnPreparedListener {
+                    durationMs = it.duration.coerceAtLeast(0)
+                    ready = true
+                }
+                mediaPlayer.setOnCompletionListener { playing = false }
+                mediaPlayer.prepareAsync()
+            }.onFailure { ready = false }
+            onDispose {
+                mediaPlayer.release()
+                if (player === mediaPlayer) player = null
+            }
+        }
+    }
+
+    Button(
+        onClick = {
+            player?.let {
+                if (it.isPlaying) {
+                    it.pause()
+                    playing = false
+                } else if (ready) {
+                    it.start()
+                    playing = true
+                }
+            }
+        },
+        enabled = ready,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            when {
+                !ready -> "Голос…"
+                playing -> "Пауза · ${durationMs.asDurationLabel()}"
+                else -> "▶ Голос · ${durationMs.asDurationLabel()}"
+            },
+        )
+    }
+}
+
+private fun Int.asDurationLabel(): String = "%d:%02d".format(this / 60_000, (this / 1_000) % 60)
 
 @Composable
 private fun QueueItem(asset: MediaAssetEntity, onRetry: () -> Unit) {
