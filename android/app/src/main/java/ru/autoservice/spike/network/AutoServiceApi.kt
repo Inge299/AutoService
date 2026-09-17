@@ -177,7 +177,7 @@ class AutoServiceApi(
             JSONObject()
                 .put("operationId", operationId)
                 .put("token", token)
-                .put("mediaIds", JSONArray(mediaIds)),
+                .put("mediaIds", JSONArray(mediaIds))
                 .put("replaceActive", replaceActive),
         )
         ApprovalLink(
