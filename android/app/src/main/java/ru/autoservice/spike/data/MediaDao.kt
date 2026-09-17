@@ -18,6 +18,9 @@ interface MediaDao {
     @Query("SELECT * FROM media_assets WHERE id = :id LIMIT 1")
     suspend fun find(id: String): MediaAssetEntity?
 
+    @Query("DELETE FROM media_assets WHERE id = :id")
+    suspend fun delete(id: String)
+
     @Query("SELECT * FROM media_assets WHERE findingId = :findingId ORDER BY createdAtEpochMs")
     suspend fun forFinding(findingId: String): List<MediaAssetEntity>
 

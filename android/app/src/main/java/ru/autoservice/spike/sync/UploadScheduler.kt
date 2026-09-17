@@ -37,9 +37,12 @@ class UploadScheduler(context: Context) {
         )
     }
 
+    fun cancel(mediaId: String) {
+        workManager.cancelUniqueWork(uniqueName(mediaId))
+    }
+
     companion object {
         const val UPLOAD_TAG = "media-upload"
         fun uniqueName(mediaId: String): String = "media-upload-$mediaId"
     }
 }
-

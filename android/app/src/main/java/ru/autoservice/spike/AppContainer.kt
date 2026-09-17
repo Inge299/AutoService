@@ -39,6 +39,7 @@ class AppContainer(context: Context) {
         mediaDao = database.mediaDao(),
         fileStore = fileStore,
         scheduler = uploadScheduler,
+        api = api,
     )
 
     val visitRepository = VisitRepository(database.visitDao(), api)

@@ -244,4 +244,12 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
     fun retry(asset: MediaAssetEntity) {
         container.uploadScheduler.enqueue(asset.id)
     }
+
+    fun deleteMedia(asset: MediaAssetEntity, onSuccess: () -> Unit, onFailure: (Throwable) -> Unit) {
+        viewModelScope.launch {
+            runCatching { container.mediaRepository.delete(asset) }
+                .onSuccess { onSuccess() }
+                .onFailure(onFailure)
+        }
+    }
 }

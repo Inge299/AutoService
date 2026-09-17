@@ -1,5 +1,6 @@
 import type { MediaKind, PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { ObjectStorage } from "../../infrastructure/object-storage.js";
 
@@ -106,6 +107,45 @@ export function mediaRoutes(prisma: PrismaClient, storage: ObjectStorage): Fasti
         }),
       ]);
       return reply.code(202).send({ id, state: "VERIFYING" });
+    });
+
+    app.put("/v1/media/:id/content", { bodyLimit: 50 * 1024 * 1024 }, async (request, reply) => {
+      const { id } = paramsSchema.parse(request.params);
+      const { workshopId } = request.actor;
+      const asset = await prisma.mediaAsset.findFirst({ where: { id, workshopId } });
+      if (!asset) return reply.code(404).send({ error: "not_found" });
+      if (!Buffer.isBuffer(request.body)) return reply.code(400).send({ error: "binary_body_required" });
+      if (request.body.byteLength !== Number(asset.byteCount)) {
+        return reply.code(409).send({ error: "byte_count_mismatch" });
+      }
+      const sha256 = createHash("sha256").update(request.body).digest("hex");
+      if (sha256 !== asset.sha256) return reply.code(409).send({ error: "checksum_mismatch" });
+
+      await storage.upload({
+        objectKey: asset.objectKey,
+        mimeType: asset.mimeType,
+        byteCount: Number(asset.byteCount),
+        sha256: asset.sha256,
+        body: request.body,
+      });
+      return reply.code(204).send();
+    });
+
+    app.delete("/v1/media/:id", async (request, reply) => {
+      const { id } = paramsSchema.parse(request.params);
+      const { workshopId } = request.actor;
+      const asset = await prisma.mediaAsset.findFirst({
+        where: { id, workshopId },
+        include: { finding: { select: { status: true } } },
+      });
+      if (!asset) return reply.code(404).send({ error: "not_found" });
+      if (asset.finding && !["DRAFT", "READY_FOR_APPROVAL"].includes(asset.finding.status)) {
+        return reply.code(409).send({ error: "media_locked_by_approval" });
+      }
+
+      await storage.remove(asset.objectKey);
+      await prisma.mediaAsset.delete({ where: { id: asset.id } });
+      return reply.code(204).send();
     });
   };
 }

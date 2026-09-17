@@ -1,4 +1,5 @@
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -87,6 +88,30 @@ export class ObjectStorage {
       url: await getSignedUrl(this.uploadClient, command, { expiresIn: expiresInSeconds }),
       expiresInSeconds,
     };
+  }
+
+  async upload(input: {
+    objectKey: string;
+    mimeType: string;
+    byteCount: number;
+    sha256: string;
+    body: Uint8Array;
+  }): Promise<void> {
+    await this.client.send(new PutObjectCommand({
+      Bucket: this.config.S3_BUCKET,
+      Key: input.objectKey,
+      Body: input.body,
+      ContentType: input.mimeType,
+      ContentLength: input.byteCount,
+      Metadata: { sha256: input.sha256 },
+    }));
+  }
+
+  async remove(objectKey: string): Promise<void> {
+    await this.client.send(new DeleteObjectCommand({
+      Bucket: this.config.S3_BUCKET,
+      Key: objectKey,
+    }));
   }
 
   async head(objectKey: string): Promise<{ byteCount: number; sha256?: string }> {
