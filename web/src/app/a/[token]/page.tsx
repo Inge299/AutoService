@@ -1,6 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- signed object-storage hosts are runtime-configured. */
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { ApprovalDecision } from "@/app/a/[token]/approval-decision";
 import { BrandMark, Icon } from "@/components/icons";
 import { StatusPill } from "@/components/status-pill";
@@ -10,10 +9,36 @@ import Link from "next/link";
 
 export const metadata: Metadata = { title: "Согласование работ" };
 
+function UnavailableApprovalPage({ technical = false }: { technical?: boolean }) {
+  return (
+    <main className="customer-page">
+      <header className="customer-header"><BrandMark /></header>
+      <div className="customer-shell public-link-unavailable">
+        <section className="public-link-unavailable-card">
+          <span className="public-link-unavailable-icon"><Icon name={technical ? "refresh" : "alert"} /></span>
+          <p className="eyebrow">Согласование работ</p>
+          <h1>{technical ? "Сервис временно недоступен" : "Ссылка недействительна"}</h1>
+          <p>{technical
+            ? "Не удалось открыть согласование. Попробуйте обновить страницу немного позже."
+            : "Эта ссылка не существует, была отозвана или срок её действия истёк."}</p>
+          {!technical && <p className="public-link-unavailable-note">Попросите мастерскую отправить новую ссылку на согласование.</p>}
+          <Link className="button button-secondary" href="/customer/login">Перейти в личный кабинет</Link>
+        </section>
+      </div>
+      <footer className="customer-footer"><span>AutoService</span><p>Защищённая персональная ссылка</p></footer>
+    </main>
+  );
+}
+
 export default async function ApprovalPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const approval = await getPublicApproval(token);
-  if (!approval) notFound();
+  let approval;
+  try {
+    approval = await getPublicApproval(token);
+  } catch {
+    return <UnavailableApprovalPage technical />;
+  }
+  if (!approval) return <UnavailableApprovalPage />;
   const priority = priorityMeta[approval.finding.priority];
   const expiresAt = new Intl.DateTimeFormat("ru-RU", {
     day: "numeric",
