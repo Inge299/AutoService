@@ -316,9 +316,14 @@ class AutoServiceApi(
             connection.setRequestProperty("accept", "application/json")
             if (accessToken != null) connection.setRequestProperty("authorization", "Bearer $accessToken")
             if (body != null) {
+                // Fixed-length mode prevents some Android HTTP stacks from turning a small JSON
+                // request into an empty/chunked body. Fastify then reliably receives the login
+                // fields instead of replying with `invalid_request`.
+                val payload = body.toString().toByteArray(Charsets.UTF_8)
                 connection.doOutput = true
                 connection.setRequestProperty("content-type", "application/json")
-                connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body.toString()) }
+                connection.setFixedLengthStreamingMode(payload.size)
+                connection.outputStream.use { it.write(payload) }
             }
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
