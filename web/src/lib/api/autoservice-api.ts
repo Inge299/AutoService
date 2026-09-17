@@ -479,7 +479,7 @@ async function customerRequest<T>(path: string, init: RequestInit = {}): Promise
   if (!baseUrl) throw new Error("AUTOSERVICE_API_URL is not configured");
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
-    headers: { "content-type": "application/json", ...init.headers },
+    headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers },
     cache: "no-store",
   });
   if (!response.ok) throw new AutoServiceApiError(response.status, await response.text());

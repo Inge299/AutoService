@@ -218,10 +218,14 @@ class AutoServiceApi(
             file.inputStream().use { input -> connection.outputStream.use { output -> input.copyTo(output) } }
             val status = connection.responseCode
             if (status !in 200..299) {
-                val detail = runCatching {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }
-                }.getOrNull()?.replace(Regex("\\s+"), " ")?.take(300)
-                throw ApiException(status, "Хранилище отклонило загрузку ($status)${if (detail.isNullOrBlank()) "" else ": $detail"}")
+                val explanation = when (status) {
+                    400 -> "Параметры загрузки устарели. Нажмите «Повторить» — приложение получит новую ссылку."
+                    401, 403 -> "Нет доступа к хранилищу. Обновите экран и повторите попытку."
+                    413 -> "Файл слишком большой для загрузки."
+                    in 500..599 -> "Хранилище временно недоступно. Повторите попытку позже."
+                    else -> "Попробуйте повторить загрузку."
+                }
+                throw ApiException(status, "Не удалось загрузить файл ($status). $explanation")
             }
         } finally {
             connection.disconnect()

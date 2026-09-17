@@ -63,7 +63,9 @@ export class ObjectStorage {
       headers: {
         "content-type": input.mimeType,
         "content-length": String(input.byteCount),
-        "x-amz-meta-sha256": input.sha256,
+        // Metadata is hoisted into the signed query by the S3 presigner. Sending
+        // the same x-amz-* value again as a request header invalidates MinIO's
+        // signature verification.
       },
     };
   }

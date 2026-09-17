@@ -50,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -175,7 +176,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("AutoService · ${session?.displayName}") },
+                title = { Text("AutoService", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 actions = {
                     TextButton(onClick = {
                         viewModel.refresh { error ->
