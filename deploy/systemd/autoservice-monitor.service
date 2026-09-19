@@ -1,0 +1,10 @@
+[Unit]
+Description=AutoService availability and queue monitor
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/autoservice/monitor.env
+ExecStart=/opt/autoservice/current/deploy/monitor-autoservice.sh
+User=root

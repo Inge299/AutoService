@@ -1,0 +1,10 @@
+[Unit]
+Description=AutoService off-host PostgreSQL and media backup
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/autoservice/backup.env
+ExecStart=/opt/autoservice/current/deploy/backup-autoservice.sh
+User=root

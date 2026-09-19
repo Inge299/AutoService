@@ -8,7 +8,7 @@ import { registerErrorHandler } from "./http/errors.js";
 import { customerRoutes } from "./http/routes/customers.js";
 import { customerAccountRoutes } from "./http/routes/customer-accounts.js";
 import { findingRoutes } from "./http/routes/findings.js";
-import { healthRoutes } from "./http/routes/health.js";
+import { healthRoutes, type RuntimeMetrics } from "./http/routes/health.js";
 import { mediaRoutes } from "./http/routes/media.js";
 import { publicApprovalRoutes } from "./http/routes/public-approvals.js";
 import { publicReportRoutes } from "./http/routes/public-reports.js";
@@ -68,6 +68,11 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
     trustProxy: config.NODE_ENV === "production" ? trustSingleProxyHop : false,
   });
   const requestStartedAt = new WeakMap<FastifyRequest, number>();
+  const runtimeMetrics: RuntimeMetrics = {
+    startedAt: new Date(),
+    httpResponsesTotal: 0,
+    httpResponses5xx: 0,
+  };
   const publicRateLimiter = new FixedWindowRateLimiter();
   app.addHook("onRequest", async (request, reply) => {
     requestStartedAt.set(request, Date.now());
@@ -84,6 +89,8 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
     }
   });
   app.addHook("onResponse", async (request, reply) => {
+    runtimeMetrics.httpResponsesTotal += 1;
+    if (reply.statusCode >= 500) runtimeMetrics.httpResponses5xx += 1;
     request.log.info({
       event: "http_request_completed",
       requestId: request.id,
@@ -108,7 +115,7 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
     config.INTERNAL_API_KEY,
     config.ACCESS_TOKEN_SECRET,
   );
-  await app.register(healthRoutes(dependencies.prisma, dependencies.storage));
+  await app.register(healthRoutes(dependencies.prisma, dependencies.storage, config.INTERNAL_API_KEY, () => runtimeMetrics));
   await app.register(publicApprovalRoutes(dependencies.prisma, dependencies.storage));
   await app.register(publicReportRoutes(dependencies.prisma, dependencies.storage));
   await app.register(customerAccountRoutes(

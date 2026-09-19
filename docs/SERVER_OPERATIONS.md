@@ -153,6 +153,10 @@ docker compose --env-file /opt/autoservice/.env \
 
 ## Backup
 
+Для production используйте автоматизированный off-host backup и ежемесячный restore
+drill из [операционного runbook](OPERATIONS_RUNBOOK.md). Команды ниже подходят для
+разовой локальной копии, но сами по себе не заменяют проверенный backup.
+
 PostgreSQL:
 
 ```bash

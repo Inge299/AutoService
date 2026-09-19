@@ -16,6 +16,7 @@
 - `docs/SERVER_CONTRACT.md` — контракт первого серверного этапа и публичного согласования.
 - `docs/SERVER_ARCHITECTURE.md` — архитектура, модель данных, API и поток обработки медиа.
 - `docs/SERVER_OPERATIONS.md` — локальный запуск, развёртывание, проверка и эксплуатация.
+- `docs/OPERATIONS_RUNBOOK.md` — мониторинг, off-host backup, restore drill и systemd-таймеры.
 - `docs/TECHNICAL_SPECIFICATION.md` — техническое задание MVP и критерии приёмки.
 - `docs/IMPLEMENTATION_PLAN.md` — этапы внедрения и план запуска пилота.
 - `docs/TEAM_WORK_PLAN.md` — разделение работы двух разработчиков и правила GitHub.
@@ -23,6 +24,8 @@
 - `docs/ROADMAP_NEXT.md` — приоритетный план следующих работ, критерии готовности и порядок PR.
 - `docs/RELEASE_NOTES_v0.4.0.md` — состав выпуска v0.4.0 и результаты проверок.
 - `docs/RELEASE_NOTES_v0.4.1.md` — исправление production-конфигурации MinIO.
+- `docs/DATA_RETENTION_POLICY.md` — рабочая политика хранения, удаления и подготовки к пилоту.
+- `docs/PILOT_RUNBOOK.md` — условия, метрики и порядок запуска пилота.
 
 ## Toolchain
 

@@ -47,6 +47,36 @@ describe("health", () => {
     }
   });
 
+  it("returns operational counters only to the internal monitor", async () => {
+    const groupBy = async ({ by }: { by: string[] }) => by[0] === "state"
+      ? [{ state: "PENDING", _count: { _all: 2 } }]
+      : [];
+    const app = await buildApp({ ...config, INTERNAL_API_KEY: "i".repeat(32) }, {
+      prisma: {
+        backgroundJob: { groupBy },
+        mediaAsset: { groupBy },
+      } as unknown as PrismaClient,
+      storage: {} as ObjectStorage,
+    });
+    try {
+      const forbidden = await app.inject({ method: "GET", url: "/health/metrics" });
+      expect(forbidden.statusCode).toBe(401);
+      const response = await app.inject({
+        method: "GET",
+        url: "/health/metrics",
+        headers: { "x-internal-api-key": "i".repeat(32) },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        status: "ok",
+        backgroundJobs: { PENDING: 2 },
+        media: { PENDING: 2 },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it("protects application routes", async () => {
     const app = await buildApp(config, {
       prisma: {} as PrismaClient,
