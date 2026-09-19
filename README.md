@@ -22,6 +22,7 @@
 - `docs/DEVELOPMENT_HANDOFF.md` — фактическое состояние production и передача разработки второму разработчику.
 - `docs/ROADMAP_NEXT.md` — приоритетный план следующих работ, критерии готовности и порядок PR.
 - `docs/RELEASE_NOTES_v0.4.0.md` — состав выпуска v0.4.0 и результаты проверок.
+- `docs/RELEASE_NOTES_v0.4.1.md` — исправление production-конфигурации MinIO.
 
 ## Toolchain
 
