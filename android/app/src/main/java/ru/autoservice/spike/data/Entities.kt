@@ -43,6 +43,7 @@ enum class FindingStatus {
     READY_FOR_APPROVAL,
     SENT_TO_CUSTOMER,
     APPROVED,
+    COMPLETED,
     DECLINED,
     CALL_REQUESTED,
     DEFERRED,
@@ -62,6 +63,15 @@ data class VisitEntity(
     val updatedAtEpochMs: Long,
     val syncState: SyncState,
     val serverVersion: Int = 0,
+    val reportOperationId: String? = null,
+    val reportToken: String? = null,
+    val reportPublicUrl: String? = null,
+    val reportExpiresAtEpochMs: Long? = null,
+    val reportPreparationState: String? = null,
+    val reportCompletedWork: String? = null,
+    val reportRecommendations: String? = null,
+    val reportNextVisitAtEpochMs: Long? = null,
+    val reportPreparationError: String? = null,
 )
 
 @Entity(
@@ -123,4 +133,8 @@ data class FindingEntity(
     val approvalToken: String? = null,
     val approvalPublicUrl: String? = null,
     val approvalExpiresAtEpochMs: Long? = null,
+    val approvalPreparationState: String? = null,
+    val approvalPendingMediaIds: String? = null,
+    val approvalPreparationError: String? = null,
+    val approvalReplaceActive: Boolean = false,
 )

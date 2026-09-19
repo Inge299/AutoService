@@ -12,6 +12,7 @@ export type FindingStatus =
   | "READY_FOR_APPROVAL"
   | "SENT_TO_CUSTOMER"
   | "APPROVED"
+  | "COMPLETED"
   | "DECLINED"
   | "CALL_REQUESTED"
   | "DEFERRED";
@@ -101,6 +102,7 @@ export const findingStatusMeta: Record<FindingStatus, { label: string; tone: str
   READY_FOR_APPROVAL: { label: "Готово к отправке", tone: "info" },
   SENT_TO_CUSTOMER: { label: "Отправлено", tone: "warning" },
   APPROVED: { label: "Согласовано", tone: "success" },
+  COMPLETED: { label: "Выполнено", tone: "info" },
   DECLINED: { label: "Отклонено", tone: "danger" },
   CALL_REQUESTED: { label: "Нужен звонок", tone: "warning" },
   DEFERRED: { label: "Отложено", tone: "neutral" },

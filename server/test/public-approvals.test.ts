@@ -88,6 +88,7 @@ describe("public approval routes", () => {
     const prisma = {
       approvalLink: { findUnique: vi.fn().mockResolvedValue(approvalLink()) },
       $transaction: vi.fn(async (callback) => callback({
+        approvalLink: { findUnique: vi.fn().mockResolvedValue(approvalLink()) },
         approvalDecision: { create },
         finding: { update: findingUpdate, count: vi.fn().mockResolvedValue(0) },
         visit: { update: visitUpdate },
@@ -117,6 +118,7 @@ describe("public approval routes", () => {
     const prisma = {
       approvalLink: { findUnique: vi.fn().mockResolvedValue(approvalLink()) },
       $transaction: vi.fn(async (callback) => callback({
+        approvalLink: { findUnique: vi.fn().mockResolvedValue(approvalLink()) },
         approvalDecision: { create: vi.fn().mockResolvedValue({ value: "DEFERRED", createdAt: new Date() }) },
         finding: { update: vi.fn().mockResolvedValue({}), count: vi.fn().mockResolvedValue(1) },
         visit: { update: visitUpdate },
@@ -145,7 +147,7 @@ describe("public approval routes", () => {
     const createDownloadTarget = vi.fn().mockResolvedValue({ url: "https://media.example/signed", expiresInSeconds: 900 });
     const prisma = {
       approvalLink: { findUnique: vi.fn().mockResolvedValue(link), update },
-      mediaAsset: { findMany: vi.fn().mockResolvedValue([{
+      mediaAsset: { update: vi.fn().mockResolvedValue({}), findMany: vi.fn().mockResolvedValue([{
         id: "11111111-1111-4111-8111-111111111106",
         kind: "VOICE",
         mimeType: "audio/mp4",
@@ -154,7 +156,7 @@ describe("public approval routes", () => {
     } as unknown as PrismaClient;
     const app = await buildApp(config, {
       prisma,
-      storage: { createDownloadTarget } as unknown as ObjectStorage,
+      storage: { seal: vi.fn().mockResolvedValue("private/object-key"), createDownloadTarget } as unknown as ObjectStorage,
     });
 
     const response = await app.inject({ method: "GET", url: `/public/v1/approvals/${token}` });

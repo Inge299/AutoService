@@ -12,6 +12,14 @@ val signingKeyPassword = providers.environmentVariable("AUTOSERVICE_KEY_PASSWORD
 val hasStableSigning = listOf(signingStoreFile, signingStorePassword, signingKeyAlias, signingKeyPassword)
     .all { !it.isNullOrBlank() }
 
+val verifyReleaseSigning = tasks.register("verifyReleaseSigning") {
+    doLast {
+        check(hasStableSigning) {
+            "Для release APK нужны AUTOSERVICE_KEYSTORE_FILE, AUTOSERVICE_KEYSTORE_PASSWORD, AUTOSERVICE_KEY_ALIAS и AUTOSERVICE_KEY_PASSWORD"
+        }
+    }
+}
+
 android {
     namespace = "ru.autoservice.spike"
     compileSdk = 37
@@ -21,7 +29,7 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = ciVersionCode ?: 1
-        versionName = "0.1.0-spike+${ciVersionCode ?: 1}"
+        versionName = "0.4.0+${ciVersionCode ?: 1}"
 
         val apiBaseUrl = providers.gradleProperty("AUTOSERVICE_API_BASE_URL")
             .orElse("https://autoservice.135.106.211.119.sslip.io")
@@ -75,6 +83,14 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+
+    sourceSets {
+        getByName("androidTest").assets.directories.add("$projectDir/schemas")
+    }
+}
+
+tasks.matching { it.name == "assembleRelease" }.configureEach {
+    dependsOn(verifyReleaseSigning)
 }
 
 ksp {
@@ -113,5 +129,6 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestImplementation("androidx.room:room-testing:2.8.4")
     androidTestImplementation("androidx.work:work-testing:2.11.2")
 }

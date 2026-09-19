@@ -75,8 +75,8 @@ export function debugVerificationDelivery(logger: FastifyBaseLogger): Verificati
     available: true,
     async start(message) {
       logger.warn(
-        { challengeId: message.challengeId, phone: message.phone, code: message.code },
-        "Development-only OTP code",
+        { challengeId: message.challengeId },
+        "Development-only OTP issued",
       );
       return { method: "SMS" };
     },

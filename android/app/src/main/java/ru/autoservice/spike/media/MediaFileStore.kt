@@ -6,9 +6,15 @@ import ru.autoservice.spike.sync.MediaIntegrity
 import java.io.File
 import java.util.UUID
 
-class MediaFileStore(context: Context) {
-    private val pendingDirectory = File(context.noBackupFilesDir, "pending_media").apply {
+class MediaFileStore(context: Context, workshopId: String) {
+    private val pendingDirectory = File(context.noBackupFilesDir, "workshops/$workshopId/pending_media").apply {
         mkdirs()
+    }
+
+    fun importLegacy(source: File): File {
+        val target = File(pendingDirectory, source.name)
+        if (!target.exists()) source.copyTo(target)
+        return target
     }
 
     fun newCaptureFile(visitId: String, kind: MediaKind, findingId: String? = null): File {
@@ -77,6 +83,7 @@ class MediaFileStore(context: Context) {
         ?.takeIf { it.isNotBlank() }
 
     fun requireComplete(file: File): StoredFile {
+        require(file.parentFile?.canonicalFile == pendingDirectory.canonicalFile) { "Файл относится к другой мастерской" }
         require(file.exists()) { "Captured file does not exist: ${file.absolutePath}" }
         require(file.isFile) { "Capture target is not a file: ${file.absolutePath}" }
         require(file.length() > 0L) { "Captured file is empty: ${file.absolutePath}" }

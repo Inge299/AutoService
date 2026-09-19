@@ -1,3 +1,4 @@
+import { serializable } from "../../infrastructure/transaction.js";
 import { createHash } from "node:crypto";
 import type { PrismaClient, ReportStatus } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
@@ -43,7 +44,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
       const { workshopId } = request.actor;
       const nextVisitAt = body.nextVisitAt ? new Date(body.nextVisitAt) : null;
 
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await serializable(prisma, async (tx) => {
         const visit = await tx.visit.findFirst({ where: { id, workshopId }, select: { id: true } });
         if (!visit) return { kind: "not_found" as const };
         const existing = await tx.report.findUnique({ where: { visitId: id } });
@@ -71,7 +72,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
       const expiresAt = new Date(Date.now() + body.expiresInDays * 24 * 60 * 60_000);
       const hashedToken = tokenHash(body.token);
 
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await serializable(prisma, async (tx) => {
         const existingVersion = await tx.reportVersion.findUnique({
           where: { operationId: body.operationId },
           include: { link: true },
@@ -96,11 +97,15 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
                 licensePlate: true,
                 mileageKm: true,
                 complaint: true,
+                status: true,
               },
             },
           },
         });
         if (!report) return { kind: "report_unavailable" as const };
+        if (["COMPLETED", "CANCELLED"].includes(report.visit.status)) return { kind: "report_unavailable" as const };
+        const unanswered = await tx.finding.count({ where: { visitId: id, workshopId, status: "SENT_TO_CUSTOMER" } });
+        if (unanswered > 0) return { kind: "pending_approvals" as const };
         if (!report.completedWork) return { kind: "completed_work_required" as const };
 
         const [previous, findings, media] = await Promise.all([
@@ -186,6 +191,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
         return { kind: "created" as const, version, link };
       });
 
+      if (result.kind === "pending_approvals") return reply.code(409).send({ error: "pending_approvals" });
       if (result.kind === "report_unavailable") return reply.code(409).send({ error: "report_not_draft" });
       if (result.kind === "completed_work_required") return reply.code(409).send({ error: "completed_work_required" });
       if (result.kind === "operation_conflict") return reply.code(409).send({ error: "operation_conflict" });
@@ -208,7 +214,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
       });
       if (!version?.link || version.link.revokedAt) return reply.code(404).send({ error: "not_found" });
 
-      await prisma.$transaction(async (tx) => {
+      await serializable(prisma, async (tx) => {
         await tx.reportLink.update({ where: { id: version.link!.id }, data: { revokedAt: new Date() } });
         await tx.report.update({ where: { id: version.reportId }, data: { status: "DRAFT", publishedAt: null } });
         await tx.visit.updateMany({

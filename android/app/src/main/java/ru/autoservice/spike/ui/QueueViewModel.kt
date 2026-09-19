@@ -5,6 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.Flow
@@ -16,41 +19,49 @@ import ru.autoservice.spike.data.FindingDraft
 import ru.autoservice.spike.data.FindingEntity
 import ru.autoservice.spike.data.MediaAssetEntity
 import ru.autoservice.spike.data.MediaKind
+import ru.autoservice.spike.data.ReportDraft
 import ru.autoservice.spike.data.SeededQuickValues
 import ru.autoservice.spike.data.VisitDraft
 import ru.autoservice.spike.data.VisitEntity
+import ru.autoservice.spike.data.VisitStatus
 import ru.autoservice.spike.network.AuthSession
 import ru.autoservice.spike.network.OtpChallenge
 import ru.autoservice.spike.network.ApprovalLink
+import ru.autoservice.spike.network.ReportLink
 import java.io.File
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class QueueViewModel(application: Application) : AndroidViewModel(application) {
     private val container = (application as AutoServiceApplication).container
 
     val session: StateFlow<AuthSession?> = container.authStore.session
 
-    val assets: StateFlow<List<MediaAssetEntity>> = container.mediaRepository.assets.stateIn(
+    val assets: StateFlow<List<MediaAssetEntity>> = session.flatMapLatest { it?.let { container.forWorkshop(it.workshopId).mediaRepository.assets } ?: flowOf(emptyList()) }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList(),
     )
 
-    val activeVisits: StateFlow<List<VisitEntity>> = container.visitRepository.activeVisits.stateIn(
+    val activeVisits: StateFlow<List<VisitEntity>> = session.flatMapLatest { it?.let { container.forWorkshop(it.workshopId).visitRepository.activeVisits } ?: flowOf(emptyList()) }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList(),
     )
 
-    val vehicleBrandSuggestions: StateFlow<List<String>> = container.localDictionaryRepository
-        .suggestions(DictionaryKind.VEHICLE_BRAND)
+    val visits: StateFlow<List<VisitEntity>> = session.flatMapLatest { it?.let { container.forWorkshop(it.workshopId).database.visitDao().observeAll() } ?: flowOf(emptyList()) }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
+    val vehicleBrandSuggestions: StateFlow<List<String>> = session.flatMapLatest { it?.let { container.forWorkshop(it.workshopId).localDictionaryRepository.suggestions(DictionaryKind.VEHICLE_BRAND) } ?: flowOf(SeededQuickValues.vehicleBrands) }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = SeededQuickValues.vehicleBrands,
         )
 
-    val complaintSuggestions: StateFlow<List<String>> = container.localDictionaryRepository
-        .suggestions(DictionaryKind.COMPLAINT)
+    val complaintSuggestions: StateFlow<List<String>> = session.flatMapLatest { it?.let { container.forWorkshop(it.workshopId).localDictionaryRepository.suggestions(DictionaryKind.COMPLAINT) } ?: flowOf(SeededQuickValues.complaints) }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
@@ -122,9 +133,15 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun synchronize() {
-        val snapshot = container.visitRepository.synchronizeLocal()
-        container.findingRepository.synchronizeLocal(snapshot.findings)
-        container.mediaRepository.recoverAndReschedule()
+        val workshop = container.forWorkshop(requireNotNull(session.value).workshopId)
+        val snapshot = workshop.visitRepository.synchronizeLocal()
+        workshop.findingRepository.synchronizeLocal(snapshot.findings)
+        workshop.recoverLegacy(getApplication(), snapshot.findings.map { it.id }.toSet(), snapshot.visits.map { it.id }.toSet())
+        workshop.mediaRepository.recoverAndReschedule()
+        workshop.database.findingDao().all().filter { it.approvalPreparationState == "PENDING" }.forEach { workshop.uploadScheduler.enqueueApproval(it.id) }
+        workshop.database.visitDao().all().filter {
+            it.reportPreparationState == "PENDING" && it.status in setOf(VisitStatus.IN_REPAIR, VisitStatus.WAITING_APPROVAL)
+        }.forEach { workshop.uploadScheduler.enqueueReport(it.id) }
     }
 
     fun createVisit(
@@ -151,8 +168,35 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun publishReport(
+        visit: VisitEntity,
+        draft: ReportDraft,
+        onSuccess: (ReportLink) -> Unit,
+        onFailure: (Throwable) -> Unit,
+    ) {
+        val workshop = container.forWorkshop(requireNotNull(session.value).workshopId)
+        viewModelScope.launch {
+            runCatching {
+                workshop.reportRepository.queuePublication(visit, draft)
+                workshop.reportRepository.publishPending(visit.id)
+            }.onSuccess(onSuccess).onFailure { error ->
+                workshop.reportRepository.markFailed(visit.id, error.message ?: "Не удалось опубликовать отчёт")
+                onFailure(error)
+            }
+        }
+    }
+
+    fun reviseReport(visit: VisitEntity, onSuccess: () -> Unit, onFailure: (Throwable) -> Unit) {
+        val workshop = container.forWorkshop(requireNotNull(session.value).workshopId)
+        viewModelScope.launch {
+            runCatching { workshop.reportRepository.revokePublished(visit) }
+                .onSuccess { onSuccess() }
+                .onFailure(onFailure)
+        }
+    }
+
     fun findingsForVisit(visitId: String): Flow<List<FindingEntity>> =
-        container.findingRepository.findingsForVisit(visitId)
+        session.flatMapLatest { it?.let { container.forWorkshop(it.workshopId).findingRepository.findingsForVisit(visitId) } ?: flowOf(emptyList()) }
 
     fun createFinding(
         draft: FindingDraft,
@@ -188,6 +232,24 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
             runCatching { container.findingRepository.prepareForApproval(finding) }
                 .onSuccess { onSuccess() }
                 .onFailure(onFailure)
+        }
+    }
+
+    fun completeFinding(finding: FindingEntity, onSuccess: () -> Unit, onFailure: (Throwable) -> Unit) {
+        viewModelScope.launch {
+            runCatching { container.findingRepository.markCompleted(finding) }
+                .onSuccess { onSuccess() }
+                .onFailure(onFailure)
+        }
+    }
+
+    fun queueApproval(finding: FindingEntity, onSuccess: () -> Unit, onFailure: (Throwable) -> Unit) {
+        val workshop = container.forWorkshop(requireNotNull(session.value).workshopId)
+        viewModelScope.launch {
+            runCatching {
+                workshop.findingRepository.queueApproval(finding)
+                workshop.uploadScheduler.enqueueApproval(finding.id)
+            }.onSuccess { onSuccess() }.onFailure(onFailure)
         }
     }
 

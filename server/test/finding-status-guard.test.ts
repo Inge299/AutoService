@@ -82,4 +82,33 @@ describe("finding status guard", () => {
     expect(update).not.toHaveBeenCalled();
     await app.close();
   });
+
+  it("marks only an approved finding as completed through the dedicated action", async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const completed = { id: findingId, workshopId, visitId, status: "COMPLETED", serverVersion: 3 };
+    const transaction = vi.fn(async (callback) => callback({
+      finding: {
+        findFirst: vi.fn().mockResolvedValue({ id: findingId, visitId }),
+        updateMany,
+        findUnique: vi.fn().mockResolvedValue(completed),
+      },
+      visit: { findFirst: vi.fn().mockResolvedValue({ status: "IN_REPAIR" }) },
+      auditEvent: { create: vi.fn().mockResolvedValue({}) },
+    }));
+    const prisma = {
+      membership: { findUnique: vi.fn().mockResolvedValue({ role: "EMPLOYEE", isActive: true, user: { isActive: true } }) },
+      $transaction: transaction,
+    } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+
+    const response = await app.inject({ method: "POST", url: `/v1/findings/${findingId}/complete`, headers });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ id: findingId, status: "COMPLETED" });
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: findingId, workshopId, status: "APPROVED" },
+      data: expect.objectContaining({ status: "COMPLETED" }),
+    }));
+    await app.close();
+  });
 });

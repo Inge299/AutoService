@@ -33,4 +33,17 @@ describe("authentication configuration", () => {
       SMS_PROVIDER: "debug",
     }))).toThrow("forbidden in production");
   });
+
+  it("requires an HTTPS public object-storage endpoint in production", () => {
+    const production = {
+      NODE_ENV: "production",
+      INTERNAL_API_KEY: "i".repeat(32),
+      ACCESS_TOKEN_SECRET: "a".repeat(32),
+      OTP_HASH_SECRET: "o".repeat(32),
+    };
+    expect(() => loadConfig(environment(production))).toThrow("S3_PUBLIC_ENDPOINT is required");
+    expect(() => loadConfig(environment({ ...production, S3_PUBLIC_ENDPOINT: "http://storage.example.test" }))).toThrow("must use HTTPS");
+    expect(loadConfig(environment({ ...production, S3_PUBLIC_ENDPOINT: "https://storage.example.test" })).S3_PUBLIC_ENDPOINT)
+      .toBe("https://storage.example.test");
+  });
 });

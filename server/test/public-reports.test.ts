@@ -28,10 +28,10 @@ describe("public report routes", () => {
         }),
         update,
       },
-      mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: "44444444-4444-4444-8444-444444444444", kind: "PHOTO", mimeType: "image/jpeg", objectKey: "private/report-photo" }]) },
+      mediaAsset: { update: vi.fn().mockResolvedValue({}), findMany: vi.fn().mockResolvedValue([{ id: "44444444-4444-4444-8444-444444444444", kind: "PHOTO", mimeType: "image/jpeg", objectKey: "private/report-photo" }]) },
     } as unknown as PrismaClient;
     const createDownloadTarget = vi.fn().mockResolvedValue({ url: "https://media.example/signed", expiresInSeconds: 900 });
-    const app = await buildApp(config, { prisma, storage: { createDownloadTarget } as unknown as ObjectStorage });
+    const app = await buildApp(config, { prisma, storage: { seal: vi.fn().mockResolvedValue("private/object-key"), createDownloadTarget } as unknown as ObjectStorage });
 
     const response = await app.inject({ method: "GET", url: `/public/v1/reports/${token}` });
 

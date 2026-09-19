@@ -7,8 +7,9 @@ import ru.autoservice.spike.data.VisitEntity
 import ru.autoservice.spike.network.WorkshopRemote
 import ru.autoservice.spike.network.WorkshopSnapshot
 import ru.autoservice.spike.network.ApprovalLink
+import ru.autoservice.spike.network.ReportLink
 
-class FakeWorkshopRemote : WorkshopRemote {
+open class FakeWorkshopRemote : WorkshopRemote {
     val visits = mutableListOf<VisitEntity>()
     val findings = mutableListOf<FindingEntity>()
 
@@ -33,6 +34,24 @@ class FakeWorkshopRemote : WorkshopRemote {
         mediaIds: List<String>,
         replaceActive: Boolean,
     ) = ApprovalLink("https://example.test/a/$token", 1_800_000L)
+
+    override suspend fun completeFinding(findingId: String): FindingEntity =
+        findings.first { it.id == findingId }.copy(status = ru.autoservice.spike.data.FindingStatus.COMPLETED).also { completed ->
+            findings.removeAll { it.id == findingId }
+            findings += completed
+        }
+
+    override suspend fun saveReport(
+        visitId: String,
+        completedWork: String,
+        recommendations: String,
+        nextVisitAtEpochMs: Long?,
+    ) = Unit
+
+    override suspend fun publishReport(visitId: String, operationId: String, token: String) =
+        ReportLink("https://example.test/r/$token", 1_800_000L)
+
+    override suspend fun revokeReportLink(visitId: String) = Unit
 
     override suspend fun uploadMedia(asset: MediaAssetEntity) = Unit
 

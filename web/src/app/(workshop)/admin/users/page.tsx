@@ -1,3 +1,4 @@
+import { Button } from "@/components/action";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
@@ -51,7 +52,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
         <label>Телефон <small>необязательно</small><input name="phone" maxLength={32} placeholder="+7 999 000-00-00" /></label>
         <label>Роль<select name="role" defaultValue="EMPLOYEE"><option value="EMPLOYEE">Сотрудник</option><option value="ADMIN">Администратор</option></select></label>
         <label>Временный пароль<input name="password" type="password" minLength={8} maxLength={256} required autoComplete="new-password" placeholder="Минимум 8 символов" /></label>
-        <button className="button button-primary" type="submit">Создать пользователя</button>
+        <Button variant="primary" className="" type="submit">Создать пользователя</Button>
       </form>
     </section>
 
@@ -64,16 +65,16 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
           <form action={setUserRoleAction} className="admin-inline-form">
             <input type="hidden" name="userId" value={user.id} />
             <select name="role" defaultValue={user.role} disabled={user.isCurrent}><option value="EMPLOYEE">Сотрудник</option><option value="ADMIN">Администратор</option></select>
-            {!user.isCurrent && <button type="submit" className="button button-secondary button-small">Сохранить</button>}
+            {!user.isCurrent && <Button type="submit" variant="secondary" className=" button-small">Сохранить</Button>}
           </form>
           <form action={resetUserPasswordAction} className="admin-inline-form admin-password-form">
             <input type="hidden" name="userId" value={user.id} />
             <input name="password" type="password" minLength={8} maxLength={256} required autoComplete="new-password" placeholder="Новый пароль" />
-            <button type="submit" className="button button-secondary button-small">Сменить</button>
+            <Button type="submit" variant="secondary" className=" button-small">Сменить</Button>
           </form>
           <form action={setUserStateAction}>
             <input type="hidden" name="userId" value={user.id} /><input type="hidden" name="isActive" value={String(!user.isActive)} />
-            <button type="submit" disabled={user.isCurrent} className={`button button-small ${user.isActive ? "button-danger" : "button-primary"}`}>{user.isActive ? "Отключить" : "Включить"}</button>
+            <Button type="submit" disabled={user.isCurrent} className={`button button-small ${user.isActive ? "button-danger" : "button-primary"}`}>{user.isActive ? "Отключить" : "Включить"}</Button>
           </form>
         </article>)}
       </div>

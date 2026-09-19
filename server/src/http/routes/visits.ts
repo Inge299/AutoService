@@ -1,3 +1,4 @@
+import { serializable } from "../../infrastructure/transaction.js";
 import { randomUUID } from "node:crypto";
 import type { PrismaClient, VisitStatus } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
@@ -84,7 +85,7 @@ export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
       const body = bodySchema.parse(request.body);
       const { workshopId } = request.actor;
 
-      const visit = await prisma.$transaction(async (tx) => {
+      const visit = await serializable(prisma, async (tx) => {
         const existing = await tx.visit.findUnique({ where: { id } });
         if (existing && existing.workshopId !== workshopId) return null;
         if (existing && body.baseServerVersion !== existing.serverVersion) {

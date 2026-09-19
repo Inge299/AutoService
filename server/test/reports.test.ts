@@ -56,7 +56,7 @@ describe("visit reports", () => {
         }),
         update: vi.fn().mockResolvedValue({}),
       },
-      finding: { findMany: vi.fn().mockResolvedValue([{ id: "77777777-7777-4777-8777-777777777777", title: "Колодки", description: "Износ", priceRub: 12_800, priority: "IMPORTANT", status: "APPROVED" }]) },
+      finding: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([{ id: "77777777-7777-4777-8777-777777777777", title: "Колодки", description: "Износ", priceRub: 12_800, priority: "IMPORTANT", status: "APPROVED" }]) },
       mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: "88888888-8888-4888-8888-888888888888" }]) },
       reportLink: { create: linkCreate },
       reminder: { create: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999999" }) },

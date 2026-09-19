@@ -1,5 +1,5 @@
+import { ActionLink, Button } from "@/components/action";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { StatusPill } from "@/components/status-pill";
@@ -15,21 +15,21 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
   const [visit, report] = await Promise.all([workshopRepository.getVisit(id), workshopRepository.getVisitReport(id)]);
   if (!visit) notFound();
   const status = visitStatusMeta[visit.status];
-  const approvedTotal = visit.findings.filter((finding) => finding.status === "APPROVED").reduce((sum, finding) => sum + (finding.priceRub ?? 0), 0);
+  const approvedTotal = visit.findings.filter((finding) => ["APPROVED", "COMPLETED"].includes(finding.status)).reduce((sum, finding) => sum + (finding.priceRub ?? 0), 0);
 
   return (
     <>
-      <Link href="/visits" className="back-link"><Icon name="arrow-left" /> Все визиты</Link>
+      <ActionLink variant="secondary" href="/visits" ><Icon name="arrow-left" /> Все визиты</ActionLink>
       <header className="visit-header">
         <div className="visit-identity"><span className="vehicle-large"><Icon name="car" /></span><div><div className="title-line"><h1>{visit.vehicle}</h1><StatusPill label={status.label} tone={status.tone} /></div><p>{visit.plate} · {visit.customer} · {visit.phone}</p></div></div>
-        <div className="visit-header-actions"><span className={`sync-label sync-${visit.syncHealth.toLowerCase()}`}><Icon name={visit.syncHealth === "ATTENTION" ? "alert" : "refresh"} />{visit.syncHealth === "SYNCED" ? "Синхронизировано" : visit.syncHealth === "SYNCING" ? "Идёт синхронизация" : "Нужна проверка"}</span><button className="icon-button" aria-label="Дополнительные действия"><Icon name="more" /></button></div>
+        <div className="visit-header-actions"><span className={`sync-label sync-${visit.syncHealth.toLowerCase()}`}><Icon name={visit.syncHealth === "ATTENTION" ? "alert" : "refresh"} />{visit.syncHealth === "SYNCED" ? "Синхронизировано" : visit.syncHealth === "SYNCING" ? "Идёт синхронизация" : "Нужна проверка"}</span></div>
       </header>
 
       <nav className="visit-tabs"><a href="#overview" className="active">Обзор</a><a href="#findings">Находки <em>{visit.findings.length}</em></a><a href="#media">Материалы <em>{visit.mediaCount}</em></a><a href="#history">История</a></nav>
 
       <div className="visit-layout" id="overview">
         <div className="visit-content">
-          {visit.attention && <section className="visit-attention"><span><Icon name={visit.syncHealth === "ATTENTION" ? "refresh" : "phone"} /></span><div><strong>{visit.attention}</strong><p>Это действие задерживает следующий этап визита.</p></div><button className="button button-primary">{visit.nextAction}</button></section>}
+          {visit.attention && <section className="visit-attention"><span><Icon name={visit.syncHealth === "ATTENTION" ? "refresh" : "phone"} /></span><div><strong>{visit.attention}</strong><p>Это действие задерживает следующий этап визита.</p></div><ActionLink href="#findings">К находкам</ActionLink></section>}
 
           <section className="content-card visit-overview-card">
             <div className="section-heading"><div><h2>Приёмка</h2><p>{visit.arrivedAt}</p></div><StatusPill label="Данные сохранены" tone="success" /></div>
@@ -45,10 +45,10 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
           <section className="section-block" id="findings">
             <div className="section-heading"><div><h2>Находки и рекомендации</h2><p>То, что обнаружено во время диагностики</p></div><span className="subtle-action">Добавляются мастером в Android</span></div>
             <div className="findings-list">
-              {approval && <div className="admin-notice admin-notice-success">Ссылка готова: <a href={approval} target="_blank" rel="noreferrer">открыть для клиента</a></div>}{error && <div className="form-error">Не удалось создать ссылку: проверьте цену и подтверждённые материалы.</div>}
+              {approval && <div className="admin-notice admin-notice-success">Ссылка готова: <ActionLink href={approval} target="_blank" rel="noreferrer">Открыть согласование</ActionLink></div>}{error && <div className="form-error">Не удалось создать ссылку: проверьте цену и подтверждённые материалы.</div>}
               {visit.findings.length ? visit.findings.map((finding) => { const findingState = findingStatusMeta[finding.status]; const priority = priorityMeta[finding.priority]; return <article className="finding-card" key={finding.id}>
                 <div className={`finding-stripe stripe-${priority.tone}`} />
-                <div className="finding-body"><div className="finding-top"><div><StatusPill label={priority.label} tone={priority.tone} /><h3>{finding.title}</h3></div><strong className="finding-price">{finding.priceRub == null ? "Цена уточняется" : formatRub(finding.priceRub)}</strong></div><p>{finding.description}</p><div className="finding-footer"><span><Icon name="camera" /> {finding.mediaCount} материала</span><StatusPill label={findingState.label} tone={findingState.tone} />{finding.status === "READY_FOR_APPROVAL" && <form action={createApprovalLinkAction}><input type="hidden" name="visitId" value={visit.id} /><input type="hidden" name="findingId" value={finding.id} /><button className="button button-primary" type="submit">Отправить клиенту</button></form>}</div></div>
+                <div className="finding-body"><div className="finding-top"><div><StatusPill label={priority.label} tone={priority.tone} /><h3>{finding.title}</h3></div><strong className="finding-price">{finding.priceRub == null ? "Цена уточняется" : formatRub(finding.priceRub)}</strong></div><p>{finding.description}</p><div className="finding-footer"><span><Icon name="camera" /> {finding.mediaCount} материала</span><StatusPill label={findingState.label} tone={findingState.tone} />{finding.status === "READY_FOR_APPROVAL" && <form action={createApprovalLinkAction}><input type="hidden" name="visitId" value={visit.id} /><input type="hidden" name="findingId" value={finding.id} /><Button variant="primary" className="" type="submit">Подготовить ссылку</Button></form>}</div></div>
               </article>; }) : <div className="empty-inline"><Icon name="check" /><p><strong>Находок пока нет</strong><small>Мастер добавит их из Android во время диагностики.</small></p></div>}
             </div>
           </section>
@@ -57,7 +57,7 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
         </div>
 
         <aside className="visit-sidebar">
-          <section className="next-step-card"><p className="eyebrow light">Следующее действие</p><h2>{visit.nextAction}</h2><p>{visit.status === "WAITING_APPROVAL" ? "Клиенту нужно пояснение перед окончательным решением." : "Продолжите процесс, когда мастер закончит текущий этап."}</p><button className="button button-light">{visit.nextAction}</button></section>
+          <section className="next-step-card"><p className="eyebrow light">Следующее действие</p><h2>{visit.nextAction}</h2><p>{visit.status === "WAITING_APPROVAL" ? "Клиенту нужно пояснение перед окончательным решением." : "Продолжите процесс, когда мастер закончит текущий этап."}</p><ActionLink href="#findings">К находкам</ActionLink></section>
           <section className="content-card money-card"><div><small>Согласовано</small><strong>{formatRub(approvedTotal)}</strong></div><div><small>На рассмотрении</small><strong>{formatRub(visit.findings.filter((f) => ["READY_FOR_APPROVAL","SENT_TO_CUSTOMER","CALL_REQUESTED"].includes(f.status)).reduce((sum, f) => sum + (f.priceRub ?? 0), 0))}</strong></div></section>
           <section className="content-card activity-card" id="history"><h2>История визита</h2><div className="timeline">{visit.events.map((event) => <div className={`timeline-item ${event.tone}`} key={event.id}><i /><div><strong>{event.title}</strong><p>{event.detail}</p><small>{event.time}</small></div></div>)}</div></section>
         </aside>

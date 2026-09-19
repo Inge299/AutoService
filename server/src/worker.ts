@@ -1,7 +1,7 @@
 import { JobState, type Prisma } from "@prisma/client";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadConfig } from "./config.js";
-import { ObjectStorage } from "./infrastructure/object-storage.js";
+import { ObjectStorage, MediaIntegrityError } from "./infrastructure/object-storage.js";
 import { createPrisma } from "./infrastructure/prisma.js";
 import { createReminderDelivery } from "./infrastructure/reminder-delivery.js";
 
@@ -49,15 +49,17 @@ async function verifyMedia(payload: Prisma.JsonValue): Promise<void> {
 
   const asset = await prisma.mediaAsset.findUnique({ where: { id: mediaId } });
   if (!asset) throw new PermanentJobError("Media asset does not exist");
-  const actualSha256 = await storage.sha256(asset.objectKey);
-  if (actualSha256 !== asset.sha256) {
-    await prisma.mediaAsset.update({
-      where: { id: asset.id },
-      data: { state: "BLOCKED", lastError: "SHA-256 mismatch" },
-    });
-    throw new PermanentJobError("Media SHA-256 mismatch");
+  if (["VERIFIED", "READY"].includes(asset.state) && asset.objectKey.endsWith("/verified")) return;
+  try {
+    const objectKey = await storage.seal(asset);
+    await prisma.mediaAsset.update({ where: { id: asset.id }, data: { objectKey, state: "VERIFIED", lastError: null } });
+  } catch (error) {
+    if (error instanceof MediaIntegrityError) {
+      await prisma.mediaAsset.update({ where: { id: asset.id }, data: { state: "BLOCKED", lastError: "Media integrity mismatch" } });
+      throw new PermanentJobError("Media integrity mismatch");
+    }
+    throw error;
   }
-  await prisma.mediaAsset.update({ where: { id: asset.id }, data: { state: "VERIFIED", lastError: null } });
 }
 
 function reminderIdFrom(payload: Prisma.JsonValue): string | undefined {
@@ -133,6 +135,9 @@ while (!stopping) {
     });
   } catch (error) {
     const terminal = error instanceof PermanentJobError || job.attempts >= 5;
+    if (terminal && job.type === "VERIFY_MEDIA" && typeof job.payload === "object" && job.payload !== null && !Array.isArray(job.payload) && typeof job.payload.mediaId === "string") {
+      await prisma.mediaAsset.updateMany({ where: { id: job.payload.mediaId, state: "VERIFYING" }, data: { state: "RETRY", lastError: "Verification failed; retry upload" } });
+    }
     const reminderId = job.type === "SEND_REMINDER_SMS" ? reminderIdFrom(job.payload) : undefined;
     if (reminderId) {
       await prisma.reminder.updateMany({

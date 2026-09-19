@@ -1,3 +1,4 @@
+import { serializable } from "../../infrastructure/transaction.js";
 import { createHash } from "node:crypto";
 import type { ApprovalDecisionValue, FindingStatus, PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
@@ -61,7 +62,7 @@ export function publicApprovalRoutes(prisma: PrismaClient, storage: ObjectStorag
               findingId: version.findingId,
               state: { in: ["VERIFIED", "READY"] },
             },
-            select: { id: true, kind: true, mimeType: true, objectKey: true },
+            select: { id: true, kind: true, mimeType: true, objectKey: true, sha256: true, byteCount: true },
           })
         : [];
       if (assets.length !== version.mediaIds.length) {
@@ -71,7 +72,9 @@ export function publicApprovalRoutes(prisma: PrismaClient, storage: ObjectStorag
       const media = await Promise.all(version.mediaIds.map(async (mediaId) => {
         const asset = byId.get(mediaId);
         if (!asset) throw new Error("Approval media snapshot is incomplete");
-        const target = await storage.createDownloadTarget(asset.objectKey);
+        const objectKey = await storage.seal(asset);
+        if (objectKey !== asset.objectKey) await prisma.mediaAsset.update({ where: { id: asset.id }, data: { objectKey } });
+        const target = await storage.createDownloadTarget(objectKey);
         return {
           id: asset.id,
           kind: asset.kind,
@@ -101,22 +104,21 @@ export function publicApprovalRoutes(prisma: PrismaClient, storage: ObjectStorag
     app.post("/public/v1/approvals/:token/decision", async (request, reply) => {
       const { token } = paramsSchema.parse(request.params);
       const body = decisionSchema.parse(request.body);
-      const link = await prisma.approvalLink.findUnique({
-        where: { tokenHash: tokenHash(token) },
-        include: approvalInclude,
-      });
-      if (!link) return reply.code(404).send({ error: "not_found" });
-      if (unavailable(link)) return reply.code(410).send({ error: "link_unavailable" });
-
-      const existing = link.approvalVersion.decision;
-      if (existing) {
-        if (existing.value !== body.value) return reply.code(409).send({ error: "decision_already_recorded" });
-        return reply.send(existing);
-      }
-
       const value = body.value as ApprovalDecisionValue;
       const findingStatus = body.value as FindingStatus;
-      const decision = await prisma.$transaction(async (tx) => {
+      const result = await serializable(prisma, async (tx) => {
+        const link = await tx.approvalLink.findUnique({
+          where: { tokenHash: tokenHash(token) }, include: approvalInclude,
+        });
+        if (!link) return { code: 404, body: { error: "not_found" } };
+        if (unavailable(link)) return { code: 410, body: { error: "link_unavailable" } };
+        const existing = link.approvalVersion.decision;
+        if (existing) return existing.value === body.value
+          ? { code: 200, body: existing }
+          : { code: 409, body: { error: "decision_already_recorded" } };
+        if (["COMPLETED", "CANCELLED"].includes(link.approvalVersion.visit.status)) {
+          return { code: 409, body: { error: "visit_closed" } };
+        }
         const saved = await tx.approvalDecision.create({
           data: { approvalVersionId: link.approvalVersionId, value },
         });
@@ -150,10 +152,10 @@ export function publicApprovalRoutes(prisma: PrismaClient, storage: ObjectStorag
             metadata: { value, approvalVersionId: link.approvalVersionId, unansweredApprovals },
           },
         });
-        return saved;
+        return { code: 201, body: saved };
       });
 
-      return reply.code(201).send(decision);
+      return reply.code(result.code).send(result.body);
     });
   };
 }

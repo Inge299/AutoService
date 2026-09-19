@@ -47,6 +47,12 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Config
   if (config.NODE_ENV === "production" && config.SMS_PROVIDER === "debug") {
     throw new Error("SMS_PROVIDER=debug is forbidden in production");
   }
+  if (config.NODE_ENV === "production" && !config.S3_PUBLIC_ENDPOINT) {
+    throw new Error("S3_PUBLIC_ENDPOINT is required in production for Android media uploads");
+  }
+  if (config.NODE_ENV === "production" && config.S3_PUBLIC_ENDPOINT && !config.S3_PUBLIC_ENDPOINT.startsWith("https://")) {
+    throw new Error("S3_PUBLIC_ENDPOINT must use HTTPS in production");
+  }
   if (config.SMS_PROVIDER === "smsru" && !config.SMS_RU_API_ID) {
     throw new Error("SMS_RU_API_ID is required when SMS_PROVIDER=smsru");
   }

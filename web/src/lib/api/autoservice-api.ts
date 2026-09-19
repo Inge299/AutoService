@@ -69,6 +69,13 @@ export interface ApiVisit {
   createdAt: string;
   updatedAt: string;
   findings: ApiFinding[];
+  report?: {
+    status: "DRAFT" | "PUBLISHED";
+    completedWork: string;
+    recommendations: string;
+    nextVisitAt: string | null;
+    publishedAt: string | null;
+  } | null;
   _count: { media: number };
 }
 

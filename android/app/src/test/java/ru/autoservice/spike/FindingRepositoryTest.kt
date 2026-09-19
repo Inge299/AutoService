@@ -109,6 +109,67 @@ class FindingRepositoryTest {
         assertTrue(dao.saved?.approvalToken?.length ?: 0 >= 43)
     }
 
+    @Test
+    fun `does not publish a partial material snapshot`() = runTest {
+        val dao = FakeFindingDao()
+        val repository = FindingRepository(dao, FakeMediaDao(listOf(mediaAsset("finding-1", SyncState.QUEUED))), FakeWorkshopRemote())
+        val finding = readyFinding()
+        var rejected = false
+        try { repository.createApprovalLink(finding) } catch (_: IllegalArgumentException) { rejected = true }
+        assertTrue(rejected)
+        assertEquals(null, dao.saved)
+    }
+
+    @Test
+    fun `queue survives repository recreation and excludes later captures`() = runTest {
+        val dao = FakeFindingDao()
+        dao.insert(readyFinding())
+        val assets = mutableListOf(mediaAsset("finding-1", SyncState.SYNCED))
+        val media = FakeMediaDao(assets)
+        val calls = mutableListOf<Pair<String, List<String>>>()
+        val remote = object : ru.autoservice.spike.network.WorkshopRemote by FakeWorkshopRemote() {
+            override suspend fun createApprovalLink(findingId: String, operationId: String, token: String, mediaIds: List<String>, replaceActive: Boolean): ru.autoservice.spike.network.ApprovalLink {
+                calls += operationId to mediaIds
+                if (calls.size == 1) throw java.io.IOException("Response lost")
+                return ru.autoservice.spike.network.ApprovalLink("https://example.test/a/$token", 1800000L)
+            }
+        }
+        val repository = FindingRepository(dao, media, remote)
+        repository.queueApproval(readyFinding())
+        val operationId = dao.saved!!.approvalOperationId
+        assets += mediaAsset("finding-1", SyncState.QUEUED).copy(id = "later-capture")
+        try { repository.processPending("finding-1") } catch (_: java.io.IOException) { }
+        repository.preparationFailed("finding-1", "Repeat")
+        val restored = FindingRepository(dao, media, remote)
+        restored.queueApproval(dao.saved!!)
+        restored.processPending("finding-1")
+        assertEquals(listOf(operationId, operationId), calls.map { it.first })
+        assertTrue(calls.all { it.second == listOf("media-1") })
+        assertEquals("READY", dao.saved!!.approvalPreparationState)
+        assertEquals(FindingStatus.SENT_TO_CUSTOMER, dao.saved!!.status)
+    }
+
+    @Test
+    fun `marks only an approved finding as completed`() = runTest {
+        val dao = FakeFindingDao()
+        val approved = readyFinding().copy(status = FindingStatus.APPROVED)
+        dao.insert(approved)
+        val remote = object : ru.autoservice.spike.network.WorkshopRemote by FakeWorkshopRemote() {
+            override suspend fun completeFinding(findingId: String): FindingEntity = approved.copy(status = FindingStatus.COMPLETED)
+        }
+        val repository = FindingRepository(dao, FakeMediaDao(), remote)
+
+        repository.markCompleted(approved)
+
+        assertEquals(FindingStatus.COMPLETED, dao.saved?.status)
+    }
+
+    private fun readyFinding() = FindingEntity(
+        id = "finding-1", visitId = "visit-1", title = "Колодки", description = "", priceRub = 4000,
+        priority = FindingPriority.IMPORTANT, status = FindingStatus.READY_FOR_APPROVAL,
+        createdAtEpochMs = 1, updatedAtEpochMs = 1, serverVersion = 2,
+    )
+
     private class FakeFindingDao : FindingDao {
         private val findings = MutableStateFlow<List<FindingEntity>>(emptyList())
         var saved: FindingEntity? = null

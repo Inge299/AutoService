@@ -293,13 +293,28 @@ export function customerAccountRoutes(
           OR: [{ customerId: customer.id }, { customerId: null, customerPhone: customer.phone }],
         },
         orderBy: { updatedAt: "desc" },
-        include: { findings: { orderBy: { createdAt: "asc" }, select: { id: true, title: true, description: true, priceRub: true, priority: true, status: true, createdAt: true } }, _count: { select: { media: true } } },
+        include: {
+          findings: { orderBy: { createdAt: "asc" }, select: { id: true, title: true, description: true, priceRub: true, priority: true, status: true, createdAt: true } },
+          report: {
+            select: {
+              status: true,
+              completedWork: true,
+              recommendations: true,
+              nextVisitAt: true,
+              publishedAt: true,
+            },
+          },
+          _count: { select: { media: true } },
+        },
       });
       return {
         customer: { id: customer.id, name: customer.name, phone: customer.phone, email: customer.email },
         workshop: customer.workshop,
         vehicles: customer.vehicles,
-        visits,
+        visits: visits.map(({ report, ...visit }) => ({
+          ...visit,
+          report: report?.status === "PUBLISHED" ? report : null,
+        })),
       };
     });
   };

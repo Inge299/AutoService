@@ -1,4 +1,5 @@
 "use client";
+import { Button } from "@/components/action";
 
 import { useState } from "react";
 import { Icon, type IconName } from "@/components/icons";
@@ -62,10 +63,10 @@ export function ApprovalDecision({
   return (
     <div className="decision-panel">
       <h2>Ваше решение</h2><p>Выберите один вариант. После сохранения мастерская сразу увидит ответ.</p>
-      <button disabled={Boolean(pending)} onClick={() => save("APPROVED")} className="customer-action approve"><Icon name="check" /><span><strong>{pending === "APPROVED" ? "Сохраняем…" : "Согласовать"}</strong><small>Выполнить работу за {formatRub(priceRub)}</small></span><Icon name="arrow-right" /></button>
-      <div className="secondary-decisions"><button disabled={Boolean(pending)} onClick={() => save("CALL_REQUESTED")}><Icon name="phone" /><span><strong>Нужен звонок</strong><small>Хочу уточнить детали</small></span></button><button disabled={Boolean(pending)} onClick={() => save("DEFERRED")}><Icon name="clock" /><span><strong>Отложить</strong><small>Вернуться позже</small></span></button></div>
-      <button disabled={Boolean(pending)} onClick={() => save("DECLINED")} className="decline-link">Не выполнять эту работу</button>
-      {error && <p className="form-error"><Icon name="alert" /> {error}</p>}
+      <Button disabled={Boolean(pending)} onClick={() => save("APPROVED")} variant="primary" className="decision-action"><Icon name="check" /><span><strong>{pending === "APPROVED" ? "Сохраняем…" : "Согласовать"}</strong><small>Выполнить работу за {formatRub(priceRub)}</small></span><Icon name="arrow-right" /></Button>
+      <div className="secondary-decisions"><Button className="decision-action" disabled={Boolean(pending)} onClick={() => save("CALL_REQUESTED")}><Icon name="phone" /><span><strong>Нужен звонок</strong><small>Хочу уточнить детали</small></span></Button><Button className="decision-action" disabled={Boolean(pending)} onClick={() => save("DEFERRED")}><Icon name="clock" /><span><strong>Отложить</strong><small>Вернуться позже</small></span></Button></div>
+      <Button disabled={Boolean(pending)} onClick={() => save("DECLINED")} variant="danger" className="decision-decline">Не выполнять эту работу</Button>
+      {error && <p role="alert" className="form-error"><Icon name="alert" /> {error}</p>}
       <p className="security-note">Решение сохраняется один раз и привязано к этой защищённой ссылке.</p>
     </div>
   );

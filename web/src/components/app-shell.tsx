@@ -1,4 +1,5 @@
 "use client";
+import { Button } from "@/components/action";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -60,7 +61,7 @@ export function AppShell({ session, accessTokenExpiresAtEpochMs, backend, worksh
           <div className="profile-row">
             <span className="profile-avatar">{session.displayName.slice(0, 1).toUpperCase()}</span>
             <div><strong>{session.displayName}</strong><small>{session.role === "ADMIN" ? "Администратор" : "Сотрудник"}</small></div>
-            <form action={logoutAction}><button type="submit" aria-label="Выйти"><Icon name="logout" /></button></form>
+            <form action={logoutAction}><Button type="submit" aria-label="Выйти"><Icon name="logout" /></Button></form>
           </div>
         </div>
       </aside>

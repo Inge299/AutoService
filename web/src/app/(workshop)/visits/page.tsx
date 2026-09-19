@@ -1,3 +1,4 @@
+import { ActionLink, Button } from "@/components/action";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/icons";
@@ -22,7 +23,7 @@ export default async function VisitsPage({ searchParams }: { searchParams: Promi
       <PageHeader eyebrow="Рабочий журнал" title="Визиты" description="Все автомобили, которые проходили через мастерскую." />
       <section className="content-card list-card">
         <div className="list-toolbar">
-          <form className="search-field"><Icon name="search" /><input name="q" defaultValue={params.q} placeholder="Автомобиль, госномер, клиент или телефон" /><button>Найти</button></form>
+          <form className="search-field"><Icon name="search" /><input name="q" defaultValue={params.q} placeholder="Автомобиль, госномер, клиент или телефон" /><Button>Найти</Button></form>
           <span className="result-count">{visits.length} {visits.length === 1 ? "визит" : "визитов"}</span>
         </div>
         <div className="filter-tabs">
@@ -31,7 +32,7 @@ export default async function VisitsPage({ searchParams }: { searchParams: Promi
             return <Link key={filter.label} href={href} className={activeStatus === filter.value ? "active" : undefined}>{filter.label}{filter.value && <small>{visitStatusMeta[filter.value].label === filter.label ? "" : ""}</small>}</Link>;
           })}
         </div>
-        <div className="visit-list">{visits.length ? visits.map((visit) => <VisitRow key={visit.id} visit={visit} />) : <div className="empty-state"><Icon name={hasFilters ? "search" : "car"} /><h3>{hasFilters ? "Ничего не найдено" : "Визитов пока нет"}</h3><p>{hasFilters ? "Попробуйте изменить запрос или сбросить фильтр." : "Первый визит появится после синхронизации с сервером."}</p>{hasFilters && <Link href="/visits" className="button button-secondary">Сбросить фильтры</Link>}</div>}</div>
+        <div className="visit-list">{visits.length ? visits.map((visit) => <VisitRow key={visit.id} visit={visit} />) : <div className="empty-state"><Icon name={hasFilters ? "search" : "car"} /><h3>{hasFilters ? "Ничего не найдено" : "Визитов пока нет"}</h3><p>{hasFilters ? "Попробуйте изменить запрос или сбросить фильтр." : "Первый визит появится после синхронизации с сервером."}</p>{hasFilters && <ActionLink variant="secondary" href="/visits" >Сбросить фильтры</ActionLink>}</div>}</div>
       </section>
     </>
   );

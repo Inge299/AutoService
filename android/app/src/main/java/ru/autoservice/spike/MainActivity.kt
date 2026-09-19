@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -80,6 +81,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import ru.autoservice.spike.data.MediaAssetEntity
 import ru.autoservice.spike.data.MediaKind
+import ru.autoservice.spike.data.ReportDraft
 import ru.autoservice.spike.data.FindingDraft
 import ru.autoservice.spike.data.FindingEntity
 import ru.autoservice.spike.data.FindingPriority
@@ -90,8 +92,10 @@ import ru.autoservice.spike.data.VisitEntity
 import ru.autoservice.spike.data.VisitStatus
 import ru.autoservice.spike.media.VoiceRecorder
 import ru.autoservice.spike.network.OtpChallenge
+import ru.autoservice.spike.network.ApiException
 import ru.autoservice.spike.ui.CameraCaptureScreen
 import ru.autoservice.spike.ui.QueueViewModel
+import ru.autoservice.spike.ui.ReportComposerDialog
 import ru.autoservice.spike.ui.theme.AutoServiceTheme
 
 class MainActivity : ComponentActivity() {
@@ -107,7 +111,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     val context = LocalContext.current
     val snackbarHost = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val visits by viewModel.activeVisits.collectAsState()
+    val visits by viewModel.visits.collectAsState()
     val vehicleBrandSuggestions by viewModel.vehicleBrandSuggestions.collectAsState()
     val complaintSuggestions by viewModel.complaintSuggestions.collectAsState()
     val session by viewModel.session.collectAsState()
@@ -117,6 +121,15 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     var showCamera by remember { mutableStateOf(false) }
     var captureFindingId by remember { mutableStateOf<String?>(null) }
     var editingFinding by remember { mutableStateOf<FindingEntity?>(null) }
+    androidx.compose.runtime.LaunchedEffect(session?.workshopId) {
+        selectedVisitId = null
+        creatingVisit = false
+        creatingFindingForVisitId = null
+        showCamera = false
+        captureFindingId = null
+        editingFinding = null
+    }
+
 
     val capturePermissions = remember {
         arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
@@ -305,39 +318,65 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                     )
                 },
                 onSendApprovalLink = { finding ->
-                    viewModel.createApprovalLink(
-                        finding = finding,
-                        onSuccess = { link ->
-                            val share = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, link.publicUrl)
-                            }
-                            context.startActivity(Intent.createChooser(share, "Отправить ссылку клиенту"))
-                            message("Ссылка согласования готова")
-                        },
-                        onFailure = { message(it.message ?: "Не удалось создать ссылку") },
-                    )
+                    if (finding.approvalPublicUrl != null && finding.approvalPreparationState != "PENDING" && finding.status == FindingStatus.SENT_TO_CUSTOMER) {
+                        val share = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, finding.approvalPublicUrl)
+                        }
+                        context.startActivity(Intent.createChooser(share, "Поделиться согласованием"))
+                    } else {
+                        viewModel.queueApproval(finding,
+                            onSuccess = { message("Готовим ссылку в фоне. Можно продолжать работу") },
+                            onFailure = { message(it.message ?: "Не удалось подготовить ссылку") })
+                    }
                 },
                 onRenewApprovalLink = { finding ->
-                    viewModel.renewApprovalLink(
-                        finding = finding,
-                        onSuccess = { link ->
-                            val share = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, link.publicUrl)
-                            }
-                            context.startActivity(Intent.createChooser(share, "Отправить новую ссылку клиенту"))
-                            message("Создана новая ссылка с актуальными материалами")
-                        },
-                        onFailure = { message(it.message ?: "Не удалось обновить ссылку") },
-                    )
+                    viewModel.queueApproval(finding,
+                        onSuccess = { message("Обновляем согласование после загрузки материалов") },
+                        onFailure = { message(it.message ?: "Не удалось обновить ссылку") })
                 },
                 onEditFinding = { finding -> editingFinding = finding },
+                onCompleteFinding = { finding ->
+                    viewModel.completeFinding(
+                        finding,
+                        onSuccess = { message("Работа отмечена как выполненная") },
+                        onFailure = { message(it.message ?: "Не удалось обновить статус работы") },
+                    )
+                },
                 onStartRepair = {
                     viewModel.startRepair(
                         visit = selectedVisit,
                         onSuccess = { message("Ремонт начат") },
                         onFailure = { message(it.message ?: "Не удалось начать ремонт") },
+                    )
+                },
+                onPublishReport = { draft ->
+                    viewModel.publishReport(
+                        visit = selectedVisit,
+                        draft = draft,
+                        onSuccess = { link ->
+                            val share = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, link.publicUrl)
+                            }
+                            context.startActivity(Intent.createChooser(share, "Поделиться отчётом"))
+                            message("Отчёт опубликован, ремонт завершён")
+                        },
+                        onFailure = { message(it.reportPublicationMessage()) },
+                    )
+                },
+                onShareReport = { url ->
+                    val share = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, url)
+                    }
+                    context.startActivity(Intent.createChooser(share, "Поделиться отчётом"))
+                },
+                onReviseReport = {
+                    viewModel.reviseReport(
+                        visit = selectedVisit,
+                        onSuccess = { message("Отчёт отозван. Внесите правки и опубликуйте новую версию") },
+                        onFailure = { message(it.reportPublicationMessage()) },
                     )
                 },
                 onCreateFinding = { creatingFindingForVisitId = selectedVisit.id },
@@ -750,7 +789,11 @@ private fun VisitScreen(
     onSendApprovalLink: (FindingEntity) -> Unit,
     onRenewApprovalLink: (FindingEntity) -> Unit,
     onEditFinding: (FindingEntity) -> Unit,
+    onCompleteFinding: (FindingEntity) -> Unit,
     onStartRepair: () -> Unit,
+    onPublishReport: (ReportDraft) -> Unit,
+    onShareReport: (String) -> Unit,
+    onReviseReport: () -> Unit,
     onCreateFinding: () -> Unit,
     onBack: () -> Unit,
     onMessage: (String) -> Unit,
@@ -766,6 +809,9 @@ private fun VisitScreen(
     var voiceFindingId by remember { mutableStateOf<String?>(null) }
     var renewalFinding by remember { mutableStateOf<FindingEntity?>(null) }
     var deletionAsset by remember { mutableStateOf<MediaAssetEntity?>(null) }
+    var completionFinding by remember { mutableStateOf<FindingEntity?>(null) }
+    var showReportComposer by remember { mutableStateOf(false) }
+    var showReportRevisionConfirmation by remember { mutableStateOf(false) }
     var observedFindingStatuses by remember(visit.id) {
         mutableStateOf<Map<String, FindingStatus>?>(null)
     }
@@ -834,6 +880,37 @@ private fun VisitScreen(
         if (visit.complaint.isNotBlank()) Text("Жалоба: ${visit.complaint}")
         Spacer(Modifier.height(16.dp))
 
+        if (visit.status == VisitStatus.COMPLETED && visit.reportPublicUrl != null) {
+            Text("Отчёт опубликован", color = MaterialTheme.colorScheme.primary)
+            Button(onClick = { onShareReport(visit.reportPublicUrl) }, modifier = Modifier.fillMaxWidth()) {
+                Text("Поделиться отчётом")
+            }
+            OutlinedButton(onClick = { showReportRevisionConfirmation = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("Исправить и выпустить новую версию")
+            }
+            Spacer(Modifier.height(12.dp))
+        } else if (visit.status in setOf(VisitStatus.IN_REPAIR, VisitStatus.WAITING_APPROVAL)) {
+            when (visit.reportPreparationState) {
+                "PENDING" -> Text("Публикуем итоговый отчёт", color = MaterialTheme.colorScheme.primary)
+                "FAILED" -> Text(visit.reportPreparationError ?: "Не удалось опубликовать отчёт", color = MaterialTheme.colorScheme.error)
+                "READY" -> Text("Отчёт опубликован", color = MaterialTheme.colorScheme.primary)
+            }
+            if (visit.reportPreparationState == "READY" && visit.reportPublicUrl != null) {
+                Button(onClick = { onShareReport(visit.reportPublicUrl) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Поделиться отчётом")
+                }
+            } else {
+                Button(
+                    onClick = { showReportComposer = true },
+                    enabled = visit.reportPreparationState != "PENDING",
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (visit.reportPreparationState == "FAILED") "Повторить публикацию отчёта" else "Завершить ремонт и создать отчёт")
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
         if (visit.status == VisitStatus.DRAFT) {
             Button(onClick = onStartRepair, modifier = Modifier.fillMaxWidth()) {
                 Text("Начать ремонт")
@@ -887,6 +964,7 @@ private fun VisitScreen(
                     onSendApprovalLink = { onSendApprovalLink(finding) },
                     onRenewApprovalLink = { renewalFinding = finding },
                     onEdit = { onEditFinding(finding) },
+                    onComplete = { completionFinding = finding },
                     onRetryUpload = { asset -> viewModel.retry(asset) },
                     onDelete = { asset -> deletionAsset = asset },
                 )
@@ -934,6 +1012,46 @@ private fun VisitScreen(
                     }) { Text("Удалить") }
                 },
                 dismissButton = { TextButton(onClick = { deletionAsset = null }) { Text("Отмена") } },
+            )
+        }
+        completionFinding?.let { finding ->
+            AlertDialog(
+                onDismissRequest = { completionFinding = null },
+                title = { Text("Отметить работу выполненной?") },
+                text = { Text("«${finding.title}» перейдёт в статус «Выполнено» и войдёт в итоговый отчёт.") },
+                confirmButton = {
+                    Button(onClick = {
+                        completionFinding = null
+                        onCompleteFinding(finding)
+                    }) { Text("Выполнено") }
+                },
+                dismissButton = { TextButton(onClick = { completionFinding = null }) { Text("Отмена") } },
+            )
+        }
+        if (showReportComposer) {
+            ReportComposerDialog(
+                initialCompletedWork = visit.reportCompletedWork.orEmpty(),
+                initialRecommendations = visit.reportRecommendations.orEmpty(),
+                initialNextVisitAtEpochMs = visit.reportNextVisitAtEpochMs,
+                onDismiss = { showReportComposer = false },
+                onPublish = { draft ->
+                    showReportComposer = false
+                    onPublishReport(draft)
+                },
+            )
+        }
+        if (showReportRevisionConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showReportRevisionConfirmation = false },
+                title = { Text("Исправить отчёт?") },
+                text = { Text("Текущая ссылка станет недействительной. После правок будет создана новая неизменяемая версия отчёта.") },
+                confirmButton = {
+                    Button(onClick = {
+                        showReportRevisionConfirmation = false
+                        onReviseReport()
+                    }) { Text("Отозвать отчёт") }
+                },
+                dismissButton = { TextButton(onClick = { showReportRevisionConfirmation = false }) { Text("Отмена") } },
             )
         }
         Spacer(Modifier.height(18.dp))
@@ -1023,6 +1141,7 @@ private fun FindingCard(
     onSendApprovalLink: () -> Unit,
     onRenewApprovalLink: () -> Unit,
     onEdit: () -> Unit,
+    onComplete: () -> Unit,
     onRetryUpload: (MediaAssetEntity) -> Unit,
     onDelete: (MediaAssetEntity) -> Unit,
 ) {
@@ -1037,7 +1156,7 @@ private fun FindingCard(
             StatusPill(finding.status.label(), finding.status.color())
             val syncedAssets = findingAssets.filter { it.syncState == SyncState.SYNCED }
             val pendingAssets = findingAssets.filter { it.syncState != SyncState.SYNCED }
-            Text("Материалы этой находки", style = MaterialTheme.typography.labelLarge)
+            Text("Материалы: ${findingAssets.size} · готово ${syncedAssets.size}", style = MaterialTheme.typography.labelLarge)
             if (findingAssets.isEmpty()) {
                 Text("Не прикреплены", style = MaterialTheme.typography.bodySmall)
             } else {
@@ -1045,12 +1164,13 @@ private fun FindingCard(
                     assets = findingAssets,
                     onRetryUpload = onRetryUpload,
                     onDelete = onDelete,
-                    allowDelete = finding.status in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL),
+                    allowDelete = finding.approvalPreparationState != "PENDING" && finding.status in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL),
                 )
+                Text("Прокрутите вправо, чтобы увидеть все материалы", style = MaterialTheme.typography.bodySmall)
             }
             if (pendingAssets.isNotEmpty() && finding.status in setOf(FindingStatus.READY_FOR_APPROVAL, FindingStatus.SENT_TO_CUSTOMER)) {
                 Text(
-                    "В ссылку войдут ${syncedAssets.size} из ${findingAssets.size} материалов. Дождитесь загрузки, если голос или фото должны увидеть клиент.",
+                    "Загружаем ${pendingAssets.size} материалов. Ссылка будет готова после проверки всего выбранного набора.",
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -1062,26 +1182,36 @@ private fun FindingCard(
             TextButton(onClick = onToggleVoice, modifier = Modifier.fillMaxWidth()) {
                 Text(if (recordingVoice) "Остановить голос" else "Записать голос для клиента")
             }
+            when (finding.approvalPreparationState) {
+                "PENDING" -> Text("Готовим ссылку · можно продолжать работу", color = MaterialTheme.colorScheme.primary)
+                "READY" -> Text("Ссылка готова · отправьте её через «Поделиться»", color = MaterialTheme.colorScheme.primary)
+                "FAILED" -> Text(finding.approvalPreparationError ?: "Нужен повтор", color = MaterialTheme.colorScheme.error)
+            }
             when (finding.status) {
-                FindingStatus.DRAFT -> Button(onClick = onPrepare, modifier = Modifier.fillMaxWidth()) {
-                    Text("Подготовить согласование")
+                FindingStatus.DRAFT -> Button(onClick = onSendApprovalLink, enabled = finding.approvalPreparationState != "PENDING", modifier = Modifier.fillMaxWidth()) {
+                    Text("Подготовить ссылку")
                 }
                 FindingStatus.READY_FOR_APPROVAL -> Button(
                     onClick = onSendApprovalLink,
+                    enabled = finding.approvalPreparationState != "PENDING",
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Отправить ссылку клиенту") }
+                ) { Text(if (finding.approvalPreparationState == "FAILED") "Повторить подготовку" else "Подготовить ссылку") }
                 FindingStatus.SENT_TO_CUSTOMER -> Button(
                     onClick = onSendApprovalLink,
+                    enabled = finding.approvalPreparationState != "PENDING",
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Отправить ссылку повторно") }
+                ) { Text("Поделиться") }
+                FindingStatus.APPROVED -> Button(onClick = onComplete, modifier = Modifier.fillMaxWidth()) {
+                    Text("Отметить выполненной")
+                }
                 else -> Unit
             }
-            if (finding.status == FindingStatus.DRAFT) {
+            if (finding.status == FindingStatus.DRAFT && finding.approvalPreparationState != "PENDING") {
                 TextButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text("Изменить") }
             }
             if (finding.status == FindingStatus.SENT_TO_CUSTOMER) {
-                TextButton(onClick = onRenewApprovalLink, modifier = Modifier.fillMaxWidth()) {
-                    Text("Обновить ссылку с материалами")
+                OutlinedButton(onClick = onRenewApprovalLink, enabled = finding.approvalPreparationState != "PENDING", modifier = Modifier.fillMaxWidth()) {
+                    Text(if (finding.approvalPreparationState == "FAILED") "Повторить подготовку" else "Обновить материалы")
                 }
             }
         }
@@ -1422,6 +1552,7 @@ private fun FindingStatus.color(): androidx.compose.ui.graphics.Color = when (th
     FindingStatus.DRAFT -> MaterialTheme.colorScheme.surfaceVariant
     FindingStatus.READY_FOR_APPROVAL, FindingStatus.SENT_TO_CUSTOMER -> MaterialTheme.colorScheme.secondaryContainer
     FindingStatus.APPROVED -> MaterialTheme.colorScheme.tertiaryContainer
+    FindingStatus.COMPLETED -> MaterialTheme.colorScheme.primaryContainer
     FindingStatus.DECLINED -> MaterialTheme.colorScheme.errorContainer
     FindingStatus.CALL_REQUESTED -> MaterialTheme.colorScheme.primaryContainer
     FindingStatus.DEFERRED -> MaterialTheme.colorScheme.surfaceVariant
@@ -1438,6 +1569,7 @@ private fun ru.autoservice.spike.data.FindingStatus.label(): String = when (this
     ru.autoservice.spike.data.FindingStatus.READY_FOR_APPROVAL -> "Готово к согласованию"
     ru.autoservice.spike.data.FindingStatus.SENT_TO_CUSTOMER -> "Отправлено клиенту"
     ru.autoservice.spike.data.FindingStatus.APPROVED -> "Согласовано"
+    ru.autoservice.spike.data.FindingStatus.COMPLETED -> "Выполнено"
     ru.autoservice.spike.data.FindingStatus.DECLINED -> "Отклонено"
     ru.autoservice.spike.data.FindingStatus.CALL_REQUESTED -> "Нужен звонок"
     ru.autoservice.spike.data.FindingStatus.DEFERRED -> "Отложено"
@@ -1456,4 +1588,12 @@ private fun FindingStatus.decisionLabel(): String = when (this) {
     FindingStatus.CALL_REQUESTED -> "просит позвонить"
     FindingStatus.DEFERRED -> "отложил решение"
     else -> label()
+}
+
+private fun Throwable.reportPublicationMessage(): String = when ((this as? ApiException)?.message) {
+    "pending_approvals" -> "Сначала дождитесь решения клиента по всем согласованиям"
+    "completed_work_required" -> "Опишите выполненные работы"
+    "report_already_published" -> "Отчёт уже опубликован. Нажмите «Поделиться отчётом»"
+    "report_not_draft" -> "Отчёт нельзя опубликовать для этого визита"
+    else -> message ?: "Не удалось опубликовать отчёт. Проверьте сеть и повторите."
 }

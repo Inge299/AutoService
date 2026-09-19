@@ -1,3 +1,4 @@
+import { ActionLink } from "@/components/action";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/icons";
@@ -30,12 +31,12 @@ export default async function DashboardPage() {
   }).format(new Date());
   const active = visits.filter((visit) => !["COMPLETED", "CANCELLED"].includes(visit.status));
   const attention = active.filter((visit) => visit.attention);
-  const approvedFindings = visits.flatMap((visit) => visit.findings).filter((finding) => finding.status === "APPROVED");
+  const approvedFindings = visits.flatMap((visit) => visit.findings).filter((finding) => ["APPROVED", "COMPLETED"].includes(finding.status));
   const approvedValue = approvedFindings.reduce((sum, finding) => sum + (finding.priceRub ?? 0), 0);
 
   return (
     <>
-      <PageHeader eyebrow={currentDate} title={`Добрый день, ${session.displayName}`} description="Вот что происходит в мастерской прямо сейчас." actions={<Link href="/visits" className="button button-secondary"><Icon name="search" /> Найти визит</Link>} />
+      <PageHeader eyebrow={currentDate} title={`Добрый день, ${session.displayName}`} description="Вот что происходит в мастерской прямо сейчас." actions={<ActionLink variant="secondary" href="/visits" ><Icon name="search" /> Найти визит</ActionLink>} />
 
       <section className="metric-grid" aria-label="Сводка за сегодня">
         <article className="metric-card"><span className="metric-icon teal"><Icon name="car" /></span><div><small>Автомобилей в работе</small><strong>{active.length}</strong><p>По данным сервера</p></div></article>
@@ -60,7 +61,7 @@ export default async function DashboardPage() {
           </section>
 
           <section className="section-block">
-            <div className="section-heading"><div><h2>Автомобили сегодня</h2><p>{active.length} {pluralRu(active.length, "активный визит", "активных визита", "активных визитов")}</p></div><Link href="/visits" className="text-link">Все визиты <Icon name="arrow-right" /></Link></div>
+            <div className="section-heading"><div><h2>Автомобили сегодня</h2><p>{active.length} {pluralRu(active.length, "активный визит", "активных визита", "активных визитов")}</p></div><ActionLink variant="secondary" href="/visits" >Все визиты <Icon name="arrow-right" /></ActionLink></div>
             <div className="work-board">
               {board.map((column) => {
                 const items = active.filter((visit) => visit.status === column.status);
@@ -75,7 +76,7 @@ export default async function DashboardPage() {
 
         <aside className="dashboard-side">
           <section className="side-card revenue-card"><p className="eyebrow light">Текущий результат</p><h3>Согласованные работы</h3><strong>{formatRub(approvedValue)}</strong><p>по загруженным визитам</p><div className="mini-chart" aria-label="Состояние согласований"><i style={{height:"24%"}}/><i style={{height:"24%"}}/><i style={{height:"24%"}}/><i style={{height: approvedValue ? "78%" : "24%"}}/><i style={{height: approvedValue ? "78%" : "24%"}}/><i style={{height: approvedValue ? "78%" : "24%"}}/><i style={{height: approvedValue ? "78%" : "24%"}}/></div><small><b>{approvedFindings.length}</b> работ подтверждено</small></section>
-          <section className="side-card"><div className="side-card-title"><h3>Ближайшие напоминания</h3><Link href="/reminders">Все</Link></div>{reminders.length ? reminders.slice(0, 2).map((reminder) => <div className="reminder-mini" key={reminder.id}><span>{reminder.due}</span><div><strong>{reminder.customer}</strong><small>{reminder.reason} · {reminder.vehicle}</small></div></div>) : <p className="board-empty">Напоминаний пока нет</p>}</section>
+          <section className="side-card"><div className="side-card-title"><h3>Ближайшие напоминания</h3><ActionLink href="/reminders">Все напоминания</ActionLink></div>{reminders.length ? reminders.slice(0, 2).map((reminder) => <div className="reminder-mini" key={reminder.id}><span>{reminder.due}</span><div><strong>{reminder.customer}</strong><small>{reminder.reason} · {reminder.vehicle}</small></div></div>) : <p className="board-empty">Напоминаний пока нет</p>}</section>
         </aside>
       </div>
     </>

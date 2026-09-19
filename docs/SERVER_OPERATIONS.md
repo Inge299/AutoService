@@ -56,6 +56,9 @@ docker compose -f docker-compose.deploy.yml config --quiet
 POSTGRES_PASSWORD=<random-long-password>
 MINIO_ROOT_USER=<random-access-key>
 MINIO_ROOT_PASSWORD=<random-long-secret>
+MINIO_APP_ACCESS_KEY=<separate-app-access-key>
+MINIO_APP_SECRET_KEY=<separate-app-secret>
+S3_PUBLIC_ENDPOINT=https://storage.example.com
 INTERNAL_API_KEY=<random-32+-character-service-key>
 ACCESS_TOKEN_SECRET=<different-random-32+-character-signing-key>
 OTP_HASH_SECRET=<third-random-32+-character-hmac-key>
@@ -79,6 +82,14 @@ docker compose -f docker-compose.deploy.yml up -d --build
 API публикуется только на `127.0.0.1:8080`. PostgreSQL и MinIO не публикуют
 host-порты. В production API доверяет ровно одному reverse-proxy hop, поэтому Caddy/Nginx
 должен передавать корректный `X-Forwarded-For`; это необходимо для лимитов входа и OTP по IP.
+`S3_PUBLIC_ENDPOINT` — обязательный HTTPS-адрес MinIO/S3 для short-lived presigned ссылок
+Android: URL живут 15 минут. Браузер не загружает файлы напрямую в bucket, поэтому CORS для
+происхождения web-приложения не открывается. Bucket остаётся непубличным, а API и worker
+работают от отдельного `MINIO_APP_*` ключа с правами только на объекты `autoservice-media`;
+root-учётные данные доступны только контейнеру инициализации.
+Публичные API ограничены по IP: 120 чтений или 20 изменяющих запросов в минуту. Это
+предохранитель для одного API-процесса; при горизонтальном масштабировании его нужно
+заменить общим лимитом на reverse proxy или Redis до запуска второй реплики.
 При `SMS_PROVIDER=disabled` парольный вход работает, но запрос подтверждения
 возвращает `503`. Для `smsru` режим `callcheck` (по умолчанию) возвращает номер,
 на который пользователь звонит со своего телефона; API подтверждает факт звонка у SMS.RU
@@ -97,7 +108,7 @@ docker compose -f docker-compose.deploy.yml logs --tail=100 api worker migrate s
 
 Ожидаемое состояние:
 
-- `api`, `worker`, `postgres`, `minio` — `Up`;
+- `api`, `worker`, `postgres`, `minio` — `Up`; `api` — `healthy`;
 - PostgreSQL — `healthy`;
 - `migrate`, `seed`, `minio-init` завершены с кодом `0`;
 - оба health endpoint возвращают `{"status":"ok"}`.
@@ -166,13 +177,15 @@ docker stats --no-stream
 docker system df
 ```
 
-API пишет структурированные JSON-логи Fastify. У worker пока нет отдельного health endpoint; его состояние проверяется по container state и движению записей `background_jobs`.
+API пишет структурированные JSON-логи Fastify. Его readiness проверяет PostgreSQL и
+object storage, а Docker healthcheck использует этот же endpoint. У worker пока нет
+отдельного health endpoint; его состояние проверяется по container state и движению записей
+`background_jobs`.
 
 ## Обязательно до публичного запуска
 
 - production credentials, баланс и согласованный шаблон/отправитель SMS.RU;
 - HTTPS и reverse proxy;
-- отдельные S3 credentials с минимальными правами вместо root credentials;
 - автоматические off-host backups с регулярной проверкой restore;
 - monitoring диска, PostgreSQL, очереди и HTTP 5xx;
 - rate limiting и политика хранения/удаления медиа.

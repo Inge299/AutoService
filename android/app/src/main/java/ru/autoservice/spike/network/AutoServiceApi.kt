@@ -37,6 +37,11 @@ data class ApprovalLink(
     val expiresAtEpochMs: Long,
 )
 
+data class ReportLink(
+    val publicUrl: String,
+    val expiresAtEpochMs: Long,
+)
+
 interface WorkshopRemote {
     suspend fun loadWorkshop(): WorkshopSnapshot
     suspend fun saveVisit(visit: VisitEntity): VisitEntity
@@ -48,6 +53,15 @@ interface WorkshopRemote {
         mediaIds: List<String>,
         replaceActive: Boolean = false,
     ): ApprovalLink
+    suspend fun completeFinding(findingId: String): FindingEntity
+    suspend fun saveReport(
+        visitId: String,
+        completedWork: String,
+        recommendations: String,
+        nextVisitAtEpochMs: Long?,
+    )
+    suspend fun publishReport(visitId: String, operationId: String, token: String): ReportLink
+    suspend fun revokeReportLink(visitId: String)
     suspend fun uploadMedia(asset: MediaAssetEntity)
     suspend fun deleteMedia(assetId: String)
 }
@@ -55,9 +69,10 @@ interface WorkshopRemote {
 class AutoServiceApi(
     baseUrl: String,
     private val authStore: AuthStore,
+    private val expectedWorkshopId: String? = null,
 ) : WorkshopRemote {
     private val baseUrl = baseUrl.trimEnd('/')
-    private val refreshMutex = Mutex()
+    private val refreshMutex get() = authStore.refreshMutex
 
     suspend fun login(login: String, password: String): AuthSession = withContext(Dispatchers.IO) {
         val body = JSONObject()
@@ -187,6 +202,44 @@ class AutoServiceApi(
         )
     }
 
+    override suspend fun completeFinding(findingId: String): FindingEntity = withContext(Dispatchers.IO) {
+        request("POST", "/v1/findings/$findingId/complete", JSONObject()).toFinding()
+    }
+
+    override suspend fun saveReport(
+        visitId: String,
+        completedWork: String,
+        recommendations: String,
+        nextVisitAtEpochMs: Long?,
+    ): Unit = withContext(Dispatchers.IO) {
+        request(
+            "PUT",
+            "/v1/visits/$visitId/report",
+            JSONObject()
+                .put("completedWork", completedWork)
+                .put("recommendations", recommendations)
+                .put("nextVisitAt", nextVisitAtEpochMs?.let { Instant.ofEpochMilli(it).toString() } ?: JSONObject.NULL),
+        )
+    }
+
+    override suspend fun publishReport(visitId: String, operationId: String, token: String): ReportLink = withContext(Dispatchers.IO) {
+        val json = request(
+            "POST",
+            "/v1/visits/$visitId/report/publish",
+            JSONObject()
+                .put("operationId", operationId)
+                .put("token", token),
+        )
+        ReportLink(
+            publicUrl = "$baseUrl${json.getString("publicPath")}",
+            expiresAtEpochMs = Instant.parse(json.getString("expiresAt")).toEpochMilli(),
+        )
+    }
+
+    override suspend fun revokeReportLink(visitId: String): Unit = withContext(Dispatchers.IO) {
+        requestText("DELETE", "/v1/visits/$visitId/report-link", body = null, authenticated = true)
+    }
+
     override suspend fun uploadMedia(asset: MediaAssetEntity): Unit = withContext(Dispatchers.IO) {
         val sessionBody = JSONObject()
             .put("operationId", asset.operationId)
@@ -197,6 +250,7 @@ class AutoServiceApi(
             .put("byteCount", asset.byteCount)
             .put("sha256", asset.sha256)
         val target = request("POST", "/v1/media/${asset.id}/upload-session", sessionBody)
+        if (target.optBoolean("alreadyUploaded", false)) return@withContext
         val file = File(asset.localPath)
         try {
             uploadFile(target.getString("url"), target.getJSONObject("headers"), file)
@@ -308,6 +362,7 @@ class AutoServiceApi(
             session = rotateSession(session.accessToken)
             response = executeRequest(method, path, body, session.accessToken)
         }
+        if (expectedWorkshopId != null && authStore.session.value?.workshopId != expectedWorkshopId) throw ApiException(401, "Мастерская изменена")
         return requireSuccess(response, clearSessionOnUnauthorized = true)
     }
 
@@ -316,6 +371,7 @@ class AutoServiceApi(
 
     private suspend fun validAccessSession(): AuthSession {
         val current = authStore.session.value ?: throw ApiException(401, "Войдите в систему")
+        if (expectedWorkshopId != null && current.workshopId != expectedWorkshopId) throw ApiException(401, "Войдите в нужную мастерскую")
         if (current.refreshTokenExpiresAtEpochMs <= System.currentTimeMillis()) {
             authStore.clear()
             throw ApiException(401, "Сессия истекла")
@@ -329,6 +385,7 @@ class AutoServiceApi(
 
     private suspend fun rotateSession(rejectedAccessToken: String): AuthSession = refreshMutex.withLock {
         val current = authStore.session.value ?: throw ApiException(401, "Войдите в систему")
+        if (expectedWorkshopId != null && current.workshopId != expectedWorkshopId) throw ApiException(401, "Войдите в нужную мастерскую")
         // Другой запрос уже выполнил одноразовую ротацию, пока этот ожидал mutex.
         if (current.accessToken != rejectedAccessToken) return@withLock current
         if (current.refreshTokenExpiresAtEpochMs <= System.currentTimeMillis()) {
@@ -348,6 +405,7 @@ class AutoServiceApi(
             refreshToken = json.getString("refreshToken"),
             refreshTokenExpiresAtEpochMs = json.getLong("refreshTokenExpiresAtEpochMs"),
         )
+        if (authStore.session.value?.refreshToken != current.refreshToken) throw ApiException(401, "Сессия изменена")
         authStore.save(refreshed)
         refreshed
     }

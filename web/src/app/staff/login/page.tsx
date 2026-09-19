@@ -1,3 +1,4 @@
+import { ActionLink, Button } from "@/components/action";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BrandMark, Icon } from "@/components/icons";
@@ -35,14 +36,14 @@ export default async function StaffLoginPage({ searchParams }: { searchParams: P
       {error && <div className="form-error"><Icon name="alert" />{errors[error] ?? "Не удалось войти."}</div>}
       {mode === "call" && challenge && dialPhone ? <form action={verifyStaffCallAction} className="login-form">
         <input type="hidden" name="challenge" value={challenge} /><input type="hidden" name="callPhone" value={dialPhone} /><input type="hidden" name="callPhonePretty" value={callPhonePretty ?? dialPhone} />
-        <a className="button button-secondary" href={`tel:${dialPhone}`}>{callPhonePretty ?? dialPhone}</a><button type="submit" className="button button-primary">Я позвонил — проверить <Icon name="arrow-right" /></button><Link className="text-link" href="/staff/login?mode=sms">Указать другой номер</Link>
+        <ActionLink variant="secondary"  href={`tel:${dialPhone}`}>{callPhonePretty ?? dialPhone}</ActionLink><Button type="submit" variant="primary" className="">Я позвонил — проверить <Icon name="arrow-right" /></Button><ActionLink variant="secondary"  href="/staff/login?mode=sms">Указать другой номер</ActionLink>
       </form> : mode === "code" && challenge ? <form action={verifyStaffCodeAction} className="login-form">
-        <input type="hidden" name="challenge" value={challenge} /><label>Код из SMS<input name="code" inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} pattern="[0-9]{6}" placeholder="000000" /></label><button type="submit" className="button button-primary">Подтвердить <Icon name="arrow-right" /></button><Link className="text-link" href="/staff/login?mode=sms">Запросить новый код</Link>
+        <input type="hidden" name="challenge" value={challenge} /><label>Код из SMS<input name="code" inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} pattern="[0-9]{6}" placeholder="000000" /></label><Button type="submit" variant="primary" className="">Подтвердить <Icon name="arrow-right" /></Button><ActionLink variant="secondary"  href="/staff/login?mode=sms">Запросить новый код</ActionLink>
       </form> : mode === "sms" ? <form action={requestStaffCodeAction} className="login-form">
-        <label>Рабочий телефон<input name="phone" type="tel" autoComplete="tel" required maxLength={32} placeholder="+7 999 123-45-67" /></label><button type="submit" className="button button-primary">Продолжить <Icon name="arrow-right" /></button><Link className="text-link" href="/staff/login">Войти по паролю</Link>
+        <label>Рабочий телефон<input name="phone" type="tel" autoComplete="tel" required maxLength={32} placeholder="+7 999 123-45-67" /></label><Button type="submit" variant="primary" className="">Продолжить <Icon name="arrow-right" /></Button><ActionLink variant="secondary"  href="/staff/login">Войти по паролю</ActionLink>
       </form> : <>
-        <form action={loginAction} className="login-form"><label>Логин<input name="login" autoComplete="username" required maxLength={128} placeholder="admin" /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required maxLength={256} placeholder="••••••••" /></label><button type="submit" className="button button-primary">Войти <Icon name="arrow-right" /></button></form>
-        <Link className="button button-secondary" href="/staff/login?mode=sms">Войти по телефону</Link>
+        <form action={loginAction} className="login-form"><label>Логин<input name="login" autoComplete="username" required maxLength={128} placeholder="admin" /></label><label>Пароль<input name="password" type="password" autoComplete="current-password" required maxLength={256} placeholder="••••••••" /></label><Button type="submit" variant="primary" className="">Войти <Icon name="arrow-right" /></Button></form>
+        <ActionLink variant="secondary"  href="/staff/login?mode=sms">Войти по телефону</ActionLink>
       </>}
       <p className="security-note">Сессия хранится в зашифрованной HttpOnly cookie. Служебные идентификаторы недоступны клиентскому JavaScript и не вводятся пользователем.</p>
     </div></section>

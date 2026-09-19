@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import ru.autoservice.spike.data.VisitStatus
 
 class AutoServiceApplication : Application() {
     lateinit var container: AppContainer
@@ -17,7 +18,12 @@ class AutoServiceApplication : Application() {
         container = AppContainer(this)
         applicationScope.launch {
             if (container.authStore.session.value != null) {
-                container.mediaRepository.recoverAndReschedule()
+                val workshop = container.forWorkshop(requireNotNull(container.authStore.session.value).workshopId)
+                workshop.mediaRepository.recoverAndReschedule()
+                workshop.database.findingDao().all().filter { it.approvalPreparationState == "PENDING" }.forEach { workshop.uploadScheduler.enqueueApproval(it.id) }
+                workshop.database.visitDao().all().filter {
+                    it.reportPreparationState == "PENDING" && it.status in setOf(VisitStatus.IN_REPAIR, VisitStatus.WAITING_APPROVAL)
+                }.forEach { workshop.uploadScheduler.enqueueReport(it.id) }
             }
         }
     }

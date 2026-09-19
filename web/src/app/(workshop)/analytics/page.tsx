@@ -14,7 +14,7 @@ export default async function AnalyticsPage() {
   const decisionStatuses = ["APPROVED", "DECLINED", "CALL_REQUESTED", "DEFERRED"];
   const sent = findings.filter((finding) => sentStatuses.includes(finding.status));
   const decisions = sent.filter((finding) => decisionStatuses.includes(finding.status));
-  const approved = findings.filter((finding) => finding.status === "APPROVED");
+  const approved = findings.filter((finding) => ["APPROVED", "COMPLETED"].includes(finding.status));
   const approvedValue = approved.reduce((sum, finding) => sum + (finding.priceRub ?? 0), 0);
   const conversion = sent.length ? Math.round((decisions.length / sent.length) * 100) : 0;
   const statusCounts = statusOrder.map((status) => ({

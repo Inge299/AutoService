@@ -8,7 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [VisitEntity::class, MediaAssetEntity::class, DictionaryValueEntity::class, FindingEntity::class],
-    version = 6,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -19,6 +19,29 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun findingDao(): FindingDao
 
     companion object {
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE visits ADD COLUMN reportOperationId TEXT")
+                db.execSQL("ALTER TABLE visits ADD COLUMN reportToken TEXT")
+                db.execSQL("ALTER TABLE visits ADD COLUMN reportPublicUrl TEXT")
+                db.execSQL("ALTER TABLE visits ADD COLUMN reportExpiresAtEpochMs INTEGER")
+                db.execSQL("ALTER TABLE visits ADD COLUMN reportPreparationState TEXT")
+                db.execSQL("ALTER TABLE visits ADD COLUMN reportCompletedWork TEXT")
+                db.execSQL("ALTER TABLE visits ADD COLUMN reportRecommendations TEXT")
+                db.execSQL("ALTER TABLE visits ADD COLUMN reportNextVisitAtEpochMs INTEGER")
+                db.execSQL("ALTER TABLE visits ADD COLUMN reportPreparationError TEXT")
+            }
+        }
+
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE findings ADD COLUMN approvalPreparationState TEXT")
+                db.execSQL("ALTER TABLE findings ADD COLUMN approvalPendingMediaIds TEXT")
+                db.execSQL("ALTER TABLE findings ADD COLUMN approvalPreparationError TEXT")
+                db.execSQL("ALTER TABLE findings ADD COLUMN approvalReplaceActive INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(

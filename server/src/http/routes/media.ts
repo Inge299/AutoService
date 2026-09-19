@@ -1,3 +1,4 @@
+import { serializable } from "../../infrastructure/transaction.js";
 import type { MediaKind, PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { createHash } from "node:crypto";
@@ -51,7 +52,8 @@ export function mediaRoutes(prisma: PrismaClient, storage: ObjectStorage): Fasti
       const existing = await prisma.mediaAsset.findUnique({ where: { operationId: body.operationId } });
       if (existing && (
         existing.workshopId !== workshopId || existing.id !== id || existing.sha256 !== body.sha256 ||
-        existing.byteCount !== BigInt(body.byteCount)
+        existing.byteCount !== BigInt(body.byteCount) || existing.visitId !== body.visitId ||
+        existing.findingId !== body.findingId || existing.kind !== body.kind || existing.mimeType !== body.mimeType
       )) {
         return reply.code(409).send({ error: "operation_conflict" });
       }
@@ -70,6 +72,9 @@ export function mediaRoutes(prisma: PrismaClient, storage: ObjectStorage): Fasti
           objectKey,
         },
       });
+      if (["VERIFIED", "PROCESSING", "READY"].includes(asset.state)) {
+        return reply.send({ mediaId: asset.id, state: asset.state, alreadyUploaded: true });
+      }
       const target = await storage.createUploadTarget({
         objectKey: asset.objectKey,
         mimeType: asset.mimeType,
@@ -93,19 +98,17 @@ export function mediaRoutes(prisma: PrismaClient, storage: ObjectStorage): Fasti
         return reply.code(409).send({ error: "integrity_metadata_mismatch" });
       }
 
-      await prisma.$transaction([
-        prisma.mediaAsset.update({ where: { id }, data: { state: "VERIFYING", lastError: null } }),
-        prisma.backgroundJob.upsert({
-          where: { idempotencyKey: `verify-media:${id}:${asset.sha256}` },
-          update: {},
-          create: {
-            workshopId,
-            type: "VERIFY_MEDIA",
-            payload: { mediaId: id },
-            idempotencyKey: `verify-media:${id}:${asset.sha256}`,
-          },
-        }),
-      ]);
+      await serializable(prisma, async (tx) => {
+        const key = `verify-media:${id}:${asset.sha256}`;
+        const job = await tx.backgroundJob.findUnique({ where: { idempotencyKey: key } });
+        if (job?.state === "SUCCEEDED") return;
+        await tx.mediaAsset.update({ where: { id }, data: { state: "VERIFYING", lastError: null } });
+        if (job?.state === "DEAD") {
+          await tx.backgroundJob.update({ where: { id: job.id }, data: { state: "PENDING", attempts: 0, runAfter: new Date(), lockedUntil: null, lastError: null } });
+        } else if (!job) {
+          await tx.backgroundJob.create({ data: { workshopId, type: "VERIFY_MEDIA", payload: { mediaId: id }, idempotencyKey: key } });
+        }
+      });
       return reply.code(202).send({ id, state: "VERIFYING" });
     });
 
@@ -114,6 +117,7 @@ export function mediaRoutes(prisma: PrismaClient, storage: ObjectStorage): Fasti
       const { workshopId } = request.actor;
       const asset = await prisma.mediaAsset.findFirst({ where: { id, workshopId } });
       if (!asset) return reply.code(404).send({ error: "not_found" });
+      if (["VERIFIED", "PROCESSING", "READY"].includes(asset.state) || asset.objectKey.endsWith("/verified")) return reply.code(409).send({ error: "media_already_verified" });
       if (!Buffer.isBuffer(request.body)) return reply.code(400).send({ error: "binary_body_required" });
       if (request.body.byteLength !== Number(asset.byteCount)) {
         return reply.code(409).send({ error: "byte_count_mismatch" });
@@ -134,17 +138,20 @@ export function mediaRoutes(prisma: PrismaClient, storage: ObjectStorage): Fasti
     app.delete("/v1/media/:id", async (request, reply) => {
       const { id } = paramsSchema.parse(request.params);
       const { workshopId } = request.actor;
-      const asset = await prisma.mediaAsset.findFirst({
-        where: { id, workshopId },
-        include: { finding: { select: { status: true } } },
+      const result = await serializable(prisma, async (tx) => {
+        const asset = await tx.mediaAsset.findFirst({ where: { id, workshopId }, include: { finding: { select: { status: true } } } });
+        if (!asset) return { kind: "missing" as const };
+        const [approval, report] = await Promise.all([
+          tx.approvalVersion.findFirst({ where: { workshopId, mediaIds: { has: id } }, select: { id: true } }),
+          tx.reportVersion.findFirst({ where: { workshopId, mediaIds: { has: id } }, select: { id: true } }),
+        ]);
+        if (approval || report || (asset.finding && !["DRAFT", "READY_FOR_APPROVAL"].includes(asset.finding.status))) return { kind: "locked" as const };
+        await tx.mediaAsset.delete({ where: { id } });
+        return { kind: "deleted" as const, objectKey: asset.objectKey };
       });
-      if (!asset) return reply.code(404).send({ error: "not_found" });
-      if (asset.finding && !["DRAFT", "READY_FOR_APPROVAL"].includes(asset.finding.status)) {
-        return reply.code(409).send({ error: "media_locked_by_approval" });
-      }
-
-      await storage.remove(asset.objectKey);
-      await prisma.mediaAsset.delete({ where: { id: asset.id } });
+      if (result.kind === "missing") return reply.code(404).send({ error: "not_found" });
+      if (result.kind === "locked") return reply.code(409).send({ error: "media_locked_by_approval" });
+      await storage.remove(result.objectKey);
       return reply.code(204).send();
     });
   };

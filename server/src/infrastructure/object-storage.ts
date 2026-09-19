@@ -1,6 +1,7 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadBucketCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -78,6 +79,10 @@ export class ObjectStorage {
     };
   }
 
+  async ready(): Promise<void> {
+    await this.client.send(new HeadBucketCommand({ Bucket: this.config.S3_BUCKET }));
+  }
+
   async createDownloadTarget(objectKey: string): Promise<DownloadTarget> {
     const expiresInSeconds = 15 * 60;
     const command = new GetObjectCommand({
@@ -105,6 +110,28 @@ export class ObjectStorage {
       ContentLength: input.byteCount,
       Metadata: { sha256: input.sha256 },
     }));
+  }
+
+  // Publish a separate immutable key; staging PUT URLs may still be valid.
+  async seal(input: { objectKey: string; sha256: string; byteCount: bigint; mimeType: string }): Promise<string> {
+    if (input.objectKey.endsWith("/verified")) return input.objectKey;
+    const response = await this.client.send(new GetObjectCommand({ Bucket: this.config.S3_BUCKET, Key: input.objectKey }));
+    if (!response.Body) throw new Error("Object body is unavailable");
+    const bytes = await response.Body.transformToByteArray();
+    if (BigInt(bytes.byteLength) !== input.byteCount || createHash("sha256").update(bytes).digest("hex") !== input.sha256) throw new MediaIntegrityError("Media integrity mismatch");
+    const objectKey = `${input.objectKey.replace(/\/original$/, "")}/verified`;
+    try {
+      await this.client.send(new PutObjectCommand({
+        Bucket: this.config.S3_BUCKET, Key: objectKey, Body: bytes,
+        ContentType: input.mimeType, ContentLength: bytes.byteLength,
+        Metadata: { sha256: input.sha256 }, IfNoneMatch: "*",
+      }));
+    } catch (error) {
+      if ((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode !== 412) throw error;
+      const existing = await this.head(objectKey);
+      if (BigInt(existing.byteCount) !== input.byteCount || await this.sha256(objectKey) !== input.sha256) throw new MediaIntegrityError("Sealed object conflict");
+    }
+    return objectKey;
   }
 
   async remove(objectKey: string): Promise<void> {
@@ -138,3 +165,5 @@ export class ObjectStorage {
     return hash.digest("hex");
   }
 }
+
+export class MediaIntegrityError extends Error {}

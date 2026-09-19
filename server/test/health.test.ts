@@ -31,6 +31,22 @@ describe("health", () => {
     await app.close();
   });
 
+  it("reports ready only after PostgreSQL and object storage respond", async () => {
+    const query = async () => [{ ok: 1 }];
+    const ready = async () => undefined;
+    const app = await buildApp(config, {
+      prisma: { $queryRaw: query } as unknown as PrismaClient,
+      storage: { ready } as unknown as ObjectStorage,
+    });
+    try {
+      const response = await app.inject({ method: "GET", url: "/health/ready" });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ status: "ok" });
+    } finally {
+      await app.close();
+    }
+  });
+
   it("protects application routes", async () => {
     const app = await buildApp(config, {
       prisma: {} as PrismaClient,

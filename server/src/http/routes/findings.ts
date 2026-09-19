@@ -1,3 +1,4 @@
+import { serializable } from "../../infrastructure/transaction.js";
 import { createHash } from "node:crypto";
 import type { FindingPriority, FindingStatus, PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
@@ -11,7 +12,7 @@ const bodySchema = z.object({
   priceRub: z.number().int().nonnegative().nullable(),
   priority: z.enum(["CRITICAL", "IMPORTANT", "PLANNED"]),
   status: z.enum([
-    "DRAFT", "READY_FOR_APPROVAL", "SENT_TO_CUSTOMER", "APPROVED",
+    "DRAFT", "READY_FOR_APPROVAL", "SENT_TO_CUSTOMER", "APPROVED", "COMPLETED",
     "DECLINED", "CALL_REQUESTED", "DEFERRED",
   ]),
   createdAtEpochMs: z.number().int().nonnegative(),
@@ -27,6 +28,7 @@ const approvalSchema = z.object({
   mediaIds: z.array(z.string().uuid()).max(20),
   expiresInDays: z.number().int().min(1).max(30).default(7),
   replaceActive: z.boolean().default(false),
+  descriptionOnly: z.boolean().default(false),
 }).superRefine((value, context) => {
   if (new Set(value.mediaIds).size !== value.mediaIds.length) {
     context.addIssue({ code: "custom", path: ["mediaIds"], message: "Media ids must be unique" });
@@ -47,7 +49,7 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
         return reply.code(403).send({ error: "finding_status_managed_by_approval" });
       }
 
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await serializable(prisma, async (tx) => {
         const visit = await tx.visit.findFirst({ where: { id: body.visitId, workshopId }, select: { id: true } });
         if (!visit) return null;
         const existing = await tx.finding.findUnique({ where: { id } });
@@ -80,6 +82,33 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
       return reply.send(result.finding);
     });
 
+    app.post("/v1/findings/:id/complete", async (request, reply) => {
+      const { id } = paramsSchema.parse(request.params);
+      const { workshopId, userId } = request.actor;
+      const result = await serializable(prisma, async (tx) => {
+        const finding = await tx.finding.findFirst({
+          where: { id, workshopId, status: "APPROVED" },
+          select: { id: true, visitId: true },
+        });
+        if (!finding) return null;
+        const visit = await tx.visit.findFirst({ where: { id: finding.visitId, workshopId }, select: { status: true } });
+        if (!visit || ["COMPLETED", "CANCELLED"].includes(visit.status)) return null;
+        const claimed = await tx.finding.updateMany({
+          where: { id, workshopId, status: "APPROVED" },
+          data: { status: "COMPLETED", updatedAt: new Date(), serverVersion: { increment: 1 } },
+        });
+        if (claimed.count !== 1) return null;
+        const completed = await tx.finding.findUnique({ where: { id } });
+        if (!completed) throw new Error("Completed finding disappeared");
+        await tx.auditEvent.create({
+          data: { workshopId, actorUserId: userId, action: "FINDING_COMPLETED", entityType: "finding", entityId: id },
+        });
+        return completed;
+      });
+      if (!result) return reply.code(409).send({ error: "finding_not_approved" });
+      return reply.send(result);
+    });
+
     app.post("/v1/findings/:id/approval-link", async (request, reply) => {
       const { id } = paramsSchema.parse(request.params);
       const body = approvalSchema.parse(request.body);
@@ -87,7 +116,7 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
       const expiresAt = new Date(Date.now() + body.expiresInDays * 24 * 60 * 60_000);
       const hashedToken = tokenHash(body.token);
 
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await serializable(prisma, async (tx) => {
         const existing = await tx.approvalVersion.findUnique({
           where: { operationId: body.operationId },
           include: { link: true },
@@ -117,6 +146,10 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
           },
         });
         if (!finding) return { kind: "finding_unavailable" as const };
+        const visit = await tx.visit.findFirst({ where: { id: finding.visitId, workshopId }, select: { status: true } });
+        if (!visit || ["COMPLETED", "CANCELLED"].includes(visit.status)) return { kind: "finding_unavailable" as const };
+        if (body.mediaIds.length === 0 && !body.descriptionOnly) return { kind: "media_unavailable" as const };
+        if (body.descriptionOnly && body.mediaIds.length !== 0) return { kind: "media_unavailable" as const };
         if (finding.priceRub === null) return { kind: "price_required" as const };
 
         const media = await tx.mediaAsset.findMany({
@@ -215,14 +248,12 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
     app.delete("/v1/findings/:id/approval-link", async (request, reply) => {
       const { id } = paramsSchema.parse(request.params);
       const { workshopId, userId } = request.actor;
-      const approval = await prisma.approvalVersion.findFirst({
-        where: { findingId: id, workshopId, link: { is: { revokedAt: null } } },
-        orderBy: { version: "desc" },
-        include: { link: true },
-      });
-      if (!approval?.link) return reply.code(404).send({ error: "active_approval_not_found" });
-
-      await prisma.$transaction(async (tx) => {
+      const revoked = await serializable(prisma, async (tx) => {
+        const approval = await tx.approvalVersion.findFirst({
+          where: { findingId: id, workshopId, link: { is: { revokedAt: null } } },
+          orderBy: { version: "desc" }, include: { link: true },
+        });
+        if (!approval?.link) return false;
         await tx.approvalLink.update({ where: { id: approval.link!.id }, data: { revokedAt: new Date() } });
         await tx.finding.updateMany({
           where: { id, workshopId, status: "SENT_TO_CUSTOMER" },
@@ -238,7 +269,9 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
             metadata: { approvalVersionId: approval.id },
           },
         });
+        return true;
       });
+      if (!revoked) return reply.code(404).send({ error: "active_approval_not_found" });
       return reply.code(204).send();
     });
   };

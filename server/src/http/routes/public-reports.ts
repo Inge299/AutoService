@@ -39,7 +39,7 @@ export function publicReportRoutes(prisma: PrismaClient, storage: ObjectStorage)
             id: { in: version.mediaIds }, workshopId: version.workshopId, visitId: version.visitId,
             state: { in: ["VERIFIED", "READY"] },
           },
-          select: { id: true, kind: true, mimeType: true, objectKey: true },
+          select: { id: true, kind: true, mimeType: true, objectKey: true, sha256: true, byteCount: true },
         })
         : [];
       if (assets.length !== version.mediaIds.length) return reply.code(410).send({ error: "report_media_unavailable" });
@@ -47,7 +47,9 @@ export function publicReportRoutes(prisma: PrismaClient, storage: ObjectStorage)
       const media = await Promise.all(version.mediaIds.map(async (mediaId) => {
         const asset = assetsById.get(mediaId);
         if (!asset) throw new Error("Report media snapshot is incomplete");
-        const target = await storage.createDownloadTarget(asset.objectKey);
+        const objectKey = await storage.seal(asset);
+        if (objectKey !== asset.objectKey) await prisma.mediaAsset.update({ where: { id: asset.id }, data: { objectKey } });
+        const target = await storage.createDownloadTarget(objectKey);
         return { id: asset.id, kind: asset.kind, mimeType: asset.mimeType, url: target.url, expiresInSeconds: target.expiresInSeconds };
       }));
       return reply.send({

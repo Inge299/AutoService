@@ -14,7 +14,10 @@ class MediaUploadWorker(
 ) : CoroutineWorker(appContext, workerParams) {
     override suspend fun doWork(): Result {
         val mediaId = inputData.getString(MEDIA_ID) ?: return Result.failure()
-        val container = (applicationContext as AutoServiceApplication).container
+        val root = (applicationContext as AutoServiceApplication).container
+        val workshopId = inputData.getString("workshop-id") ?: return Result.failure()
+        if (root.authStore.session.value?.workshopId != workshopId) return Result.failure()
+        val container = root.forWorkshop(workshopId)
         val dao = container.database.mediaDao()
         val asset = dao.find(mediaId) ?: return Result.success()
 
@@ -45,12 +48,29 @@ class MediaUploadWorker(
         } catch (error: IllegalArgumentException) {
             block(dao = dao, asset = asset, message = error.message ?: "Некорректный файл")
             Result.failure()
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: ru.autoservice.spike.network.ApiException) {
+            if (error.statusCode in 400..499 && error.statusCode !in setOf(408, 429)) {
+                block(dao, asset, if (error.statusCode == 401) "Войдите в мастерскую и повторите загрузку" else "Не удалось загрузить материал. Проверьте файл и повторите")
+                Result.failure()
+            } else if (runAttemptCount >= 4) {
+                block(dao, asset, "Загрузка не завершена. Нажмите «Повторить»")
+                Result.failure()
+            } else {
+                retry(dao, asset, "Сервер временно недоступен. Повторим автоматически")
+                Result.retry()
+            }
         } catch (error: IOException) {
-            retry(dao = dao, asset = asset, message = error.message ?: "Ошибка сети")
+            if (runAttemptCount >= 4) {
+                block(dao, asset, "Загрузка не завершена. Нажмите «Повторить»")
+                return Result.failure()
+            }
+            retry(dao = dao, asset = asset, message = "Нет связи с сервером. Повторим автоматически")
             Result.retry()
         } catch (error: Exception) {
-            retry(dao = dao, asset = asset, message = error.message ?: "Временная ошибка")
-            Result.retry()
+            block(dao = dao, asset = asset, message = "Не удалось обработать файл. Нажмите «Повторить»")
+            Result.failure()
         }
     }
 

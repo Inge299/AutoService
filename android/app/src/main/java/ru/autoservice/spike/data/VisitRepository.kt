@@ -50,7 +50,22 @@ class VisitRepository(
         visitDao.all()
             .filter { it.syncState != SyncState.SYNCED || it.serverVersion == 0 }
             .forEach { visitDao.upsert(api.saveVisit(it)) }
-        return api.loadWorkshop().also { snapshot -> snapshot.visits.forEach { visitDao.upsert(it) } }
+        return api.loadWorkshop().also { snapshot ->
+            snapshot.visits.forEach { server ->
+                val local = visitDao.find(server.id)
+                visitDao.upsert(server.copy(
+                    reportOperationId = local?.reportOperationId,
+                    reportToken = local?.reportToken,
+                    reportPublicUrl = local?.reportPublicUrl,
+                    reportExpiresAtEpochMs = local?.reportExpiresAtEpochMs,
+                    reportPreparationState = local?.reportPreparationState,
+                    reportCompletedWork = local?.reportCompletedWork,
+                    reportRecommendations = local?.reportRecommendations,
+                    reportNextVisitAtEpochMs = local?.reportNextVisitAtEpochMs,
+                    reportPreparationError = local?.reportPreparationError,
+                ))
+            }
+        }
     }
 
     private fun normalizePhone(value: String): String {

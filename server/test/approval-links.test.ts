@@ -54,7 +54,7 @@ describe("approval link creation", () => {
       },
       mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: mediaId }]) },
       approvalLink: { create: linkCreate },
-      visit: { update: vi.fn().mockResolvedValue({}) },
+      visit: { findFirst: vi.fn().mockResolvedValue({ status: "IN_REPAIR" }), update: vi.fn().mockResolvedValue({}) },
       auditEvent: { create: vi.fn().mockResolvedValue({}) },
     };
     const prisma = {
@@ -144,7 +144,7 @@ describe("approval link creation", () => {
         update: revoke,
         create: vi.fn().mockResolvedValue({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", expiresAt: new Date("2026-10-01T12:00:00.000Z") }),
       },
-      visit: { update: vi.fn().mockResolvedValue({}) },
+      visit: { findFirst: vi.fn().mockResolvedValue({ status: "IN_REPAIR" }), update: vi.fn().mockResolvedValue({}) },
       auditEvent: { create: vi.fn().mockResolvedValue({}) },
     };
     const prisma = {
@@ -184,6 +184,7 @@ describe("approval link creation", () => {
         link: { id: "88888888-8888-4888-8888-888888888888" },
       }) },
       $transaction: vi.fn(async (callback) => callback({
+        approvalVersion: { findFirst: vi.fn().mockResolvedValue({ id: "77777777-7777-4777-8777-777777777777", link: { id: "88888888-8888-4888-8888-888888888888" } }) },
         approvalLink: { update: linkUpdate },
         finding: { updateMany: findingUpdateMany },
         auditEvent: { create: auditCreate },

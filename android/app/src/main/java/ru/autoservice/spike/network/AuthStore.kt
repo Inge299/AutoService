@@ -26,6 +26,7 @@ data class AuthSession(
 )
 
 class AuthStore(context: Context) {
+    val refreshMutex = kotlinx.coroutines.sync.Mutex()
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val mutableSession = MutableStateFlow(readSession())
 

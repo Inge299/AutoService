@@ -1,3 +1,4 @@
+import { Button } from "@/components/action";
 import type { Metadata } from "next";
 import { Icon } from "@/components/icons";
 import { PageHeader } from "@/components/page-header";
@@ -12,7 +13,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
     <>
       <PageHeader eyebrow="Клиентская база" title="Клиенты и автомобили" description="История формируется автоматически из визитов." />
       <section className="content-card list-card">
-        <div className="list-toolbar"><form className="search-field"><Icon name="search" /><input name="q" defaultValue={q} placeholder="Имя, телефон, автомобиль или госномер" /><button>Найти</button></form><span className="result-count">{customers.length} клиентов</span></div>
+        <div className="list-toolbar"><form className="search-field"><Icon name="search" /><input name="q" defaultValue={q} placeholder="Имя, телефон, автомобиль или госномер" /><Button>Найти</Button></form><span className="result-count">{customers.length} клиентов</span></div>
         <div className="customer-table">
           <div className="table-head"><span>Клиент</span><span>Автомобиль</span><span>Визиты</span><span>Следующий контакт</span></div>
           {customers.map((customer) => { const primaryVehicle = customer.vehicles[0] ?? "Автомобиль не указан"; return <article className="customer-row" key={customer.id}>
