@@ -62,6 +62,9 @@ S3_PUBLIC_ENDPOINT=https://storage.example.com
 INTERNAL_API_KEY=<random-32+-character-service-key>
 ACCESS_TOKEN_SECRET=<different-random-32+-character-signing-key>
 OTP_HASH_SECRET=<third-random-32+-character-hmac-key>
+BOOTSTRAP_ADMIN_LOGIN=<уникальный-логин-первого-администратора>
+BOOTSTRAP_ADMIN_PASSWORD_HASH=<bcrypt-хеш-длинного-уникального-пароля>
+BOOTSTRAP_ADMIN_NAME=<имя-первого-администратора>
 SMS_PROVIDER=disabled
 # Для включения после настройки кабинета:
 # SMS_PROVIDER=smsru
@@ -79,6 +82,12 @@ SMS_RU_VERIFICATION_MODE=callcheck
 # В настройках SMSC указать URL обработчика:
 # https://<api-домен>/public/v1/auth/phone/smsc-wait-call?token=<тот же секрет>
 ```
+
+Первый администратор создаётся только при initial seed. Сгенерируйте bcrypt-хеш
+локально командой `node web/scripts/hash-password.mjs "длинный-уникальный-пароль"`
+и поместите только хеш в `.env`. В репозитории нет и не должно быть общего логина
+или пароля администратора. После первого входа администратор создаёт сотрудников
+по имени и рабочему номеру; им не нужен временный пароль для входа через WaitCall.
 
 ```bash
 chmod 600 .env

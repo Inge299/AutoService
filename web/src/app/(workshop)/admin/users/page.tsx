@@ -23,7 +23,7 @@ const messages: Record<string, string> = {
 };
 
 const errors: Record<string, string> = {
-  invalid_input: "Проверьте поля. Логин — от 3 символов, пароль — от 8.",
+  invalid_input: "Проверьте поля. Для сотрудника обязательны имя и телефон; для администратора также логин и пароль.",
   password_length: "Пароль должен содержать не менее 8 символов.",
   login_taken: "Этот логин уже используется.",
   phone_taken: "Этот телефон уже привязан к другому пользователю.",
@@ -45,13 +45,13 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
     {query.error && <div className="admin-notice admin-notice-error">{errors[query.error] ?? errors.operation_failed}</div>}
 
     <section className="content-card admin-create-card">
-      <div><h2>Новый пользователь</h2><p>После создания учётная запись сразу активна.</p></div>
+      <div><h2>Новый пользователь</h2><p>Сотрудник входит по звонку с указанного номера. Для администратора задайте также логин и пароль.</p></div>
       <form action={createUserAction} className="admin-create-form">
-        <label>Логин<input name="login" minLength={3} maxLength={64} required placeholder="ivan.petrov" autoComplete="off" /></label>
+        <label>Логин <small>для администратора</small><input name="login" minLength={3} maxLength={64} placeholder="ivan.petrov" autoComplete="off" /></label>
         <label>Имя<input name="displayName" minLength={2} maxLength={120} required placeholder="Иван Петров" /></label>
-        <label>Телефон <small>необязательно</small><input name="phone" maxLength={32} placeholder="+7 999 000-00-00" /></label>
+        <label>Рабочий телефон<input name="phone" minLength={8} maxLength={32} required placeholder="+7 999 000-00-00" inputMode="tel" /></label>
         <label>Роль<select name="role" defaultValue="EMPLOYEE"><option value="EMPLOYEE">Сотрудник</option><option value="ADMIN">Администратор</option></select></label>
-        <label>Временный пароль<input name="password" type="password" minLength={8} maxLength={256} required autoComplete="new-password" placeholder="Минимум 8 символов" /></label>
+        <label>Пароль <small>для администратора</small><input name="password" type="password" minLength={8} maxLength={256} autoComplete="new-password" placeholder="Минимум 8 символов" /></label>
         <Button variant="primary" className="" type="submit">Создать пользователя</Button>
       </form>
     </section>

@@ -194,4 +194,52 @@ describe("database authentication and administration", () => {
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { workshopId } }));
     await app.close();
   });
+
+  it("lets an administrator pre-register an employee by a verified phone without a password", async () => {
+    const userCreate = vi.fn().mockResolvedValue({ id: "33333333-3333-4333-8333-333333333333" });
+    const membershipCreate = vi.fn().mockResolvedValue({});
+    const auditCreate = vi.fn().mockResolvedValue({});
+    const prisma = {
+      ...basePrisma(),
+      $transaction: vi.fn(async (callback) => callback({
+        user: { create: userCreate },
+        membership: { create: membershipCreate },
+        auditEvent: { create: auditCreate },
+      })),
+    } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/admin/users",
+      headers,
+      payload: { displayName: "Иван Петров", phone: "8 (999) 123-45-67", role: "EMPLOYEE" },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(userCreate).toHaveBeenCalledWith({ data: expect.objectContaining({
+      login: null,
+      phone: "+79991234567",
+      passwordHash: null,
+      displayName: "Иван Петров",
+    }) });
+    expect(membershipCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ workshopId, role: "EMPLOYEE" }) });
+    await app.close();
+  });
+
+  it("requires a password and login for another administrator", async () => {
+    const prisma = basePrisma() as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/admin/users",
+      headers,
+      payload: { displayName: "Старший мастер", phone: "+79991234567", role: "ADMIN" },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toBe("invalid_request");
+    await app.close();
+  });
 });

@@ -421,7 +421,7 @@ export function listApiAdminUsers(session: WebSession) {
   return request<ApiAdminUser[]>("/v1/admin/users", session);
 }
 
-export function createApiAdminUser(session: WebSession, payload: { login: string; displayName: string; phone?: string; password: string; role: "ADMIN" | "EMPLOYEE" }) {
+export function createApiAdminUser(session: WebSession, payload: { login?: string; displayName: string; phone: string; password?: string; role: "ADMIN" | "EMPLOYEE" }) {
   return request<{ id: string }>("/v1/admin/users", session, { method: "POST", body: JSON.stringify(payload) });
 }
 
