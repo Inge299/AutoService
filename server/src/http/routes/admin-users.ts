@@ -3,15 +3,34 @@ import { Prisma, type MembershipRole, type PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { hashPassword } from "../../security/password.js";
+import { normalizePhone } from "../../security/phone.js";
 
 const loginPattern = /^[\p{L}\p{N}._@-]+$/u;
 const paramsSchema = z.object({ userId: z.string().uuid() });
+const optionalLoginSchema = z.preprocess(
+  (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
+  z.string().trim().min(3).max(64).regex(loginPattern).transform((value) => value.toLocaleLowerCase("ru-RU")).optional(),
+);
+const optionalPasswordSchema = z.preprocess(
+  (value) => typeof value === "string" && value === "" ? undefined : value,
+  z.string().min(8).max(256).optional(),
+);
 const createSchema = z.object({
-  login: z.string().trim().min(3).max(64).regex(loginPattern).transform((value) => value.toLocaleLowerCase("ru-RU")),
+  login: optionalLoginSchema,
   displayName: z.string().trim().min(2).max(120),
-  phone: z.string().trim().max(32).optional().transform((value) => value || null),
-  password: z.string().min(8).max(256),
+  phone: z.string().min(8).max(32).transform(normalizePhone),
+  password: optionalPasswordSchema,
   role: z.enum(["ADMIN", "EMPLOYEE"]).default("EMPLOYEE"),
+}).superRefine((value, context) => {
+  if (value.role === "ADMIN" && !value.login) {
+    context.addIssue({ code: "custom", path: ["login"], message: "admin_login_required" });
+  }
+  if (value.role === "ADMIN" && !value.password) {
+    context.addIssue({ code: "custom", path: ["password"], message: "admin_password_required" });
+  }
+  if (value.password && !value.login) {
+    context.addIssue({ code: "custom", path: ["login"], message: "login_required_with_password" });
+  }
 });
 const stateSchema = z.object({ isActive: z.boolean() });
 const roleSchema = z.object({ role: z.enum(["ADMIN", "EMPLOYEE"]) });
@@ -73,12 +92,12 @@ export function adminUserRoutes(prisma: PrismaClient): FastifyPluginAsync {
       if (!requireAdmin(request, reply)) return;
       const body = createSchema.parse(request.body);
       try {
-        const passwordHash = await hashPassword(body.password);
+        const passwordHash = body.password ? await hashPassword(body.password) : null;
         const user = await prisma.$transaction(async (tx) => {
           const created = await tx.user.create({
             data: {
               id: randomUUID(),
-              login: body.login,
+              login: body.login ?? null,
               displayName: body.displayName,
               phone: body.phone,
               passwordHash,

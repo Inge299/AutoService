@@ -191,10 +191,13 @@ exponential backoff до 60 секунд, не более 5 попыток. Пр
 | `INTERNAL_API_KEY` | — | Ключ только для доверенной служебной интеграции, production: 32+ символа |
 | `ACCESS_TOKEN_SECRET` | — | Отдельный ключ подписи access-токенов, production: 32+ символа |
 | `OTP_HASH_SECRET` | — | Отдельный HMAC-ключ хеширования OTP/IP, production: 32+ символа |
-| `SMS_PROVIDER` | `disabled` | `disabled`, development-only `debug` или production `smsru` |
+| `SMS_PROVIDER` | `disabled` | `disabled`, development-only `debug`, production `smsru` или `smsc` |
 | `SMS_RU_API_ID` | — | API-ключ SMS.RU; обязателен при `SMS_PROVIDER=smsru` |
 | `SMS_RU_FROM` | account default | Согласованное имя отправителя SMS.RU |
 | `SMS_RU_VERIFICATION_MODE` | `callcheck` | `callcheck` для входящего звонка или `sms` для одноразового кода |
+| `SMSC_LOGIN` | — | Логин SMSC; обязателен для `SMS_PROVIDER=smsc` |
+| `SMSC_API_KEY` | — | API-ключ SMSC; обязателен для `SMS_PROVIDER=smsc` |
+| `SMSC_WAIT_CALL_CALLBACK_SECRET` | — | Секрет в URL HTTPS callback SMSC; обязателен для `SMS_PROVIDER=smsc` |
 | `DATABASE_URL` | — | PostgreSQL connection string, обязателен |
 | `S3_ENDPOINT` | AWS SDK default | URL S3-compatible API |
 | `S3_PUBLIC_ENDPOINT` | `S3_ENDPOINT` | Публичный HTTPS endpoint для presigned upload URL Android |

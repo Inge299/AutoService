@@ -36,11 +36,20 @@ export async function createUserAction(formData: FormData): Promise<void> {
   const phone = String(formData.get("phone") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const role = formData.get("role") === "ADMIN" ? "ADMIN" : "EMPLOYEE";
-  if (login.length < 3 || login.length > 64 || displayName.length < 2 || displayName.length > 120 || password.length < 8 || password.length > 256) {
+  if (displayName.length < 2 || displayName.length > 120 || phone.length < 8 || phone.length > 32 ||
+    (login.length > 0 && (login.length < 3 || login.length > 64)) ||
+    (password.length > 0 && (password.length < 8 || password.length > 256)) ||
+    (role === "ADMIN" && (!login || !password))) {
     redirect("/admin/users?error=invalid_input");
   }
   try {
-    await createApiAdminUser(session, { login, displayName, ...(phone ? { phone } : {}), password, role });
+    await createApiAdminUser(session, {
+      displayName,
+      phone,
+      role,
+      ...(login ? { login } : {}),
+      ...(password ? { password } : {}),
+    });
   } catch (error) {
     fail(error);
   }
