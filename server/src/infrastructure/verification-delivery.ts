@@ -63,6 +63,11 @@ const smsRuCallCheckStatusSchema = z.object({
   check_status: z.union([z.string(), z.number()]).optional(),
 });
 
+const smscWaitCallStartSchema = z.object({
+  phone: z.string().min(3),
+  all_phones: z.array(z.string().min(3)).optional(),
+});
+
 export const disabledVerificationDelivery: VerificationDelivery = {
   available: false,
   async start() {
@@ -180,6 +185,49 @@ export class SmsRuCallCheckVerificationDelivery implements VerificationDelivery 
   }
 }
 
+/**
+ * SMSC WaitCall confirms a call asynchronously by a callback to our API. There
+ * is no provider-side status resource to poll, so checkCall stays pending until
+ * the callback marks the persisted challenge as verified.
+ */
+export class SmscWaitCallVerificationDelivery implements VerificationDelivery {
+  readonly available = true;
+
+  constructor(
+    private readonly login: string,
+    private readonly apiKey: string,
+    private readonly fetchImpl: Fetch = fetch,
+  ) {}
+
+  async start(message: VerificationMessage): Promise<VerificationStart> {
+    const form = new URLSearchParams({
+      login: this.login,
+      apikey: this.apiKey,
+      phone: message.phone.replace(/^\+/, ""),
+      fmt: "3",
+    });
+    const response = await this.fetchImpl("https://smsc.ru/sys/wait_call.php", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: form,
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error(`SMSC WaitCall HTTP ${response.status}`);
+    const parsed = smscWaitCallStartSchema.safeParse(await response.json());
+    if (!parsed.success) throw new Error("SMSC WaitCall returned an invalid response");
+    return {
+      method: "CALLCHECK",
+      providerCheckId: message.challengeId,
+      callPhone: parsed.data.phone,
+      callPhonePretty: parsed.data.phone,
+    };
+  }
+
+  async checkCall(_providerCheckId: string): Promise<CallCheckState> {
+    return "PENDING";
+  }
+}
+
 export function createVerificationDelivery(config: Config, logger: FastifyBaseLogger): VerificationDelivery {
   if (config.SMS_PROVIDER === "debug") return debugVerificationDelivery(logger);
   if (config.SMS_PROVIDER === "smsru" && config.SMS_RU_API_ID) {
@@ -187,6 +235,9 @@ export function createVerificationDelivery(config: Config, logger: FastifyBaseLo
       return new SmsRuCallCheckVerificationDelivery(config.SMS_RU_API_ID);
     }
     return new SmsRuVerificationDelivery(config.SMS_RU_API_ID, config.SMS_RU_FROM);
+  }
+  if (config.SMS_PROVIDER === "smsc" && config.SMSC_LOGIN && config.SMSC_API_KEY) {
+    return new SmscWaitCallVerificationDelivery(config.SMSC_LOGIN, config.SMSC_API_KEY);
   }
   return disabledVerificationDelivery;
 }

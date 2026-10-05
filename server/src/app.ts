@@ -106,6 +106,9 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
   app.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_request, body, done) => {
     done(null, body);
   });
+  app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (_request, body, done) => {
+    done(null, Object.fromEntries(new URLSearchParams(String(body))));
+  });
   registerErrorHandler(app);
   const verificationDelivery = dependencies.verificationDelivery ?? createVerificationDelivery(config, app.log);
   registerActorContext(
@@ -129,6 +132,7 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
     config.ACCESS_TOKEN_SECRET,
     config.OTP_HASH_SECRET,
     verificationDelivery,
+    config.SMS_PROVIDER === "smsc" ? config.SMSC_WAIT_CALL_CALLBACK_SECRET : undefined,
   ));
   await app.register(adminUserRoutes(dependencies.prisma));
   await app.register(workshopRoutes(dependencies.prisma));
