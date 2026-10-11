@@ -2,13 +2,17 @@ import type { PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { issueSession, revokeSession, rotateSession } from "../../security/auth-session.js";
-import { verifyPassword } from "../../security/password.js";
+import { hashPassword, verifyPassword } from "../../security/password.js";
 
 const loginSchema = z.object({
   login: z.string().trim().min(1).max(128).transform((value) => value.toLocaleLowerCase("ru-RU")),
   password: z.string().min(1).max(256),
 });
 const refreshSchema = z.object({ refreshToken: z.string().min(40).max(256) });
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(256),
+  newPassword: z.string().min(12).max(256),
+});
 
 type AttemptWindow = { count: number; resetAt: number };
 
@@ -63,6 +67,7 @@ export function authRoutes(prisma: PrismaClient, accessTokenSecret?: string): Fa
           displayName: true,
           isActive: true,
           passwordHash: true,
+          mustChangePassword: true,
           memberships: {
             where: { isActive: true },
             orderBy: { createdAt: "asc" },
@@ -86,6 +91,7 @@ export function authRoutes(prisma: PrismaClient, accessTokenSecret?: string): Fa
         workshopId: membership.workshopId,
         displayName: user.displayName,
         role: membership.role,
+        mustChangePassword: user.mustChangePassword,
       };
       if (!accessTokenSecret) return session;
 
@@ -114,10 +120,26 @@ export function authRoutes(prisma: PrismaClient, accessTokenSecret?: string): Fa
       return reply.code(204).send();
     });
 
+    app.post("/v1/auth/change-password", async (request, reply) => {
+      const body = changePasswordSchema.parse(request.body);
+      const user = await prisma.user.findUnique({
+        where: { id: request.actor.userId },
+        select: { passwordHash: true, isActive: true },
+      });
+      if (!user?.isActive || !user.passwordHash || !await verifyPassword(body.currentPassword, user.passwordHash)) {
+        return reply.code(401).send({ error: "invalid_credentials" });
+      }
+      await prisma.user.update({
+        where: { id: request.actor.userId },
+        data: { passwordHash: await hashPassword(body.newPassword), mustChangePassword: false },
+      });
+      return reply.code(204).send();
+    });
+
     app.get("/v1/session", async (request) => {
       const user = await prisma.user.findUniqueOrThrow({
         where: { id: request.actor.userId },
-        select: { id: true, login: true, displayName: true },
+        select: { id: true, login: true, displayName: true, mustChangePassword: true },
       });
       return { ...user, workshopId: request.actor.workshopId, role: request.actor.role };
     });

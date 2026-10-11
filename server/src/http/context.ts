@@ -11,7 +11,7 @@ const actorSchema = z.object({
 
 declare module "fastify" {
   interface FastifyRequest {
-    actor: z.infer<typeof actorSchema> & { role: MembershipRole; sessionId?: string };
+    actor: z.infer<typeof actorSchema> & { role: MembershipRole; sessionId?: string; mustChangePassword?: boolean };
   }
 }
 
@@ -92,15 +92,21 @@ export function registerActorContext(
       select: {
         role: true,
         isActive: true,
-        user: { select: { isActive: true } },
+        user: { select: { isActive: true, mustChangePassword: true } },
       },
     });
     if (!membership?.isActive || !membership.user.isActive) {
       return reply.code(403).send({ error: "access_revoked" });
     }
+    const path = request.url.split("?", 1)[0];
+    const passwordChangeAllowed = path === "/v1/auth/change-password" || path === "/v1/auth/logout" || path === "/v1/session";
+    if (membership.user.mustChangePassword && !passwordChangeAllowed) {
+      return reply.code(403).send({ error: "password_change_required" });
+    }
     request.actor = {
       ...parsed.data,
       role: membership.role,
+      mustChangePassword: membership.user.mustChangePassword,
       ...(staffBearerActor ? { sessionId: staffBearerActor.sessionId } : {}),
     };
   });

@@ -43,6 +43,7 @@ describe("database authentication and administration", () => {
           displayName: "Администратор",
           isActive: true,
           passwordHash,
+          mustChangePassword: false,
           memberships: [{ workshopId, role: "ADMIN" }],
         }),
       },
@@ -61,6 +62,7 @@ describe("database authentication and administration", () => {
       workshopId,
       displayName: "Администратор",
       role: "ADMIN",
+      mustChangePassword: false,
     });
     await app.close();
   });
@@ -98,7 +100,7 @@ describe("database authentication and administration", () => {
 
   it("issues a signed token and accepts it without internal headers", async () => {
     const passwordHash = await hashPassword("strong-password");
-    const membership = { role: "EMPLOYEE", isActive: true, user: { isActive: true } };
+    const membership = { role: "EMPLOYEE", isActive: true, user: { isActive: true, mustChangePassword: false } };
     const prisma = {
       user: {
         findUnique: vi.fn().mockResolvedValue({
@@ -106,9 +108,10 @@ describe("database authentication and administration", () => {
           displayName: "Мастер",
           isActive: true,
           passwordHash,
+          mustChangePassword: false,
           memberships: [{ workshopId, role: "EMPLOYEE" }],
         }),
-        findUniqueOrThrow: vi.fn().mockResolvedValue({ id: userId, login: "master", displayName: "Мастер" }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ id: userId, login: "master", displayName: "Мастер", mustChangePassword: false }),
       },
       membership: { findUnique: vi.fn().mockResolvedValue(membership) },
       authSession: {
@@ -163,6 +166,51 @@ describe("database authentication and administration", () => {
 
     expect(response.statusCode).toBe(403);
     expect(response.json()).toEqual({ error: "access_revoked" });
+    await app.close();
+  });
+
+  it("requires the bootstrap user to change the password before working", async () => {
+    const passwordHash = await hashPassword("temporary-password");
+    const update = vi.fn().mockResolvedValue({});
+    const prisma = {
+      user: {
+        findUnique: vi.fn()
+          .mockResolvedValueOnce({
+            id: userId,
+            displayName: "Администратор",
+            isActive: true,
+            passwordHash,
+            mustChangePassword: true,
+            memberships: [{ workshopId, role: "ADMIN" }],
+          })
+          .mockResolvedValueOnce({ isActive: true, passwordHash }),
+        update,
+      },
+      membership: {
+        findUnique: vi.fn().mockResolvedValue({ role: "ADMIN", isActive: true, user: { isActive: true, mustChangePassword: true } }),
+      },
+    } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+
+    const login = await app.inject({
+      method: "POST", url: "/v1/auth/login", payload: { login: "admin", password: "temporary-password" },
+    });
+    expect(login.statusCode).toBe(200);
+    expect(login.json()).toMatchObject({ mustChangePassword: true });
+
+    const blocked = await app.inject({ method: "GET", url: "/v1/workshop", headers });
+    expect(blocked.statusCode).toBe(403);
+    expect(blocked.json()).toEqual({ error: "password_change_required" });
+
+    const changed = await app.inject({
+      method: "POST", url: "/v1/auth/change-password", headers,
+      payload: { currentPassword: "temporary-password", newPassword: "a-new-long-password" },
+    });
+    expect(changed.statusCode).toBe(204);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: userId },
+      data: expect.objectContaining({ mustChangePassword: false }),
+    });
     await app.close();
   });
 

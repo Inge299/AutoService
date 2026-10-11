@@ -62,9 +62,11 @@ S3_PUBLIC_ENDPOINT=https://storage.example.com
 INTERNAL_API_KEY=<random-32+-character-service-key>
 ACCESS_TOKEN_SECRET=<different-random-32+-character-signing-key>
 OTP_HASH_SECRET=<third-random-32+-character-hmac-key>
-BOOTSTRAP_ADMIN_LOGIN=<уникальный-логин-первого-администратора>
-BOOTSTRAP_ADMIN_PASSWORD_HASH=<bcrypt-хеш-длинного-уникального-пароля>
-BOOTSTRAP_ADMIN_NAME=<имя-первого-администратора>
+# Необязательно: если обе переменные не заданы, создаётся одноразовый admin
+# с обязательной сменой пароля при первом входе.
+# BOOTSTRAP_ADMIN_LOGIN=<уникальный-логин-первого-администратора>
+# BOOTSTRAP_ADMIN_PASSWORD_HASH=<scrypt-хеш-длинного-уникального-пароля>
+BOOTSTRAP_ADMIN_NAME=Администратор
 SMS_PROVIDER=disabled
 # Для включения после настройки кабинета:
 # SMS_PROVIDER=smsru
@@ -83,10 +85,13 @@ SMS_RU_VERIFICATION_MODE=callcheck
 # https://<api-домен>/public/v1/auth/phone/smsc-wait-call?token=<тот же секрет>
 ```
 
-Первый администратор создаётся только при initial seed. Сгенерируйте bcrypt-хеш
-локально командой `node web/scripts/hash-password.mjs "длинный-уникальный-пароль"`
-и поместите только хеш в `.env`. В репозитории нет и не должно быть общего логина
-или пароля администратора. После первого входа администратор создаёт сотрудников
+Первый администратор создаётся только при initial seed. Если не заданы обе переменные
+`BOOTSTRAP_ADMIN_LOGIN` и `BOOTSTRAP_ADMIN_PASSWORD_HASH`, используются временные
+учётные данные: логин `admin`, пароль `AutoService!Change2026`. При таком входе система
+не откроет рабочие разделы, пока администратор не установит собственный пароль (минимум
+12 символов). Для production до initial seed предпочтительно задать оба своих значения:
+сгенерируйте scrypt-хеш командой `node web/scripts/hash-password.mjs "длинный-уникальный-пароль"`
+и поместите только хеш в `.env`. После первого входа администратор создаёт сотрудников
 по имени и рабочему номеру; им не нужен временный пароль для входа через WaitCall.
 
 ```bash

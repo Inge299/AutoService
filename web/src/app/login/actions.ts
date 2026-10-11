@@ -39,7 +39,7 @@ export async function loginAction(formData: FormData): Promise<void> {
 
   const token = createSessionToken(identity);
   await persistSession(token, identity.refreshTokenExpiresAtEpochMs);
-  redirect("/dashboard");
+  redirect(identity.mustChangePassword ? "/staff/change-password" : "/dashboard");
 }
 
 export async function requestStaffCodeAction(formData: FormData): Promise<void> {
@@ -72,6 +72,7 @@ export async function verifyStaffCallAction(formData: FormData): Promise<void> {
   const callPhonePretty = String(formData.get("callPhonePretty") ?? "");
   const state = new URLSearchParams({ mode: "call", challenge: challengeId, callPhone, callPhonePretty });
   if (!challengeId) redirect(`/staff/login?${state}&error=invalid_code`);
+  let mustChangePassword = false;
   try {
     const result = await verifyPhoneCall(challengeId);
     if (!("accessToken" in result)) {
@@ -84,12 +85,14 @@ export async function verifyStaffCallAction(formData: FormData): Promise<void> {
       workshopId: identity.workshopId,
       displayName: identity.displayName,
       role: identity.role,
+      mustChangePassword: identity.mustChangePassword,
     };
+    mustChangePassword = identity.mustChangePassword;
     await persistSession(createSessionToken(session), result.refreshTokenExpiresAtEpochMs);
   } catch {
     redirect(`/staff/login?${state}&error=invalid_code`);
   }
-  redirect("/dashboard");
+  redirect(mustChangePassword ? "/staff/change-password" : "/dashboard");
 }
 
 export async function verifyStaffCodeAction(formData: FormData): Promise<void> {
@@ -98,6 +101,7 @@ export async function verifyStaffCodeAction(formData: FormData): Promise<void> {
   if (!challengeId || !/^\d{6}$/.test(code)) {
     redirect(`/staff/login?mode=code&challenge=${encodeURIComponent(challengeId)}&error=invalid_code`);
   }
+  let mustChangePassword = false;
   try {
     const tokens = await verifyPhoneCode(challengeId, code);
     const identity = await getApiSessionWithAccessToken(tokens.accessToken);
@@ -107,12 +111,14 @@ export async function verifyStaffCodeAction(formData: FormData): Promise<void> {
       workshopId: identity.workshopId,
       displayName: identity.displayName,
       role: identity.role,
+      mustChangePassword: identity.mustChangePassword,
     };
+    mustChangePassword = identity.mustChangePassword;
     await persistSession(createSessionToken(session), tokens.refreshTokenExpiresAtEpochMs);
   } catch {
     redirect(`/staff/login?mode=code&challenge=${encodeURIComponent(challengeId)}&error=invalid_code`);
   }
-  redirect("/dashboard");
+  redirect(mustChangePassword ? "/staff/change-password" : "/dashboard");
 }
 
 export async function logoutAction(): Promise<void> {

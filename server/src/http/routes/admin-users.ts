@@ -203,7 +203,7 @@ export function adminUserRoutes(prisma: PrismaClient): FastifyPluginAsync {
       });
       if (!membership) return reply.code(404).send({ error: "not_found" });
       await prisma.$transaction([
-        prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(body.password) } }),
+        prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(body.password), mustChangePassword: true } }),
         prisma.auditEvent.create({
           data: {
             workshopId: request.actor.workshopId,

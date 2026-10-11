@@ -21,6 +21,7 @@ export interface WebSession extends BackendTokens {
   workshopId: string;
   displayName: string;
   role: "ADMIN" | "EMPLOYEE";
+  mustChangePassword: boolean;
   isDemo?: true;
 }
 
@@ -88,6 +89,7 @@ function demoSession(): WebSession | null {
     workshopId: "11111111-1111-4111-8111-111111111111",
     displayName: "Евгений",
     role: "ADMIN",
+    mustChangePassword: false,
     accessToken: "",
     refreshToken: "",
     accessTokenExpiresAtEpochMs: expiresAt,
@@ -106,7 +108,7 @@ export function verifySessionToken(token: string): WebSession | null {
   const candidate = session as Partial<WebSession>;
   if (!candidate.userId || !candidate.workshopId || !candidate.displayName) return null;
   if (candidate.role !== "ADMIN" && candidate.role !== "EMPLOYEE") return null;
-  return candidate as WebSession;
+  return { ...candidate, mustChangePassword: candidate.mustChangePassword === true } as WebSession;
 }
 
 export async function getSession(): Promise<WebSession | null> {

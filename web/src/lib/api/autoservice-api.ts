@@ -99,6 +99,7 @@ export interface ApiSessionIdentity extends BackendTokens {
   workshopId: string;
   displayName: string;
   role: "ADMIN" | "EMPLOYEE";
+  mustChangePassword: boolean;
 }
 
 export interface ApiAdminUser {
@@ -397,7 +398,14 @@ export async function authenticateApiUser(
 }
 
 export function getApiSession(session: WebSession) {
-  return request<{ id: string; login: string | null; displayName: string; workshopId: string; role: "ADMIN" | "EMPLOYEE" }>("/v1/session", session);
+  return request<{ id: string; login: string | null; displayName: string; workshopId: string; role: "ADMIN" | "EMPLOYEE"; mustChangePassword: boolean }>("/v1/session", session);
+}
+
+export async function changeApiPassword(session: WebSession, currentPassword: string, newPassword: string): Promise<void> {
+  await request<void>("/v1/auth/change-password", session, {
+    method: "POST",
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
 }
 
 export async function getApiSessionWithAccessToken(accessToken: string) {
@@ -414,6 +422,7 @@ export async function getApiSessionWithAccessToken(accessToken: string) {
     displayName: string;
     workshopId: string;
     role: "ADMIN" | "EMPLOYEE";
+    mustChangePassword: boolean;
   }>;
 }
 
