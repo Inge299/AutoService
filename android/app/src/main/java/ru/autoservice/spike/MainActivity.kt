@@ -206,6 +206,25 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
         return
     }
 
+    if (session?.mustChangePassword == true) {
+        Scaffold(
+            topBar = { TopAppBar(title = { Text("Смените временный пароль") }) },
+            snackbarHost = { SnackbarHost(snackbarHost) },
+        ) { padding ->
+            ChangePasswordScreen(
+                onSubmit = { current, password, completed ->
+                    viewModel.changePassword(current, password, completed) {
+                        completed()
+                        message(authErrorMessage(it))
+                    }
+                },
+                onLogout = { viewModel.logout() },
+                modifier = Modifier.padding(padding),
+            )
+        }
+        return
+    }
+
     // Approval decisions are recorded on the server by a public link. Keep the
     // foreground app current even when the master does not leave this screen.
     LaunchedEffect(session?.accessToken) {
@@ -402,7 +421,7 @@ private fun LoginScreen(
     onVerifyCode: (String, String, () -> Unit) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var mode by remember { mutableStateOf(LoginMode.SMS) }
+    var mode by remember { mutableStateOf(LoginMode.PASSWORD) }
     var login by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -506,9 +525,6 @@ private fun LoginScreen(
                     enabled = !loading && login.isNotBlank() && password.isNotBlank(),
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(if (loading) "Подключение…" else "Войти") }
-                TextButton(onClick = { mode = LoginMode.SMS }, enabled = !loading) {
-                    Text("Войти по SMS")
-                }
             }
         }
         Text(
@@ -519,6 +535,32 @@ private fun LoginScreen(
 }
 
 private enum class LoginMode { SMS, CODE, PASSWORD }
+
+@Composable
+private fun ChangePasswordScreen(
+    onSubmit: (String, String, () -> Unit) -> Unit,
+    onLogout: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var current by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var confirmation by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(false) }
+    Column(modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("Перед началом работы задайте свой пароль: минимум 12 символов.")
+        OutlinedTextField(current, { current = it }, label = { Text("Временный пароль") }, singleLine = true,
+            visualTransformation = PasswordVisualTransformation(), enabled = !loading)
+        OutlinedTextField(password, { password = it }, label = { Text("Новый пароль") }, singleLine = true,
+            visualTransformation = PasswordVisualTransformation(), enabled = !loading)
+        OutlinedTextField(confirmation, { confirmation = it }, label = { Text("Повторите пароль") }, singleLine = true,
+            visualTransformation = PasswordVisualTransformation(), enabled = !loading)
+        Button(onClick = { loading = true; onSubmit(current, password) { loading = false } },
+            enabled = !loading && current.isNotEmpty() && password.length in 12..256 && password == confirmation) {
+            Text(if (loading) "Сохранение…" else "Сохранить пароль")
+        }
+        TextButton(onClick = onLogout, enabled = !loading) { Text("Выйти") }
+    }
+}
 
 private fun authErrorMessage(error: Throwable): String = when (error.message) {
     "invalid_credentials" -> "Неверный логин или пароль"

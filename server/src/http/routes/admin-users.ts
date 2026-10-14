@@ -18,14 +18,14 @@ const optionalPasswordSchema = z.preprocess(
 const createSchema = z.object({
   login: optionalLoginSchema,
   displayName: z.string().trim().min(2).max(120),
-  phone: z.string().min(8).max(32).transform(normalizePhone),
+  phone: z.preprocess((value) => value === "" ? undefined : value, z.string().min(8).max(32).transform(normalizePhone).optional()),
   password: optionalPasswordSchema,
   role: z.enum(["ADMIN", "EMPLOYEE"]).default("EMPLOYEE"),
 }).superRefine((value, context) => {
-  if (value.role === "ADMIN" && !value.login) {
+  if (!value.login) {
     context.addIssue({ code: "custom", path: ["login"], message: "admin_login_required" });
   }
-  if (value.role === "ADMIN" && !value.password) {
+  if (!value.password) {
     context.addIssue({ code: "custom", path: ["password"], message: "admin_password_required" });
   }
   if (value.password && !value.login) {
@@ -99,8 +99,9 @@ export function adminUserRoutes(prisma: PrismaClient): FastifyPluginAsync {
               id: randomUUID(),
               login: body.login ?? null,
               displayName: body.displayName,
-              phone: body.phone,
+              phone: body.phone ?? null,
               passwordHash,
+              mustChangePassword: true,
             },
           });
           await tx.membership.create({
@@ -204,6 +205,7 @@ export function adminUserRoutes(prisma: PrismaClient): FastifyPluginAsync {
       if (!membership) return reply.code(404).send({ error: "not_found" });
       await prisma.$transaction([
         prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(body.password), mustChangePassword: true } }),
+        prisma.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } }),
         prisma.auditEvent.create({
           data: {
             workshopId: request.actor.workshopId,

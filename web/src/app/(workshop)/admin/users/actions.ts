@@ -36,10 +36,8 @@ export async function createUserAction(formData: FormData): Promise<void> {
   const phone = String(formData.get("phone") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const role = formData.get("role") === "ADMIN" ? "ADMIN" : "EMPLOYEE";
-  if (displayName.length < 2 || displayName.length > 120 || phone.length < 8 || phone.length > 32 ||
-    (login.length > 0 && (login.length < 3 || login.length > 64)) ||
-    (password.length > 0 && (password.length < 8 || password.length > 256)) ||
-    (role === "ADMIN" && (!login || !password))) {
+  if (displayName.length < 2 || displayName.length > 120 || (phone && (phone.length < 8 || phone.length > 32)) ||
+    login.length < 3 || login.length > 64 || password.length < 8 || password.length > 256) {
     redirect("/admin/users?error=invalid_input");
   }
   try {
