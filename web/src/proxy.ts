@@ -36,6 +36,7 @@ export const config = {
     "/reminders/:path*",
     "/settings/:path*",
     "/admin/:path*",
+    "/staff/change-password/:path*",
     "/cabinet/:path*",
   ],
 };

@@ -88,6 +88,7 @@ class AutoServiceApi(
             workshopId = json.getString("workshopId"),
             displayName = json.getString("displayName"),
             role = json.getString("role"),
+            mustChangePassword = json.optBoolean("mustChangePassword", false),
         )
         authStore.save(session)
         session
@@ -123,9 +124,16 @@ class AutoServiceApi(
             workshopId = identity.getString("workshopId"),
             displayName = identity.getString("displayName"),
             role = identity.getString("role"),
+            mustChangePassword = identity.optBoolean("mustChangePassword", false),
         )
         authStore.save(session)
         session
+    }
+
+    suspend fun changePassword(currentPassword: String, newPassword: String) = withContext(Dispatchers.IO) {
+        request("POST", "/v1/auth/change-password", JSONObject()
+            .put("currentPassword", currentPassword).put("newPassword", newPassword))
+        authStore.session.value?.let { authStore.save(it.copy(mustChangePassword = false)) }
     }
 
     suspend fun logout() = withContext(Dispatchers.IO) {

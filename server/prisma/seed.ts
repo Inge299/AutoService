@@ -33,6 +33,13 @@ function bootstrapUsers(): BootstrapUser[] {
 }
 
 try {
+  // Seed is an initial-install operation, not a source of production users.
+  // Never recreate deleted accounts when an administrator already exists.
+  const initialized = await prisma.membership.findFirst({
+    where: { role: MembershipRole.ADMIN, isActive: true, user: { isActive: true } },
+    select: { userId: true },
+  });
+  if (!initialized) {
   await prisma.workshop.upsert({
       where: { id: workshopId },
       update: {},
@@ -98,6 +105,7 @@ try {
       update: {},
       create: { workshopId: user.workshopId, userId: user.userId, role: user.role as MembershipRole },
     });
+  }
   }
 } finally {
   await prisma.$disconnect();

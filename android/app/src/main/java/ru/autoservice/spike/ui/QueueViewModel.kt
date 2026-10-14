@@ -119,6 +119,15 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun changePassword(current: String, password: String, onSuccess: () -> Unit, onFailure: (Throwable) -> Unit) {
+        viewModelScope.launch {
+            runCatching {
+                container.api.changePassword(current, password)
+                synchronize()
+            }.onSuccess { onSuccess() }.onFailure(onFailure)
+        }
+    }
+
     fun logout() {
         viewModelScope.launch {
             runCatching { container.api.logout() }
@@ -133,6 +142,7 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun synchronize() {
+        if (session.value?.mustChangePassword == true) return
         val workshop = container.forWorkshop(requireNotNull(session.value).workshopId)
         val snapshot = workshop.visitRepository.synchronizeLocal()
         workshop.findingRepository.synchronizeLocal(snapshot.findings)
