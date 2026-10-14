@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { SmsRuCallCheckVerificationDelivery, SmsRuVerificationDelivery } from "../src/infrastructure/verification-delivery.js";
+import { SmscWaitCallVerificationDelivery, SmsRuCallCheckVerificationDelivery, SmsRuVerificationDelivery } from "../src/infrastructure/verification-delivery.js";
 
 const message = {
   challengeId: "33333333-3333-4333-8333-333333333333",
@@ -80,5 +80,34 @@ describe("SMS.RU verification delivery", () => {
     );
 
     await expect(delivery.sendCode(message)).rejects.toThrow("207");
+  });
+});
+
+describe("SMSC WaitCall verification delivery", () => {
+  it("requests a callback-confirmed call number without exposing credentials in the URL", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      phone: "78005553535",
+      all_phones: ["78005553535"],
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    const delivery = new SmscWaitCallVerificationDelivery(
+      "autoservice",
+      "api-key-1234567890",
+      fetchMock as unknown as typeof fetch,
+    );
+
+    const started = await delivery.start(message);
+
+    expect(started).toMatchObject({
+      method: "CALLCHECK",
+      providerCheckId: message.challengeId,
+      callPhone: "78005553535",
+    });
+    expect(fetchMock.mock.calls[0]![0]).toBe("https://smsc.ru/sys/wait_call.php");
+    const form = fetchMock.mock.calls[0]![1]!.body as URLSearchParams;
+    expect(form.get("login")).toBe("autoservice");
+    expect(form.get("apikey")).toBe("api-key-1234567890");
+    expect(form.get("phone")).toBe("79991234567");
+    expect(form.get("fmt")).toBe("3");
+    expect(await delivery.checkCall(message.challengeId)).toBe("PENDING");
   });
 });

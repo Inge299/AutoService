@@ -4,6 +4,8 @@ const prisma = new PrismaClient();
 
 const workshopId = "11111111-1111-4111-8111-111111111111";
 const userId = "22222222-2222-4222-8222-222222222222";
+const defaultAdminLogin = "admin";
+const defaultAdminPasswordHash = "9c66c8b4deb14357c333a6379ed20caa:a8edcadf05ad63471e396a9e19a5890e8e70a92a61f19d7130239763adca2ec936c2d2f580cc78fe0efb0a5c4bff36808bc0151d836535cb25186a1eca318772";
 
 interface BootstrapUser {
   login: string;
@@ -39,19 +41,29 @@ try {
 
   const adminLogin = process.env.BOOTSTRAP_ADMIN_LOGIN?.trim().toLocaleLowerCase("ru-RU");
   const adminPasswordHash = process.env.BOOTSTRAP_ADMIN_PASSWORD_HASH?.trim();
+  if (Boolean(adminLogin) !== Boolean(adminPasswordHash)) {
+    throw new Error("BOOTSTRAP_ADMIN_LOGIN and BOOTSTRAP_ADMIN_PASSWORD_HASH must be set together");
+  }
+  const usesDefaultAdminCredentials = !adminLogin;
+  const initialAdminLogin = adminLogin || defaultAdminLogin;
+  const initialAdminPasswordHash = adminPasswordHash || defaultAdminPasswordHash;
   const existingAdmin = await prisma.user.findUnique({ where: { id: userId } });
   await prisma.user.upsert({
       where: { id: userId },
       update: {
-        ...(!existingAdmin?.login && adminLogin ? { login: adminLogin } : {}),
-        ...(!existingAdmin?.passwordHash && adminPasswordHash ? { passwordHash: adminPasswordHash } : {}),
+        ...(!existingAdmin?.login ? { login: initialAdminLogin } : {}),
+        ...(!existingAdmin?.passwordHash ? {
+          passwordHash: initialAdminPasswordHash,
+          mustChangePassword: usesDefaultAdminCredentials,
+        } : {}),
         ...(!existingAdmin?.passwordHash ? { displayName: process.env.BOOTSTRAP_ADMIN_NAME || "Локальный мастер" } : {}),
       },
       create: {
         id: userId,
-        login: adminLogin || null,
+        login: initialAdminLogin,
         phone: "+79990000000",
-        passwordHash: adminPasswordHash || null,
+        passwordHash: initialAdminPasswordHash,
+        mustChangePassword: usesDefaultAdminCredentials,
         displayName: process.env.BOOTSTRAP_ADMIN_NAME || "Локальный мастер",
       },
     });

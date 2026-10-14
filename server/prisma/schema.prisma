@@ -128,6 +128,7 @@ model User {
   phone            String?        @unique
   email            String?        @unique
   passwordHash     String?        @map("password_hash")
+  mustChangePassword Boolean      @default(false) @map("must_change_password")
   isActive         Boolean        @default(true) @map("is_active")
   displayName      String         @map("display_name")
   createdAt        DateTime       @default(now()) @map("created_at")

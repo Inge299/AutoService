@@ -62,6 +62,11 @@ S3_PUBLIC_ENDPOINT=https://storage.example.com
 INTERNAL_API_KEY=<random-32+-character-service-key>
 ACCESS_TOKEN_SECRET=<different-random-32+-character-signing-key>
 OTP_HASH_SECRET=<third-random-32+-character-hmac-key>
+# Необязательно: если обе переменные не заданы, создаётся одноразовый admin
+# с обязательной сменой пароля при первом входе.
+# BOOTSTRAP_ADMIN_LOGIN=<уникальный-логин-первого-администратора>
+# BOOTSTRAP_ADMIN_PASSWORD_HASH=<scrypt-хеш-длинного-уникального-пароля>
+BOOTSTRAP_ADMIN_NAME=Администратор
 SMS_PROVIDER=disabled
 # Для включения после настройки кабинета:
 # SMS_PROVIDER=smsru
@@ -71,7 +76,23 @@ SMS_PROVIDER=disabled
 SMS_RU_VERIFICATION_MODE=callcheck
 # После согласования имени AutoService переключите авторизацию на SMS:
 # SMS_RU_VERIFICATION_MODE=sms
+# Альтернатива для входа сотрудников — SMSC WaitCall:
+# SMS_PROVIDER=smsc
+# SMSC_LOGIN=<логин SMSC>
+# SMSC_API_KEY=<API-ключ SMSC>
+# SMSC_WAIT_CALL_CALLBACK_SECRET=<случайный секрет длиной 32+ символа>
+# В настройках SMSC указать URL обработчика:
+# https://<api-домен>/public/v1/auth/phone/smsc-wait-call?token=<тот же секрет>
 ```
+
+Первый администратор создаётся только при initial seed. Если не заданы обе переменные
+`BOOTSTRAP_ADMIN_LOGIN` и `BOOTSTRAP_ADMIN_PASSWORD_HASH`, используются временные
+учётные данные: логин `admin`, пароль `AutoService!Change2026`. При таком входе система
+не откроет рабочие разделы, пока администратор не установит собственный пароль (минимум
+12 символов). Для production до initial seed предпочтительно задать оба своих значения:
+сгенерируйте scrypt-хеш командой `node web/scripts/hash-password.mjs "длинный-уникальный-пароль"`
+и поместите только хеш в `.env`. После первого входа администратор создаёт сотрудников
+по имени и рабочему номеру; им не нужен временный пароль для входа через WaitCall.
 
 ```bash
 chmod 600 .env
@@ -96,6 +117,13 @@ root-учётные данные доступны только контейне�
 и выпускает сессию только после положительного статуса. Режим `sms` отправляет
 шестизначный код и требует согласованного Sender ID. Во всех режимах ключ передаётся
 только в POST form body, а HTTP-вызовы ограничены десятью секундами.
+
+`SMS_PROVIDER=smsc` включает WaitCall: сотруднику возвращается номер, на который
+он звонит со своего привязанного телефона. SMSC передаёт результат только на
+настроенный HTTPS callback; AutoService сопоставляет его с неистёкшей проверкой
+и только затем выпускает сессию. Callback URL обязательно защищается отдельным
+случайным `SMSC_WAIT_CALL_CALLBACK_SECRET`; не размещайте этот секрет в Git или
+в логах. Для напоминаний и клиентских сообщений SMSC пока не используется.
 
 ## Проверка после запуска
 

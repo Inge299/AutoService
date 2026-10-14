@@ -43,7 +43,10 @@ function otpPrisma(user: unknown) {
         maxAttempts: 5,
         consumedAt: null,
       } : null),
-      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      updateMany: vi.fn(async ({ data }) => {
+        if (stored.challenge) Object.assign(stored.challenge, data);
+        return { count: 1 };
+      }),
     },
     authSession: { create: vi.fn().mockResolvedValue({}) },
     $transaction: vi.fn(async (callback) => callback({
@@ -152,6 +155,79 @@ describe("phone authentication", () => {
     });
     expect(verified.statusCode).toBe(200);
     expect(verified.json()).toMatchObject({ accessToken: expect.any(String), refreshToken: expect.any(String) });
+    await app.close();
+  });
+
+  it("issues a session after the signed SMSC WaitCall callback confirms the caller phone", async () => {
+    const database = otpPrisma({
+      id: userId,
+      isActive: true,
+      memberships: [{ workshopId }],
+      customerProfiles: [],
+    });
+    const app = await buildApp({
+      ...config,
+      SMS_PROVIDER: "smsc",
+      SMSC_LOGIN: "autoservice",
+      SMSC_API_KEY: "a".repeat(16),
+      SMSC_WAIT_CALL_CALLBACK_SECRET: "s".repeat(32),
+    }, {
+      prisma: database.prisma,
+      storage: {} as ObjectStorage,
+      verificationDelivery: {
+        available: true,
+        async start(message) {
+          return {
+            method: "CALLCHECK",
+            providerCheckId: message.challengeId,
+            callPhone: "78005553535",
+            callPhonePretty: "+7 (800) 555-35-35",
+          };
+        },
+        async checkCall() { return "PENDING"; },
+      },
+    });
+    const requested = await app.inject({
+      method: "POST",
+      url: "/public/v1/auth/phone/request-code",
+      payload: { phone: "+79991234567", audience: "STAFF" },
+    });
+    const callback = await app.inject({
+      method: "POST",
+      url: "/public/v1/auth/phone/smsc-wait-call?token=" + "s".repeat(32),
+      payload: { waitcall: "1", phone: "79991234567", ts: "1700000000" },
+    });
+    expect(callback.statusCode).toBe(200);
+
+    const verified = await app.inject({
+      method: "POST",
+      url: "/public/v1/auth/phone/verify-call",
+      payload: { challengeId: requested.json().challengeId },
+    });
+    expect(verified.statusCode).toBe(200);
+    expect(verified.json()).toMatchObject({ accessToken: expect.any(String), refreshToken: expect.any(String) });
+    await app.close();
+  });
+
+  it("does not expose the SMSC callback endpoint without its secret", async () => {
+    const database = otpPrisma(null);
+    const app = await buildApp({
+      ...config,
+      SMS_PROVIDER: "smsc",
+      SMSC_LOGIN: "autoservice",
+      SMSC_API_KEY: "a".repeat(16),
+      SMSC_WAIT_CALL_CALLBACK_SECRET: "s".repeat(32),
+    }, {
+      prisma: database.prisma,
+      storage: {} as ObjectStorage,
+      verificationDelivery: { available: true, async sendCode() {} },
+    });
+    const callback = await app.inject({
+      method: "POST",
+      url: "/public/v1/auth/phone/smsc-wait-call?token=wrong",
+      payload: { waitcall: "1", phone: "79991234567" },
+    });
+    expect(callback.statusCode).toBe(404);
     await app.close();
   });
 

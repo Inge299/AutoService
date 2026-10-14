@@ -24,6 +24,16 @@ describe("authentication configuration", () => {
     expect(() => loadConfig(environment({ SMS_PROVIDER: "smsru" }))).toThrow("SMS_RU_API_ID");
   });
 
+  it("requires both API credentials and a callback secret when SMSC WaitCall is enabled", () => {
+    expect(() => loadConfig(environment({ SMS_PROVIDER: "smsc" }))).toThrow("SMSC_LOGIN");
+    expect(loadConfig(environment({
+      SMS_PROVIDER: "smsc",
+      SMSC_LOGIN: "autoservice",
+      SMSC_API_KEY: "a".repeat(16),
+      SMSC_WAIT_CALL_CALLBACK_SECRET: "s".repeat(32),
+    })).SMSC_LOGIN).toBe("autoservice");
+  });
+
   it("forbids debug delivery in production", () => {
     expect(() => loadConfig(environment({
       NODE_ENV: "production",

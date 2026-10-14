@@ -12,6 +12,7 @@ export default async function WorkshopLayout({ children }: { children: React.Rea
   } catch {
     redirect("/staff/login?error=access_revoked");
   }
+  if (currentUser.mustChangePassword) redirect("/staff/change-password");
   const verifiedSession = { ...session, displayName: currentUser.displayName, role: currentUser.role };
   const [backend, workshop, reminders] = await Promise.all([
     getBackendConnection(),

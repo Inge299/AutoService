@@ -11,10 +11,13 @@ const schema = z.object({
   INTERNAL_API_KEY: z.string().min(32).optional(),
   ACCESS_TOKEN_SECRET: z.string().min(32).optional(),
   OTP_HASH_SECRET: z.string().min(32).optional(),
-  SMS_PROVIDER: z.enum(["disabled", "debug", "smsru"]).default("disabled"),
+  SMS_PROVIDER: z.enum(["disabled", "debug", "smsru", "smsc"]).default("disabled"),
   SMS_RU_API_ID: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
   SMS_RU_FROM: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(32).optional()),
   SMS_RU_VERIFICATION_MODE: z.enum(["callcheck", "sms"]).default("callcheck"),
+  SMSC_LOGIN: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(64).optional()),
+  SMSC_API_KEY: z.preprocess(emptyToUndefined, z.string().trim().min(16).optional()),
+  SMSC_WAIT_CALL_CALLBACK_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
   DATABASE_URL: z.string().min(1),
   S3_ENDPOINT: z.string().url().optional(),
   S3_PUBLIC_ENDPOINT: z.string().url().optional(),
@@ -29,8 +32,11 @@ const schema = z.object({
 type ParsedConfig = z.infer<typeof schema>;
 // Legacy tests and embedders construct Config directly. The parser always supplies
 // this value; keeping it optional here avoids breaking those callers during rollout.
-export type Config = Omit<ParsedConfig, "SMS_RU_VERIFICATION_MODE"> & {
+export type Config = Omit<ParsedConfig, "SMS_RU_VERIFICATION_MODE" | "SMSC_LOGIN" | "SMSC_API_KEY" | "SMSC_WAIT_CALL_CALLBACK_SECRET"> & {
   SMS_RU_VERIFICATION_MODE?: ParsedConfig["SMS_RU_VERIFICATION_MODE"];
+  SMSC_LOGIN?: ParsedConfig["SMSC_LOGIN"];
+  SMSC_API_KEY?: ParsedConfig["SMSC_API_KEY"];
+  SMSC_WAIT_CALL_CALLBACK_SECRET?: ParsedConfig["SMSC_WAIT_CALL_CALLBACK_SECRET"];
 };
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Config {
@@ -55,6 +61,9 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Config
   }
   if (config.SMS_PROVIDER === "smsru" && !config.SMS_RU_API_ID) {
     throw new Error("SMS_RU_API_ID is required when SMS_PROVIDER=smsru");
+  }
+  if (config.SMS_PROVIDER === "smsc" && (!config.SMSC_LOGIN || !config.SMSC_API_KEY || !config.SMSC_WAIT_CALL_CALLBACK_SECRET)) {
+    throw new Error("SMSC_LOGIN, SMSC_API_KEY and SMSC_WAIT_CALL_CALLBACK_SECRET are required when SMS_PROVIDER=smsc");
   }
   return config;
 }

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { OtpPurpose, PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
@@ -22,6 +22,11 @@ const verifySchema = z.object({
   code: z.string().regex(/^\d{6}$/),
 });
 const verifyCallSchema = z.object({ challengeId: z.string().uuid() });
+const smscWaitCallSchema = z.object({
+  waitcall: z.union([z.literal("1"), z.literal(1)]),
+  phone: z.string().min(8).max(32).transform(normalizePhone),
+  ts: z.union([z.string(), z.number()]).optional(),
+});
 
 const CODE_TTL_MS = 5 * 60_000;
 const RESEND_DELAY_MS = 60_000;
@@ -29,6 +34,13 @@ const PHONE_WINDOW_MS = 60 * 60_000;
 const IP_WINDOW_MS = 15 * 60_000;
 const MAX_PER_PHONE = 5;
 const MAX_PER_IP = 20;
+
+function callbackSecretMatches(value: unknown, expected: string | undefined): boolean {
+  if (!expected || typeof value !== "string") return false;
+  const provided = Buffer.from(value);
+  const secret = Buffer.from(expected);
+  return provided.length === secret.length && timingSafeEqual(provided, secret);
+}
 
 function purpose(audience: "STAFF" | "CUSTOMER" | "CUSTOMER_REGISTRATION"): OtpPurpose {
   if (audience === "STAFF") return "STAFF_LOGIN";
@@ -40,8 +52,35 @@ export function phoneAuthRoutes(
   accessTokenSecret: string | undefined,
   otpHashSecret: string | undefined,
   delivery: VerificationDelivery,
+  smscWaitCallCallbackSecret?: string,
 ): FastifyPluginAsync {
   return async (app) => {
+    app.post("/public/v1/auth/phone/smsc-wait-call", async (request, reply) => {
+      // SMSC forwards static query parameters configured in its dashboard. Keep
+      // the endpoint closed unless this installation deliberately opted in.
+      if (request.query === null || typeof request.query !== "object" ||
+        !callbackSecretMatches((request.query as Record<string, unknown>).token, smscWaitCallCallbackSecret)) {
+        return reply.code(404).send();
+      }
+      const body = smscWaitCallSchema.parse(request.body);
+      const now = new Date();
+      const confirmed = await prisma.otpChallenge.updateMany({
+        where: {
+          phone: body.phone,
+          verificationMethod: "CALLCHECK",
+          providerCheckId: { not: null },
+          callVerifiedAt: null,
+          consumedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: { callVerifiedAt: now },
+      });
+      // A duplicated provider callback must be acknowledged and must not reveal
+      // whether a phone number has an active login attempt.
+      request.log.info({ event: "smsc_wait_call_callback", matchedChallenges: confirmed.count }, "SMSC WaitCall callback received");
+      return reply.code(200).send();
+    });
+
     app.post("/public/v1/auth/phone/request-code", async (request, reply) => {
       if (!accessTokenSecret || !otpHashSecret || !delivery.available) {
         return reply.code(503).send({ error: "phone_authentication_unavailable" });
@@ -236,12 +275,16 @@ export function phoneAuthRoutes(
         challenge.verificationMethod === "CALLCHECK" && challenge.providerCheckId;
       if (!valid || !challenge) return reply.code(401).send({ error: "invalid_or_expired_call" });
 
-      let callState;
-      try {
-        callState = await delivery.checkCall(challenge.providerCheckId!);
-      } catch (error) {
-        request.log.error({ err: error, challengeId: challenge.id }, "Call verification status failed");
-        return reply.code(502).send({ error: "verification_delivery_failed" });
+      let callState: import("../../infrastructure/verification-delivery.js").CallCheckState;
+      if (challenge.callVerifiedAt) {
+        callState = "CONFIRMED";
+      } else {
+        try {
+          callState = await delivery.checkCall(challenge.providerCheckId!);
+        } catch (error) {
+          request.log.error({ err: error, challengeId: challenge.id }, "Call verification status failed");
+          return reply.code(502).send({ error: "verification_delivery_failed" });
+        }
       }
       if (callState === "PENDING") return reply.send({ status: "pending" });
       if (callState === "EXPIRED") {
