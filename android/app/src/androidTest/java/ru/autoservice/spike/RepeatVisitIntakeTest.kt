@@ -4,8 +4,10 @@ import android.app.KeyguardManager
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -40,14 +42,23 @@ class RepeatVisitIntakeTest {
             }
         }
         compose.onNodeWithText("Госномер или телефон клиента").performTextInput("9990000000")
-        compose.onNodeWithText("Найти клиента").performScrollTo().performClick()
+        scrollTo("Найти клиента").performClick()
         compose.waitForIdle()
-        compose.onNodeWithText("Lada · А123АА77").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Toyota · В456ВВ77").performScrollTo().performClick()
-        compose.onNodeWithText("Выбран: Toyota · В456ВВ77. Укажите текущий пробег и жалобы.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Пробег, км").performScrollTo().performTextInput("105000")
-        compose.onNodeWithText("Жалобы клиента").performScrollTo().performTextInput("Новая жалоба")
-        compose.onNodeWithText("Сохранить").performScrollTo().performClick()
+        scrollTo("Lada · А123АА77").assertIsDisplayed()
+        scrollTo("Toyota · В456ВВ77").performClick()
+        scrollTo("Выбран: Toyota · В456ВВ77. Укажите текущий пробег и жалобы.").assertIsDisplayed()
+        scrollTo("Пробег, км").performTextInput("105000")
+        scrollTo("Жалобы клиента").performTextInput("Новая жалоба")
+        scrollTo("Сохранить")
+        compose.waitForIdle()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
+            java.io.File(instrumentation.targetContext.cacheDir, "intake-save-qa.png").outputStream().use {
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+        }
+        compose.onNodeWithText("Сохранить").assertIsDisplayed().performClick()
+        compose.waitUntil(5_000) { saved != null }
         compose.runOnIdle {
             assertEquals("9990000000", searched)
             assertNotNull(saved)
@@ -68,8 +79,14 @@ class RepeatVisitIntakeTest {
             }
         }
         compose.onNodeWithText("Госномер или телефон клиента").performTextInput("А123АА77")
-        compose.onNodeWithText("Найти клиента").performScrollTo().performClick()
+        scrollTo("Найти клиента").performClick()
         compose.waitForIdle()
-        compose.onNodeWithText("Не удалось выполнить поиск. Проверьте соединение и повторите.").performScrollTo().assertIsDisplayed()
+        scrollTo("Не удалось выполнить поиск. Проверьте соединение и повторите.").assertIsDisplayed()
+    }
+
+    private fun scrollTo(text: String): androidx.compose.ui.test.SemanticsNodeInteraction {
+        compose.onNodeWithTag("intake-form").performScrollToNode(hasText(text))
+        compose.waitForIdle()
+        return compose.onNodeWithText(text)
     }
 }
