@@ -248,7 +248,7 @@ class ApiWorkshopRepository implements WorkshopRepository {
     return {
       status: report.status,
       completedWork: report.completedWork,
-      recommendations: report.recommendations,
+      recommendations: report.status === "PUBLISHED" ? (latestVersion?.recommendations ?? report.recommendations) : report.recommendations,
       nextVisitAt: report.nextVisitAt,
       publishedAt: report.publishedAt,
       latestVersion: latestVersion ? {

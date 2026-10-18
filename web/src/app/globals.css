@@ -192,5 +192,8 @@
 .visit-media-error{display:grid;place-items:center;min-height:240px;padding:20px;color:var(--muted);font-size:14px;line-height:1.5}
 @media(max-width:460px){.list-search{flex-wrap:wrap}.list-search .search-field{flex-basis:100%}.list-search>.button{width:100%}}
 .portal-finding-card .status-pill{margin-top:8px}
+.report-finding-labels{display:flex;flex-wrap:wrap;gap:6px}
+.report-findings .report-future-work{margin-top:10px;padding:10px;border-left:3px solid var(--teal);background:var(--teal-soft);color:var(--text);overflow-wrap:anywhere}
+.report-detail .approval-lead,.decision-panel>p,.report-summary-grid strong{white-space:pre-line;overflow-wrap:anywhere}
 @media(max-width:720px){.customer-header{padding:12px 16px}.customer-header-actions{width:100%}.customer-header-actions .button{flex:1}.customer-layout>aside{display:flex}.finding-footer form{width:100%}.finding-footer .button{width:100%}.section-heading{flex-wrap:wrap;gap:12px}.customer-intro>p{font-size:15px}.secondary-decisions{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important;animation:none!important}}

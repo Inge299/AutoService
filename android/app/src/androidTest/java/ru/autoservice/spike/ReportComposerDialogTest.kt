@@ -33,7 +33,8 @@ class ReportComposerDialogTest {
         compose.setContent {
             AutoServiceTheme {
                 ReportComposerDialog("Заменён фильтр", "", null,
-                    onDismiss = {}, onPublish = { published = it }, completedFindingTitles = listOf("Заменён фильтр"))
+                    onDismiss = {}, onPublish = { published = it }, completedFindingTitles = listOf("Заменён фильтр"),
+                    futureFindingTitles = listOf("Заменить ремень"))
             }
         }
         val publish = compose.onNodeWithText("Опубликовать отчёт").assertIsDisplayed()
@@ -54,7 +55,11 @@ class ReportComposerDialogTest {
         compose.onNodeWithText(expectedDate).assertExists()
         publish.assertIsDisplayed().performClick()
         compose.waitUntil(5_000) { published != null }
-        compose.runOnIdle { assertNotNull("Selected date was not included in the report", published?.nextVisitAtEpochMs) }
+        compose.runOnIdle {
+            assertNotNull("Selected date was not included in the report", published?.nextVisitAtEpochMs)
+            assertTrue(published!!.recommendations.contains("Не выполнено в этот визит: Заменить ремень. Необходимо выполнить в дальнейшем."))
+            assertTrue(published!!.recommendations.contains("Рекомендуемый срок: до $expectedDate."))
+        }
         instrumentation.sendStatus(0, android.os.Bundle().apply { putString("stream", "UI_REPORT_VERIFIED\n") })
     }
 }

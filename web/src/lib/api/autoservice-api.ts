@@ -154,6 +154,7 @@ export interface ApiVisitReport {
   publishedAt: string | null;
   versions: Array<{
     version: number;
+    recommendations: string;
     createdAt: string;
     link: { expiresAt: string; revokedAt: string | null; openedAt: string | null } | null;
   }>;

@@ -47,6 +47,7 @@ fun ReportComposerDialog(
     onDismiss: () -> Unit,
     onPublish: (ReportDraft) -> Unit,
     completedFindingTitles: List<String> = emptyList(),
+    futureFindingTitles: List<String> = emptyList(),
 ) {
     var completedWork by rememberSaveable(initialCompletedWork) { mutableStateOf(initialCompletedWork) }
     var recommendations by rememberSaveable(initialRecommendations) { mutableStateOf(initialRecommendations) }
@@ -92,6 +93,11 @@ fun ReportComposerDialog(
                             AssistChip(onClick = { recommendations = appendReportLines(recommendations, listOf(suggestion)) }, label = { Text(suggestion) })
                         }
                     }
+                    if (futureFindingTitles.isNotEmpty()) {
+                        Text("Необходимо выполнить в дальнейшем", style = MaterialTheme.typography.titleMedium)
+                        futureFindingTitles.distinct().forEach { Text("• $it") }
+                        Text("Эти работы не выполнены в текущий визит и будут добавлены в рекомендации отчёта. Дата следующего визита задаёт общий срок их выполнения.", style = MaterialTheme.typography.bodySmall)
+                    }
                     Text("Следующий визит", style = MaterialTheme.typography.titleMedium)
                     OutlinedButton(onClick = ::selectDate, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
                         Text(nextVisitAt?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalDate().format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) } ?: "Выбрать дату в календаре")
@@ -104,12 +110,15 @@ fun ReportComposerDialog(
                     }
                     if (nextVisitAt != null) TextButton(onClick = { nextVisitAt = null }) { Text("Не планировать визит") }
                     else Text("Дату можно не назначать.", style = MaterialTheme.typography.bodySmall)
+                    Text(if (nextVisitAt != null) "Будет создано напоминание с рекомендациями за 7 дней до выбранной даты; если до неё меньше недели — сразу."
+                        else "Без даты автоматическое напоминание не создаётся. Срок работ нужно согласовать с клиентом.", style = MaterialTheme.typography.bodySmall)
                 }
                 HorizontalDivider()
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = {
                         showValidation = true
-                        if (completedWork.isNotBlank()) onPublish(ReportDraft(completedWork.trim(), recommendations.trim(), nextVisitAt))
+                        if (completedWork.isNotBlank()) onPublish(ReportDraft(completedWork.trim(),
+                            futureWorkRecommendations(recommendations, futureFindingTitles, nextVisitAt), nextVisitAt))
                     }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Опубликовать отчёт") }
                     OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Отмена") }
                 }
@@ -123,4 +132,14 @@ internal fun reportDateEpoch(date: LocalDate, zone: ZoneId): Long = date.atStart
 internal fun appendReportLines(current: String, suggestions: List<String>): String {
     val lines = current.lines().map(String::trim).filter(String::isNotBlank)
     return (lines + suggestions.map(String::trim).filter(String::isNotBlank)).distinct().joinToString("\n")
+}
+
+internal fun futureWorkRecommendations(notes: String, titles: List<String>, dueAt: Long?): String {
+    val date = dueAt?.let { Instant.ofEpochMilli(it).atZone(ZoneId.of("Europe/Moscow")).toLocalDate()
+        .format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) }
+    val prefixes = titles.distinct().map { "Не выполнено в этот визит: $it. Необходимо выполнить в дальнейшем." }
+    val generated = Regex("^Не выполнено в этот визит: .+\\. Необходимо выполнить в дальнейшем\\. (Рекомендуемый срок: до \\d{2}\\.\\d{2}\\.\\d{4}\\.|Срок необходимо согласовать с мастерской\\.)$")
+    val custom = notes.lines().filterNot { generated.matches(it.trim()) }.joinToString("\n").trim()
+    return (listOf(custom) + prefixes.map { "$it ${date?.let { value -> "Рекомендуемый срок: до $value." } ?: "Срок необходимо согласовать с мастерской."}" })
+        .filter(String::isNotBlank).joinToString("\n")
 }

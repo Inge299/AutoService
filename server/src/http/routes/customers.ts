@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
@@ -13,22 +13,28 @@ export function customerRoutes(prisma: PrismaClient): FastifyPluginAsync {
       const query = querySchema.parse(request.query);
       const search = query.q || undefined;
       const { workshopId } = request.actor;
+      const alternatives: Prisma.CustomerWhereInput[] = [];
+      if (search) {
+        alternatives.push({ name: { contains: search, mode: "insensitive" } });
+        alternatives.push({ phone: { contains: search, mode: "insensitive" } });
+        const digits = search.replace(/\D/g, "");
+        if (/^[+\d\s()\-]+$/.test(search) && digits.length >= 3) {
+          const phone = digits.length === 11 && digits.startsWith("8") ? `7${digits.slice(1)}` : digits;
+          alternatives.push({ phone: { contains: phone } });
+        }
+        const plateParts = search.toUpperCase().split(/[\s-]+/).filter(Boolean);
+        alternatives.push({ vehicles: { some: { OR: [
+          { label: { contains: search, mode: "insensitive" } },
+          { licensePlate: { contains: search, mode: "insensitive" } },
+          ...(plateParts.length ? [{ licensePlate: { contains: plateParts.join(""), mode: "insensitive" as const } }] : []),
+          ...(plateParts.length > 1 ? [{ AND: plateParts.map(part => ({ licensePlate: { contains: part, mode: "insensitive" as const } })) }] : []),
+        ] } } });
+      }
 
       return prisma.customer.findMany({
         where: {
           workshopId,
-          ...(search
-            ? {
-                OR: [
-                  { name: { contains: search, mode: "insensitive" } },
-                  { phone: { contains: search, mode: "insensitive" } },
-                  { vehicles: { some: { OR: [
-                    { label: { contains: search, mode: "insensitive" } },
-                    { licensePlate: { contains: search, mode: "insensitive" } },
-                  ] } } },
-                ],
-              }
-            : {}),
+          ...(search ? { OR: alternatives } : {}),
         },
         orderBy: { updatedAt: "desc" },
         take: query.limit,
