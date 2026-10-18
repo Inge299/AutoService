@@ -1084,6 +1084,7 @@ private fun VisitScreen(
                 initialCompletedWork = visit.reportCompletedWork.orEmpty(),
                 initialRecommendations = visit.reportRecommendations.orEmpty(),
                 initialNextVisitAtEpochMs = visit.reportNextVisitAtEpochMs,
+                completedFindingTitles = findings.filter { it.status == FindingStatus.COMPLETED }.map { it.title },
                 onDismiss = { showReportComposer = false },
                 onPublish = { draft ->
                     showReportComposer = false

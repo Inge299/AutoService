@@ -2,9 +2,10 @@ import "server-only";
 
 import { customers, reminders, visits } from "@/lib/demo-data";
 import { requireSession } from "@/lib/auth/session";
-import type { Customer, Reminder, Visit, VisitReport, VisitStatus } from "@/lib/domain";
+import type { Customer, Reminder, Visit, VisitMedia, VisitReport, VisitStatus } from "@/lib/domain";
 import {
   getApiVisit,
+  getApiVisitMedia,
   getApiVisitReport,
   listApiReminders,
   listApiCustomers,
@@ -21,12 +22,17 @@ export interface VisitFilters {
 export interface WorkshopRepository {
   listVisits(filters?: VisitFilters): Promise<Visit[]>;
   getVisit(id: string): Promise<Visit | null>;
+  getVisitMedia(id: string): Promise<VisitMedia[]>;
   getVisitReport(id: string): Promise<VisitReport | null>;
   listCustomers(query?: string): Promise<Customer[]>;
   listReminders(): Promise<Reminder[]>;
 }
 
 class DemoWorkshopRepository implements WorkshopRepository {
+  async getVisitMedia(): Promise<VisitMedia[]> {
+    await requireSession();
+    return [];
+  }
   async listVisits(filters: VisitFilters = {}): Promise<Visit[]> {
     await requireSession();
     const query = filters.query?.trim().toLocaleLowerCase("ru-RU");
@@ -220,6 +226,9 @@ function customersFromVisits(apiVisits: ApiVisit[]): Customer[] {
 }
 
 class ApiWorkshopRepository implements WorkshopRepository {
+  async getVisitMedia(id: string): Promise<VisitMedia[]> {
+    return getApiVisitMedia(id, await requireSession());
+  }
   async listVisits(filters: VisitFilters = {}): Promise<Visit[]> {
     const session = await requireSession();
     return (await listApiVisits(session, filters)).map(mapVisit);
