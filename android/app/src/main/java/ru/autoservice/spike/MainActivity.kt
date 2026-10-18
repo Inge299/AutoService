@@ -64,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -164,7 +165,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
 
     if (session == null) {
         Scaffold(
-            topBar = { TopAppBar(title = { Text("AutoService") }) },
+            topBar = { TopAppBar(title = { BrandTitle() }) },
             snackbarHost = { SnackbarHost(snackbarHost) },
         ) { padding ->
             LoginScreen(
@@ -237,7 +238,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("AutoService", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                title = { BrandTitle() },
                 actions = {
                     TextButton(onClick = {
                         viewModel.refresh { error ->
@@ -411,6 +412,14 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                 modifier = Modifier.padding(padding),
             )
         }
+    }
+}
+
+@Composable
+private fun BrandTitle() {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Image(painterResource(R.drawable.ic_brand_emblem), contentDescription = null, modifier = Modifier.size(32.dp))
+        Text("AutoService", maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
