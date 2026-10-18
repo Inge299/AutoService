@@ -39,7 +39,9 @@ class ReportComposerDialogTest {
         val publish = compose.onNodeWithText("Опубликовать отчёт").assertIsDisplayed()
         val cancel = compose.onNodeWithText("Отмена").assertIsDisplayed()
         assertTrue(cancel.fetchSemanticsNode().boundsInRoot.top > publish.fetchSemanticsNode().boundsInRoot.bottom)
-        compose.onNodeWithText("Через месяц").performScrollTo().performClick()
+        // Scroll the outer form before interacting with its nested horizontal presets.
+        compose.onNodeWithText("Дату можно не назначать.").performScrollTo()
+        compose.onNodeWithText("Через месяц").performScrollTo().assertIsDisplayed().performClick()
         compose.waitForIdle()
         val expectedDate = java.time.LocalDate.now().plusMonths(1).format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
         compose.waitUntil(5_000) { compose.onAllNodesWithText(expectedDate).fetchSemanticsNodes().isNotEmpty() }
