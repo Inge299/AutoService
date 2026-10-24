@@ -34,6 +34,35 @@ function mockedPrisma(overrides: Record<string, unknown>): PrismaClient {
 }
 
 describe("read routes", () => {
+  it.each([
+    ["8 (999) 123-45-67", "79991234567"],
+    ["+7 999 123 45 67", "79991234567"],
+    ["999 123", "999123"],
+  ])("normalizes formatted phone search %s within the workshop", async (query, normalized) => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const app = await buildApp(config, { prisma: mockedPrisma({ customer: { findMany } }), storage: {} as ObjectStorage });
+    try {
+      const response = await app.inject({ method: "GET", url: `/v1/customers?q=${encodeURIComponent(query)}`, headers });
+      expect(response.statusCode).toBe(200);
+      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ workshopId,
+        OR: expect.arrayContaining([{ phone: { contains: normalized } }]),
+      }) }));
+    } finally { await app.close(); }
+  });
+
+  it("searches plate with region and returns all vehicles for explicit selection", async () => {
+    const vehicles = [{ id: "car-1", label: "Lada", licensePlate: "А123ВС777" }, { id: "car-2", label: "Toyota", licensePlate: "М777ММ77" }];
+    const findMany = vi.fn().mockResolvedValue([{ id: "customer", name: "Иван", phone: "+79991234567", vehicles }]);
+    const app = await buildApp(config, { prisma: mockedPrisma({ customer: { findMany } }), storage: {} as ObjectStorage });
+    try {
+      const response = await app.inject({ method: "GET", url: `/v1/customers?q=${encodeURIComponent("а123вс 777")}`, headers });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()[0].vehicles).toEqual(vehicles);
+      const where = findMany.mock.calls[0]![0].where;
+      expect(where.workshopId).toBe(workshopId);
+      expect(JSON.stringify(where)).toContain("А123ВС777");
+    } finally { await app.close(); }
+  });
   it("returns the authenticated workshop profile", async () => {
     const findUnique = vi.fn().mockResolvedValue({ id: workshopId, name: "АвтоСфера", phone: "+79990000000" });
     const app = await buildApp(config, {

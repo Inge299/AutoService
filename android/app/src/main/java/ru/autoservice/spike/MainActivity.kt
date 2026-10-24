@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
@@ -64,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
@@ -94,6 +96,7 @@ import ru.autoservice.spike.data.VisitStatus
 import ru.autoservice.spike.media.VoiceRecorder
 import ru.autoservice.spike.network.OtpChallenge
 import ru.autoservice.spike.network.ApiException
+import ru.autoservice.spike.network.CustomerMatch
 import ru.autoservice.spike.ui.CameraCaptureScreen
 import ru.autoservice.spike.ui.QueueViewModel
 import ru.autoservice.spike.ui.ReportComposerDialog
@@ -268,6 +271,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
             }
 
             creatingVisit -> IntakeScreen(
+                onSearchCustomers = { viewModel.searchCustomers(it) },
                 vehicleBrands = vehicleBrandSuggestions,
                 commonComplaints = complaintSuggestions,
                 onCancel = { creatingVisit = false },
@@ -688,7 +692,8 @@ private fun VisitsScreen(
 }
 
 @Composable
-private fun IntakeScreen(
+internal fun IntakeScreen(
+    onSearchCustomers: suspend (String) -> List<CustomerMatch>,
     vehicleBrands: List<String>,
     commonComplaints: List<String>,
     onCancel: () -> Unit,
@@ -701,13 +706,74 @@ private fun IntakeScreen(
     var plate by remember { mutableStateOf("") }
     var mileage by remember { mutableStateOf("") }
     var complaint by remember { mutableStateOf("") }
+    var search by remember { mutableStateOf("") }
+    var matches by remember { mutableStateOf<List<CustomerMatch>>(emptyList()) }
+    var searchMessage by remember { mutableStateOf<String?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    var selectedVehicle by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(bottom = 24.dp),
-        modifier = modifier.fillMaxSize().padding(16.dp),
+        modifier = modifier.fillMaxSize().imePadding().padding(16.dp).testTag("intake-form"),
     ) {
         item { Text("Новый визит", style = MaterialTheme.typography.headlineSmall) }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Клиент уже был у нас?", style = MaterialTheme.typography.titleMedium)
+                OutlinedTextField(value = search, onValueChange = { search = it; matches = emptyList(); searchMessage = null },
+                    label = { Text("Госномер или телефон клиента") }, singleLine = true,
+                    enabled = !searching, modifier = Modifier.fillMaxWidth())
+                OutlinedButton(onClick = {
+                    scope.launch {
+                        searching = true
+                        searchMessage = null
+                        try {
+                            matches = onSearchCustomers(search)
+                            searchMessage = if (matches.isEmpty()) "Не найдено. Заполните данные нового клиента ниже."
+                                else "Выберите автомобиль клиента."
+                        } catch (error: Exception) {
+                            if (error is kotlinx.coroutines.CancellationException) throw error
+                            matches = emptyList()
+                            searchMessage = "Не удалось выполнить поиск. Проверьте соединение и повторите."
+                        } finally { searching = false }
+                    }
+                }, enabled = !searching && search.trim().length >= 3, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (searching) "Поиск…" else "Найти клиента")
+                }
+                searchMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (matches.size == 25) Text("Показаны первые 25 клиентов. Уточните запрос.", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        items(matches, key = { "customer-${it.id}" }) { customer ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(customer.name.ifBlank { "Клиент" }, style = MaterialTheme.typography.titleMedium)
+                    Text(customer.phone)
+                    customer.vehicles.forEach { existing ->
+                        OutlinedButton(onClick = {
+                            customerName = customer.name
+                            phone = customer.phone
+                            vehicle = existing.label
+                            plate = existing.licensePlate
+                            mileage = ""
+                            selectedVehicle = "${existing.label} · ${existing.licensePlate}"
+                            matches = emptyList()
+                            searchMessage = null
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text("${existing.label.ifBlank { "Автомобиль" }} · ${existing.licensePlate.ifBlank { "Без госномера" }}")
+                        }
+                    }
+                    TextButton(onClick = {
+                        customerName = customer.name; phone = customer.phone
+                        vehicle = ""; plate = ""; mileage = ""; selectedVehicle = null
+                        matches = emptyList(); searchMessage = "Клиент выбран. Укажите новый автомобиль ниже."
+                    }) { Text("Другой автомобиль этого клиента") }
+                }
+            }
+        }
+        selectedVehicle?.let { selected -> item { Text("Выбран: $selected. Укажите текущий пробег и жалобы.", style = MaterialTheme.typography.bodySmall) } }
         item {
             OutlinedTextField(
                 value = phone,
@@ -1084,6 +1150,9 @@ private fun VisitScreen(
                 initialCompletedWork = visit.reportCompletedWork.orEmpty(),
                 initialRecommendations = visit.reportRecommendations.orEmpty(),
                 initialNextVisitAtEpochMs = visit.reportNextVisitAtEpochMs,
+                completedFindingTitles = findings.filter { it.status == FindingStatus.COMPLETED }.map { it.title },
+                futureFindingTitles = findings.filter { it.status != FindingStatus.COMPLETED && it.status != FindingStatus.DECLINED &&
+                    (it.status == FindingStatus.DEFERRED || it.priority == FindingPriority.PLANNED) }.map { it.title },
                 onDismiss = { showReportComposer = false },
                 onPublish = { draft ->
                     showReportComposer = false

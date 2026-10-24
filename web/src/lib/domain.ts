@@ -67,6 +67,15 @@ export interface VisitReport {
   latestVersion: { version: number; createdAt: string; linkOpenedAt: string | null; linkRevokedAt: string | null } | null;
 }
 
+export interface VisitMedia {
+  id: string;
+  findingId: string | null;
+  kind: "PHOTO" | "VIDEO" | "VOICE";
+  mimeType: string;
+  url: string;
+  expiresInSeconds: number;
+}
+
 export interface Customer {
   id: string;
   name: string;
