@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { FindingPriority, FindingStatus, VisitStatus } from "@/lib/domain";
+import type { FindingPriority, FindingStatus, VisitStatus, VisitMedia } from "@/lib/domain";
 import type { BackendTokens, WebSession } from "@/lib/auth/session";
 import type { CustomerWebSession } from "@/lib/auth/session";
 
@@ -154,6 +154,7 @@ export interface ApiVisitReport {
   publishedAt: string | null;
   versions: Array<{
     version: number;
+    recommendations: string;
     createdAt: string;
     link: { expiresAt: string; revokedAt: string | null; openedAt: string | null } | null;
   }>;
@@ -349,6 +350,10 @@ export async function getApiVisit(id: string, session: WebSession): Promise<ApiV
     if (error instanceof AutoServiceApiError && error.status === 404) return null;
     throw error;
   }
+}
+
+export function getApiVisitMedia(id: string, session: WebSession) {
+  return request<VisitMedia[]>(`/v1/visits/${encodeURIComponent(id)}/media`, session);
 }
 
 export async function getApiVisitReport(id: string, session: WebSession): Promise<ApiVisitReport | null> {

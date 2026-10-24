@@ -22,7 +22,7 @@ describe("return visit reminders", () => {
     const transaction = {
       visit: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: visitId, serverVersion: 1 }) },
       customer: { upsert: vi.fn().mockResolvedValue({ id: "55555555-5555-4555-8555-555555555555" }) },
-      vehicle: { findFirst: vi.fn().mockResolvedValue({ id: "66666666-6666-4666-8666-666666666666" }), update: vi.fn().mockResolvedValue({}) },
+      vehicle: { findFirst: vi.fn().mockResolvedValue({ id: "66666666-6666-4666-8666-666666666666" }), update: vi.fn().mockResolvedValue({ id: "66666666-6666-4666-8666-666666666666" }) },
       reminder: { findFirst: vi.fn().mockResolvedValue({ id: reminderId, state: "PENDING" }), update: reminderUpdate },
       auditEvent: { create: auditCreate },
     };
@@ -42,6 +42,9 @@ describe("return visit reminders", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    expect(transaction.reminder.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
+      workshopId, customerPhone: "+79991234567", visit: { vehicleId: "66666666-6666-4666-8666-666666666666" },
+    }) }));
     expect(reminderUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ returnVisitId: visitId, state: "CANCELLED" }) }));
     expect(auditCreate).toHaveBeenCalledOnce();
     await app.close();

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { PrismaClient, ReportStatus } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { reportRecommendations } from "../../domain/report-recommendations.js";
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 const draftSchema = z.object({
@@ -121,6 +122,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
             select: { id: true },
           }),
         ]);
+        const recommendations = reportRecommendations(report.recommendations, findings, report.nextVisitAt);
         const version = await tx.reportVersion.create({
           data: {
             operationId: body.operationId,
@@ -135,7 +137,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
             mileageKm: report.visit.mileageKm,
             complaint: report.visit.complaint,
             completedWork: report.completedWork,
-            recommendations: report.recommendations,
+            recommendations,
             nextVisitAt: report.nextVisitAt,
             findings,
             mediaIds: media.map((asset) => asset.id),
@@ -154,7 +156,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
               customerName: report.visit.customerName,
               customerPhone: report.visit.customerPhone,
               vehicleLabel: report.visit.vehicleLabel,
-              reason: report.recommendations || "Плановое обслуживание",
+              reason: recommendations || "Плановое обслуживание",
               dueAt: report.nextVisitAt,
               sendAt,
             },
