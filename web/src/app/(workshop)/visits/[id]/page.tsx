@@ -54,7 +54,7 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
             </div>
           </section>
 
-          <section className="section-block" id="media"><div className="section-heading"><div><h2>Материалы</h2><p>Фото и видео по этому визиту</p></div><StatusPill label={`${visit.mediaCount} файлов`} tone="neutral" /></div>{visit.mediaCount ? <div className="media-grid">{Array.from({ length: Math.min(visit.mediaCount, 3) }, (_, index) => <div className="media-placeholder intake" key={index}><Icon name="camera" /><span>Материал {index + 1}</span></div>)}</div> : <div className="empty-inline"><Icon name="camera" /><p><strong>Материалов пока нет</strong><small>Фото и видео появятся здесь во время работы.</small></p></div>}</section>
+          <VisitMediaSection visitId={visit.id} total={visit.mediaCount} />
         </div>
 
         <aside className="visit-sidebar">

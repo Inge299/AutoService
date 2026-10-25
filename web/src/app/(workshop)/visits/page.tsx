@@ -24,7 +24,7 @@ export default async function VisitsPage({ searchParams }: { searchParams: Promi
       <PageHeader eyebrow="Рабочий журнал" title="Визиты" description="Все автомобили, которые проходили через мастерскую." />
       <section className="content-card list-card">
         <div className="list-toolbar">
-          <form className="search-field" role="search" aria-label="Поиск визитов"><Icon name="search" /><input name="q" defaultValue={params.q} aria-label="Автомобиль, госномер, клиент или телефон" placeholder="Автомобиль, госномер, клиент или телефон" /><Button>Найти</Button></form>
+          <ListSearch query={params.q} status={activeStatus} label="Поиск визитов" placeholder="Автомобиль, госномер, клиент или телефон" />
           <span className="result-count">{visits.length} {visits.length === 1 ? "визит" : "визитов"}</span>
         </div>
         <div className="filter-tabs">
