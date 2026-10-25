@@ -11,7 +11,7 @@ const loginSchema = z.object({
 const refreshSchema = z.object({ refreshToken: z.string().min(40).max(256) });
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(256),
-  newPassword: z.string().min(12).max(256),
+  newPassword: z.string().min(5).max(256),
 });
 
 type AttemptWindow = { count: number; resetAt: number };

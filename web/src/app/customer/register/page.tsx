@@ -45,7 +45,7 @@ export default async function CustomerRegisterPage({ searchParams }: {
         <input type="hidden" name="verified" value={verified ?? ""} />
         {verified !== "call" && <label>Код из SMS<input name="code" inputMode="numeric" autoComplete="one-time-code" required minLength={6} maxLength={6} pattern="[0-9]{6}" placeholder="000000" /></label>}
         <label>E-mail<input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="you@example.ru" /></label>
-        <label>Пароль<input name="password" type="password" autoComplete="new-password" required minLength={8} maxLength={256} placeholder="Не менее 8 символов" /></label>
+        <label>Пароль<input name="password" type="password" autoComplete="new-password" required minLength={5} maxLength={256} placeholder="Не менее 5 символов" /></label>
         <Button variant="primary" className="" type="submit">Создать и перейти в кабинет</Button>
         <ActionLink variant="secondary"  href={`/customer/register?approval=${encodeURIComponent(approval)}`}>Запросить подтверждение заново</ActionLink>
       </form> : <form action={requestCustomerRegistrationCodeAction} className="login-form">

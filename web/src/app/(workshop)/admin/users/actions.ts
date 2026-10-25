@@ -37,7 +37,7 @@ export async function createUserAction(formData: FormData): Promise<void> {
   const password = String(formData.get("password") ?? "");
   const role = formData.get("role") === "ADMIN" ? "ADMIN" : "EMPLOYEE";
   if (displayName.length < 2 || displayName.length > 120 || (phone && (phone.length < 8 || phone.length > 32)) ||
-    login.length < 3 || login.length > 64 || password.length < 8 || password.length > 256) {
+    login.length < 3 || login.length > 64 || password.length < 5 || password.length > 256) {
     redirect("/admin/users?error=invalid_input");
   }
   try {
@@ -85,7 +85,7 @@ export async function resetUserPasswordAction(formData: FormData): Promise<void>
   const session = await requireAdmin();
   const userId = String(formData.get("userId") ?? "");
   const password = String(formData.get("password") ?? "");
-  if (password.length < 8 || password.length > 256) redirect("/admin/users?error=password_length");
+  if (password.length < 5 || password.length > 256) redirect("/admin/users?error=password_length");
   try {
     await resetApiAdminUserPassword(session, userId, password);
   } catch (error) {

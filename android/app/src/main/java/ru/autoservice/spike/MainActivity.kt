@@ -583,7 +583,7 @@ private fun ChangePasswordScreen(
     var confirmation by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     Column(modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Перед началом работы задайте свой пароль: минимум 12 символов.")
+        Text("Перед началом работы задайте свой пароль: минимум 5 символов. Рекомендуем более длинный пароль.")
         OutlinedTextField(current, { current = it }, label = { Text("Временный пароль") }, singleLine = true,
             visualTransformation = PasswordVisualTransformation(), enabled = !loading)
         OutlinedTextField(password, { password = it }, label = { Text("Новый пароль") }, singleLine = true,
@@ -591,7 +591,7 @@ private fun ChangePasswordScreen(
         OutlinedTextField(confirmation, { confirmation = it }, label = { Text("Повторите пароль") }, singleLine = true,
             visualTransformation = PasswordVisualTransformation(), enabled = !loading)
         Button(onClick = { loading = true; onSubmit(current, password) { loading = false } },
-            enabled = !loading && current.isNotEmpty() && password.length in 12..256 && password == confirmation) {
+            enabled = !loading && current.isNotEmpty() && password.length in 5..256 && password == confirmation) {
             Text(if (loading) "Сохранение…" else "Сохранить пароль")
         }
         TextButton(onClick = onLogout, enabled = !loading) { Text("Выйти") }

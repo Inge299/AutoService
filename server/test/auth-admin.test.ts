@@ -34,6 +34,30 @@ function basePrisma(role: "ADMIN" | "EMPLOYEE" = "ADMIN") {
 }
 
 describe("database authentication and administration", () => {
+  it.each(["", "a", "abcd"])("rejects staff passwords shorter than five characters (%s)", async password => {
+    const app = await buildApp(config, { prisma: basePrisma() as unknown as PrismaClient, storage: {} as ObjectStorage });
+    try {
+      for (const [url, payload] of [
+        ["/v1/auth/change-password", { currentPassword: "temporary", newPassword: password }],
+        ["/v1/admin/users", { displayName: "Иван", login: "ivan", password, role: "EMPLOYEE" }],
+        [`/v1/admin/users/${userId}/password`, { password }],
+      ] as const) expect((await app.inject({ method: "POST", url, headers, payload })).statusCode).toBe(400);
+    } finally { await app.close(); }
+  });
+
+  it("admin reset accepts five characters while revoking sessions and requiring change", async () => {
+    const update = vi.fn().mockResolvedValue({});
+    const revoke = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = { ...basePrisma(), user: { update }, authSession: { updateMany: revoke },
+      auditEvent: { create: vi.fn().mockResolvedValue({}) }, $transaction: vi.fn().mockResolvedValue([]) } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+    try {
+      expect((await app.inject({ method: "POST", url: `/v1/admin/users/${userId}/password`, headers,
+        payload: { password: "abcde" } })).statusCode).toBe(200);
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ mustChangePassword: true }) }));
+      expect(revoke).toHaveBeenCalledWith(expect.objectContaining({ where: { userId, revokedAt: null } }));
+    } finally { await app.close(); }
+  });
   it("authenticates an active database user", async () => {
     const passwordHash = await hashPassword("strong-password");
     const prisma = {
@@ -204,7 +228,7 @@ describe("database authentication and administration", () => {
 
     const changed = await app.inject({
       method: "POST", url: "/v1/auth/change-password", headers,
-      payload: { currentPassword: "temporary-password", newPassword: "a-new-long-password" },
+      payload: { currentPassword: "temporary-password", newPassword: "abcde" },
     });
     expect(changed.statusCode).toBe(204);
     expect(update).toHaveBeenCalledWith({
@@ -261,7 +285,7 @@ describe("database authentication and administration", () => {
       method: "POST",
       url: "/v1/admin/users",
       headers,
-      payload: { displayName: "Иван Петров", login: "ivan", password: "temporary-password", role: "EMPLOYEE" },
+      payload: { displayName: "Иван Петров", login: "ivan", password: "abcde", role: "EMPLOYEE" },
     });
 
     expect(response.statusCode).toBe(201);
