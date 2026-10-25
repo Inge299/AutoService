@@ -37,7 +37,7 @@ export function AppShell({ session, accessTokenExpiresAtEpochMs, backend, worksh
         <Link href="/dashboard" className="sidebar-brand"><BrandMark /></Link>
         <div className="workshop-card">
           <span className="workshop-avatar">{workshopInitials}</span>
-          <span><strong>{workshop.name}</strong><small>{workshop.phone || "Данные мастерской с сервера"}</small></span>
+          <span><strong>{workshop.name}</strong><small>{workshop.phone || "Рабочее пространство"}</small></span>
           <Icon name="more" />
         </div>
         <nav className="sidebar-nav" aria-label="Основная навигация">
@@ -57,7 +57,7 @@ export function AppShell({ session, accessTokenExpiresAtEpochMs, backend, worksh
         </nav>
         <div className="sidebar-footer">
           <div className={`backend-state backend-${backend.state.toLowerCase()}`}>
-            <span /><div><strong>{backend.label}</strong><small>Backend AutoService</small></div>
+            <span /><div><strong>{backend.state === "CONNECTED" ? "Всё работает" : backend.state === "UNAVAILABLE" ? "Нет связи" : "Проверяем связь"}</strong><small>Обновление данных</small></div>
           </div>
           <div className="profile-row">
             <span className="profile-avatar">{session.displayName.slice(0, 1).toUpperCase()}</span>

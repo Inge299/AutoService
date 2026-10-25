@@ -351,3 +351,38 @@ body{background:var(--canvas)}
   .operations-summary>div{padding-inline:16px;border-block-end:1px solid var(--line)}
   .work-board{gap:8px}
 }
+
+/* Customer journey: one visual world from approval to cabinet. */
+.customer-page{background:#f1f6f4}
+.customer-shell{width:min(1120px,calc(100% - 40px));padding:32px 0 52px}
+.customer-intro{min-height:286px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;margin-bottom:26px;padding:36px 42px;overflow:hidden;text-align:left;background-image:linear-gradient(90deg,#f4f9f7fa 0%,#f4f9f7eb 44%,#f4f9f79c 68%,#f4f9f729 100%),url('/images/customer-workshop.jpg');background-position:center 54%;background-size:cover;border:1px solid #dfe9e6;border-radius:22px;box-shadow:var(--shadow)}
+.customer-context{margin:0 0 10px;color:var(--teal-dark);font-size:14px;font-weight:700}
+.customer-intro h1{max-width:620px;margin:0;font-size:clamp(32px,4.5vw,48px);line-height:1.06;letter-spacing:-.035em}
+.customer-intro>p:not(.customer-context){max-width:610px;margin:14px 0 22px;color:#465450;font-size:15px;line-height:1.6}
+.customer-car{margin:0;background:#ffffffeb;border-color:#fff;box-shadow:0 8px 24px #18332e14}
+.customer-layout{gap:24px}
+.customer-page .content-card,.customer-page .approval-detail,.customer-page .decision-panel{border-color:#e1e9e7;border-radius:16px;box-shadow:var(--shadow-soft)}
+.customer-page .attention-card{border-color:#e3eae8;background:#fff;box-shadow:none}
+.customer-page .portal-finding-card{background:#f4f7f6;border-color:#e1e8e6;border-radius:12px}
+.approval-detail{padding:30px}
+.approval-heading{min-height:28px}
+.customer-decision{display:flex;flex-direction:column;gap:10px}
+.customer-decision>.button{width:100%}
+.customer-help{margin-top:0;background:#eaf2f0;border:1px solid #dbe7e3}
+.customer-footer{min-height:64px;color:#60706b}
+.login-story{background-image:linear-gradient(120deg,#073f47f2 0%,#0a5662d9 52%,#0a56627a 100%),url('/images/customer-workshop.jpg');background-position:center;background-size:cover}
+.login-message h1{margin-top:0}
+.login-message>p{color:#d4e5e2}
+@media(max-width:720px){
+  .customer-shell{width:min(100% - 24px,1120px);padding:18px 0 34px}
+  .customer-intro{min-height:280px;margin-bottom:16px;padding:28px 22px;background-image:linear-gradient(90deg,#f4f9f7fa 0%,#f4f9f7e6 68%,#f4f9f78a 100%),url('/images/customer-workshop.jpg');background-position:62% center;border-radius:18px}
+  .customer-intro h1{font-size:32px}
+  .customer-intro>p:not(.customer-context){font-size:14px}
+  .approval-detail{padding:22px}
+  .customer-car{grid-template-columns:36px minmax(0,1fr);width:100%}
+  .customer-car>.status-pill{grid-column:2}
+}
+@media(max-width:900px){
+  .login-panel{background-image:linear-gradient(#f4f9f7e8,#f4f9f7f5),url('/images/customer-workshop.jpg');background-position:62% center;background-size:cover}
+  .mobile-login-brand{margin-bottom:32px}
+}

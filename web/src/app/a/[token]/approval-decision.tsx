@@ -57,7 +57,7 @@ export function ApprovalDecision({
       minute: "2-digit",
     }).format(new Date(decision.createdAt));
     const result = labels[decision.value];
-    return <div className={`decision-result decision-result-${result.tone}`}><span><Icon name={result.icon} /></span><h3>{result.title}</h3><p>{result.text}</p><small>Решение сохранено на сервере · {savedAt}</small></div>;
+    return <div className={`decision-result decision-result-${result.tone}`}><span><Icon name={result.icon} /></span><h3>{result.title}</h3><p>{result.text}</p><small>{savedAt}</small></div>;
   }
 
   return (
@@ -67,7 +67,6 @@ export function ApprovalDecision({
       <div className="secondary-decisions"><Button className="decision-action" disabled={Boolean(pending)} onClick={() => save("CALL_REQUESTED")}><Icon name="phone" /><span><strong>Нужен звонок</strong><small>Хочу уточнить детали</small></span></Button><Button className="decision-action" disabled={Boolean(pending)} onClick={() => save("DEFERRED")}><Icon name="clock" /><span><strong>Отложить</strong><small>Вернуться позже</small></span></Button></div>
       <Button disabled={Boolean(pending)} onClick={() => save("DECLINED")} variant="danger" className="decision-decline">Не выполнять эту работу</Button>
       {error && <p role="alert" className="form-error"><Icon name="alert" /> {error}</p>}
-      <p className="security-note">Решение сохраняется один раз и привязано к этой защищённой ссылке.</p>
     </div>
   );
 }
