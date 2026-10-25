@@ -164,7 +164,36 @@
 .profile-row{grid-template-columns:34px 1fr auto}
 .profile-row .button{width:auto;min-width:48px;min-height:48px;padding:10px;color:#fff;border:1px solid #ffffff40;background:transparent}
 .section-heading .button,.side-card-title .button{font-size:14px}
-.search-field .button{min-height:48px;flex-shrink:0}
+.list-search{display:flex;align-items:stretch;gap:10px;width:min(640px,100%);min-width:0}
+.list-search .search-field{flex:1;width:auto;height:auto;min-height:48px;margin:0;padding:0 12px}
+.list-search .search-field input{width:100%;min-width:0;min-height:46px;padding:8px 0}
+.list-search .search-field svg{flex-shrink:0}
+.list-search>.button{flex-shrink:0;min-height:48px;align-self:stretch}
+.reminder-row{grid-template-columns:42px minmax(120px,1fr) minmax(0,1.4fr) minmax(130px,auto) auto;column-gap:18px}
+.reminder-person,.reminder-reason,.reminder-states{min-width:0}
+.reminder-person strong,.reminder-person small,.reminder-reason strong,.reminder-reason small{overflow-wrap:anywhere}
+.reminder-states{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.reminder-states small{font-size:12px;color:var(--muted);line-height:1.4}
+.reminder-row>form{justify-self:end;max-width:100%}
+.reminder-row>form .button{min-width:100px;min-height:48px;white-space:normal}
+@media(max-width:1100px){.reminder-row{grid-template-columns:38px minmax(0,1fr) auto}.reminder-row .reminder-date{grid-column:1;grid-row:1}.reminder-row .reminder-person{grid-column:2;grid-row:1}.reminder-row .reminder-reason{grid-column:2 / -1;grid-row:2}.reminder-row .reminder-states{grid-column:2;grid-row:3}.reminder-row>form,.reminder-row>.reminder-action-placeholder{grid-column:3;grid-row:3}}
+@media(max-width:460px){.reminder-row{grid-template-columns:32px minmax(0,1fr);gap:12px;padding:16px}.reminder-row .reminder-reason{grid-column:1 / -1}.reminder-row .reminder-states{grid-column:1 / -1;grid-row:3}.reminder-row>form,.reminder-row>.reminder-action-placeholder{grid-column:1 / -1;grid-row:4;justify-self:stretch}.reminder-row>form .button{width:100%}}
+.visit-media-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.visit-media-toolbar p{flex:1;min-width:200px;margin:0;color:var(--muted);font-size:13px;line-height:1.5}
+.visit-media-toolbar .button{flex-shrink:0}
+.media-grid{grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))}
+.visit-media-item{min-width:0;margin:0;overflow:hidden;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.visit-media-item>a{display:block}
+.visit-media-item img,.visit-media-item video{display:block;width:100%;height:240px;object-fit:contain;background:#162a28}
+.visit-media-item figcaption{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:12px;font-size:12px}
+.visit-media-item figcaption a{color:var(--teal);text-decoration:underline;text-underline-offset:3px}
+.visit-media-audio{display:flex;flex-direction:column;justify-content:center;gap:18px;min-height:240px;padding:16px;background:var(--soft);font-size:14px}
+.visit-media-audio audio{width:100%;min-width:0}
+.visit-media-error{display:grid;place-items:center;min-height:240px;padding:20px;color:var(--muted);font-size:14px;line-height:1.5}
+@media(max-width:460px){.list-search{flex-wrap:wrap}.list-search .search-field{flex-basis:100%}.list-search>.button{width:100%}}
 .portal-finding-card .status-pill{margin-top:8px}
+.report-finding-labels{display:flex;flex-wrap:wrap;gap:6px}
+.report-findings .report-future-work{margin-top:10px;padding:10px;border-left:3px solid var(--teal);background:var(--teal-soft);color:var(--text);overflow-wrap:anywhere}
+.report-detail .approval-lead,.decision-panel>p,.report-summary-grid strong{white-space:pre-line;overflow-wrap:anywhere}
 @media(max-width:720px){.customer-header{padding:12px 16px}.customer-header-actions{width:100%}.customer-header-actions .button{flex:1}.customer-layout>aside{display:flex}.finding-footer form{width:100%}.finding-footer .button{width:100%}.section-heading{flex-wrap:wrap;gap:12px}.customer-intro>p{font-size:15px}.secondary-decisions{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important;animation:none!important}}

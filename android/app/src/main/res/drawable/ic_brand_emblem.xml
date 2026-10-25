@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="512" android:viewportHeight="512">
+    <!-- Even-odd contours replace the SVG mask, preserving the transparent wrench. -->
+    <path android:fillColor="@color/brand_primary" android:fillType="evenOdd"
+        android:pathData="M256,44C374,44 464,127 464,232C464,337 374,418 256,418C226,418 197,413 170,404L83,440Q72,444 75,430L88,367C57,331 40,284 40,232C40,127 136,44 256,44Z M248,103C278,86 307,85 332,93Q339,95 333,102L298,137Q285,151 300,167L315,182Q330,195 344,182L378,151Q384,146 387,155C400,205 371,246 330,259C311,265 294,262 278,258Q266,255 256,264L177,330Q166,339 156,331L119,302Q111,295 119,286L195,210Q205,201 203,188C198,154 214,122 248,103Z" />
+</vector>

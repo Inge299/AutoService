@@ -72,6 +72,8 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         if (session.value != null) refresh()
     }
 
+    suspend fun searchCustomers(query: String) = container.api.searchCustomers(query)
+
     fun login(
         login: String,
         password: String,

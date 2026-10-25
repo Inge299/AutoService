@@ -23,6 +23,23 @@ const uploadSchema = z.object({
 
 export function mediaRoutes(prisma: PrismaClient, storage: ObjectStorage): FastifyPluginAsync {
   return async (app) => {
+    app.get("/v1/visits/:id/media", async (request, reply) => {
+      const { id } = paramsSchema.parse(request.params);
+      const { workshopId } = request.actor;
+      const visit = await prisma.visit.findFirst({ where: { id, workshopId }, select: { id: true } });
+      if (!visit) return reply.code(404).send({ error: "not_found" });
+      const assets = await prisma.mediaAsset.findMany({
+        where: { visitId: id, workshopId, state: { in: ["VERIFIED", "READY"] } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true, findingId: true, kind: true, mimeType: true, objectKey: true },
+      });
+      reply.header("cache-control", "private, no-store");
+      return Promise.all(assets.map(async ({ objectKey, ...asset }) => ({
+        ...asset,
+        ...await storage.createDownloadTarget(objectKey),
+      })));
+    });
+
     app.get("/v1/media/:id", async (request, reply) => {
       const { id } = paramsSchema.parse(request.params);
       const asset = await prisma.mediaAsset.findFirst({

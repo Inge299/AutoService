@@ -44,19 +44,23 @@ describe("visit reports", () => {
     await app.close();
   });
 
-  it("publishes an immutable version, finishes the visit and returns only caller-held token", async () => {
+  it.each([true, false])("publishes future work in the immutable report and schedules only dated recommendations (dated=%s)", async (dated) => {
+    const nextVisitAt = dated ? new Date("2026-11-20T10:00:00.000Z") : null;
     const versionCreate = vi.fn().mockResolvedValue({ id: reportVersionId });
     const linkCreate = vi.fn().mockResolvedValue({ expiresAt: new Date("2026-10-01T12:00:00.000Z") });
     const transaction = {
       reportVersion: { findUnique: vi.fn().mockResolvedValue(null), findFirst: vi.fn().mockResolvedValue(null), create: versionCreate },
       report: {
         findFirst: vi.fn().mockResolvedValue({
-          id: reportId, completedWork: "Заменили колодки", recommendations: "Контроль через 10 000 км", nextVisitAt: new Date("2026-11-20T10:00:00.000Z"),
+          id: reportId, completedWork: "Заменили колодки", recommendations: "Контроль через 10 000 км", nextVisitAt,
           visit: { id: visitId, customerName: "Иван", customerPhone: "+79991234567", vehicleLabel: "Toyota", licensePlate: "А123АА", mileageKm: 80_000, complaint: "Скрип" },
         }),
         update: vi.fn().mockResolvedValue({}),
       },
-      finding: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([{ id: "77777777-7777-4777-8777-777777777777", title: "Колодки", description: "Износ", priceRub: 12_800, priority: "IMPORTANT", status: "APPROVED" }]) },
+      finding: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([
+        { id: "77777777-7777-4777-8777-777777777777", title: "Колодки", description: "Износ", priceRub: 12_800, priority: "IMPORTANT", status: "COMPLETED" },
+        { id: "deferred", title: "Ремень", description: "Износ", priceRub: 1000, priority: "IMPORTANT", status: "DEFERRED" },
+      ]) },
       mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: "88888888-8888-4888-8888-888888888888" }]) },
       reportLink: { create: linkCreate },
       reminder: { create: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999999" }) },
@@ -80,8 +84,17 @@ describe("visit reports", () => {
     expect(versionCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ operationId, reportId, visitId, mediaIds: ["88888888-8888-4888-8888-888888888888"] }) }));
     expect(linkCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reportVersionId, tokenHash: createHash("sha256").update(token).digest("hex") }) }));
     expect(transaction.visit.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "COMPLETED" }) }));
-    expect(transaction.reminder.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reportVersionId, visitId, reason: "Контроль через 10 000 км" }) }));
-    expect(transaction.backgroundJob.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: "SEND_REMINDER_SMS", reminderId: "99999999-9999-4999-8999-999999999999" }) }));
+    const recommendations = versionCreate.mock.calls[0]![0].data.recommendations;
+    expect(recommendations).toContain("Не выполнено в этот визит: Ремень. Необходимо выполнить в дальнейшем.");
+    if (dated) {
+      expect(recommendations).toContain("Рекомендуемый срок: до 20.11.2026.");
+      expect(transaction.reminder.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reportVersionId, visitId, reason: recommendations, dueAt: nextVisitAt }) }));
+      expect(transaction.backgroundJob.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: "SEND_REMINDER_SMS", reminderId: "99999999-9999-4999-8999-999999999999" }) }));
+    } else {
+      expect(recommendations).toContain("Срок необходимо согласовать с мастерской.");
+      expect(transaction.reminder.create).not.toHaveBeenCalled();
+      expect(transaction.backgroundJob.create).not.toHaveBeenCalled();
+    }
     await app.close();
   });
 });
