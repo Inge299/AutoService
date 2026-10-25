@@ -90,7 +90,7 @@ export async function registerCustomerAction(formData: FormData): Promise<void> 
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const state = { approval, challenge, verified };
-  if (!approval || !challenge || (!/^\d{6}$/.test(code) && verified !== "call") || !email || password.length < 8) {
+  if (!approval || !challenge || (!/^\d{6}$/.test(code) && verified !== "call") || !email || password.length < 5 || password.length > 256) {
     errorPath("/customer/register", "invalid_data", state);
   }
   try {

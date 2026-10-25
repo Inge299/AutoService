@@ -8,7 +8,7 @@ export async function changePasswordAction(formData: FormData): Promise<void> {
   const currentPassword = String(formData.get("currentPassword") ?? "");
   const newPassword = String(formData.get("newPassword") ?? "");
   const confirmation = String(formData.get("confirmation") ?? "");
-  if (newPassword.length < 12 || newPassword.length > 256 || newPassword !== confirmation) {
+  if (newPassword.length < 5 || newPassword.length > 256 || newPassword !== confirmation) {
     redirect("/staff/change-password?error=invalid_password");
   }
 

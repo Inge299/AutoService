@@ -14,11 +14,11 @@ const registerSchema = z.object({
   challengeId: z.string().uuid(),
   code: z.string().regex(/^\d{6}$/).optional(),
   email: z.string().trim().email().max(254).transform((value) => value.toLocaleLowerCase("ru-RU")),
-  password: z.string().min(8).max(256),
+  password: z.string().min(5).max(256),
 });
 const loginSchema = z.object({
   identity: z.string().trim().min(3).max(254),
-  password: z.string().min(8).max(256),
+  password: z.string().min(5).max(256),
 });
 
 interface CustomerActor {

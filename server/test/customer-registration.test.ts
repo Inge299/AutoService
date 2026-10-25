@@ -91,7 +91,7 @@ describe("customer account registration", () => {
         challengeId,
         code,
         email: "ivan@example.com",
-        password: "strong-password",
+        password: "abcde",
       },
     });
 
@@ -185,7 +185,7 @@ describe("customer account registration", () => {
         challengeId,
         code,
         email: "ivan@example.com",
-        password: "strong-password",
+        password: "abcde",
       },
     });
 

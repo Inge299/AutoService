@@ -13,7 +13,7 @@ const optionalLoginSchema = z.preprocess(
 );
 const optionalPasswordSchema = z.preprocess(
   (value) => typeof value === "string" && value === "" ? undefined : value,
-  z.string().min(8).max(256).optional(),
+  z.string().min(5).max(256).optional(),
 );
 const createSchema = z.object({
   login: optionalLoginSchema,
@@ -34,7 +34,7 @@ const createSchema = z.object({
 });
 const stateSchema = z.object({ isActive: z.boolean() });
 const roleSchema = z.object({ role: z.enum(["ADMIN", "EMPLOYEE"]) });
-const passwordSchema = z.object({ password: z.string().min(8).max(256) });
+const passwordSchema = z.object({ password: z.string().min(5).max(256) });
 
 function requireAdmin(request: FastifyRequest, reply: { code(status: number): { send(payload: unknown): unknown } }) {
   if (request.actor.role !== "ADMIN") {
