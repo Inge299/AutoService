@@ -15,6 +15,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
@@ -38,6 +40,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -61,6 +64,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -414,7 +418,19 @@ private fun LoginScreen(
 
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                        MaterialTheme.colorScheme.background,
+                    ),
+                ),
+            )
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .padding(24.dp),
     ) {
         Spacer(Modifier.height(36.dp))
         Text("Вход в мастерскую", style = MaterialTheme.typography.headlineMedium)
@@ -615,7 +631,18 @@ private fun VisitsScreen(
     val attentionCount = mediaQueue.count { it.syncState == SyncState.RETRY || it.syncState == SyncState.BLOCKED }
     val orderedVisits = visits.sortedBy { it.status in setOf(VisitStatus.COMPLETED, VisitStatus.CANCELLED) }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.56f),
+                        MaterialTheme.colorScheme.background,
+                    ),
+                ),
+            ),
+    ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -657,7 +684,11 @@ private fun VisitsScreen(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
             ) {
                 items(orderedVisits, key = { it.id }) { visit ->
-                    Card(onClick = { onOpen(visit) }, modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp)) {
+                    Card(
+                        onClick = { onOpen(visit) },
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp),
+                    ) {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(14.dp)) {
                             Text(
                                 visit.vehicleLabel.ifBlank { visit.licensePlate },

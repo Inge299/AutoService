@@ -36,7 +36,7 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <PageHeader eyebrow={currentDate} title={`Добрый день, ${session.displayName}`} description="Рабочая очередь мастерской на сегодня." actions={<ActionLink variant="secondary" href="/visits"><Icon name="search" /> Найти визит</ActionLink>} />
+      <PageHeader title="Сегодня в мастерской" description={`${currentDate}. ${session.displayName}, здесь собраны текущие визиты и решения клиентов.`} actions={<ActionLink variant="secondary" href="/visits"><Icon name="search" /> Найти визит</ActionLink>} />
 
       <section className="operations-summary" aria-label="Сводка за сегодня">
         <div><span>В работе</span><strong>{active.length}</strong></div>
