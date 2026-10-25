@@ -177,6 +177,7 @@
 .brand-mark{color:var(--ink)}
 .brand-mark>span:last-child>span{color:var(--teal)}
 .brand-symbol{color:var(--teal);background:#fff;border:1px solid var(--line);box-shadow:none}
+.brand-symbol img{width:28px;height:28px;object-fit:contain;transform:scale(1.28)}
 .workshop-card{background:var(--soft);border-color:var(--line)}
 .workshop-card strong{color:var(--ink)}
 .workshop-card small,.profile-row small{color:var(--muted)}
