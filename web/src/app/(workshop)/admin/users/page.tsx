@@ -17,7 +17,7 @@ export const metadata: Metadata = { title: "Пользователи" };
 const messages: Record<string, string> = {
   user_created: "Пользователь создан и может войти в систему.",
   user_enabled: "Доступ пользователя включён.",
-  user_disabled: "Доступ пользователя отключён. Его активные сессии больше не дают доступ к API.",
+  user_disabled: "Доступ пользователя отключён. Он больше не сможет войти.",
   role_updated: "Роль пользователя обновлена.",
   password_updated: "Новый пароль сохранён.",
 };

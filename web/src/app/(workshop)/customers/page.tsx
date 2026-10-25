@@ -13,7 +13,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
     <>
       <PageHeader eyebrow="Клиентская база" title="Клиенты и автомобили" description="История формируется автоматически из визитов." />
       <section className="content-card list-card">
-        <div className="list-toolbar"><ListSearch query={q} placeholder="Имя, телефон, автомобиль или госномер" /><span className="result-count">{customers.length} клиентов</span></div>
+        <div className="list-toolbar"><form className="search-field" role="search" aria-label="Поиск клиентов"><Icon name="search" /><input name="q" defaultValue={q} aria-label="Имя, телефон, автомобиль или госномер" placeholder="Имя, телефон, автомобиль или госномер" /><Button>Найти</Button></form><span className="result-count">{customers.length} клиентов</span></div>
         <div className="customer-table">
           <div className="table-head"><span>Клиент</span><span>Автомобиль</span><span>Визиты</span><span>Следующий контакт</span></div>
           {customers.map((customer) => { const primaryVehicle = customer.vehicles[0] ?? "Автомобиль не указан"; return <article className="customer-row" key={customer.id}>

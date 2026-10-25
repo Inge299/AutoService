@@ -24,10 +24,10 @@ export default async function CustomerRegisterPage({ searchParams }: {
   return <main className="login-page">
     <section className="login-story">
       <Link href="/" className="login-brand"><BrandMark /></Link>
-      <div className="login-message"><span className="eyebrow light">Личный кабинет клиента</span><h1>Все автомобили<br />и ремонты — рядом.</h1><p>Перед созданием кабинета мы отправим код на телефон из заявки. Так доступ к истории ремонта получит именно владелец номера.</p></div>
+      <div className="login-message"><h1>Все автомобили<br />и ремонты — рядом.</h1><p>Перед созданием кабинета мы отправим код на телефон из заявки. Так доступ к истории ремонта получит именно владелец номера.</p></div>
     </section>
     <section className="login-panel"><div className="login-form-wrap">
-      <p className="eyebrow">{challenge ? "Подтверждение номера" : "Первый вход"}</p>
+      <Link href="/" className="mobile-login-brand" aria-label="AutoService"><BrandMark /></Link>
       <h2>{mode === "call" ? "Позвоните для подтверждения" : challenge ? "Создайте кабинет" : "Подтвердите телефон"}</h2>
       <p className="muted login-subtitle">{mode === "call" ? "Позвоните с номера из заявки. Звонок будет сброшен автоматически." : verified === "call" ? "Номер подтверждён. Укажите e-mail и пароль для резервного входа." : challenge ? "Введите код из SMS. Затем укажите e-mail и пароль для резервного входа." : "Подтвердите номер из заявки звонком."}</p>
       {error && <div className="form-error"><Icon name="alert" />{errors[error] ?? "Не удалось продолжить."}</div>}
@@ -52,7 +52,6 @@ export default async function CustomerRegisterPage({ searchParams }: {
         <input type="hidden" name="approval" value={approval} />
         <Button variant="primary" className="" type="submit">Подтвердить звонком</Button>
       </form>}
-      <p className="security-note">Подтверждение одноразовое. AutoService не показывает номер из заявки и не хранит секреты в открытом виде.</p>
       <ActionLink variant="secondary"  href={`/customer/login?approval=${encodeURIComponent(approval)}`}>У меня уже есть кабинет</ActionLink>
     </div></section>
   </main>;

@@ -15,6 +15,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -39,6 +40,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -62,10 +64,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
@@ -116,6 +118,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     val snackbarHost = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val visits by viewModel.visits.collectAsState()
+    val mediaQueue by viewModel.assets.collectAsState()
     val vehicleBrandSuggestions by viewModel.vehicleBrandSuggestions.collectAsState()
     val complaintSuggestions by viewModel.complaintSuggestions.collectAsState()
     val session by viewModel.session.collectAsState()
@@ -168,7 +171,12 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
 
     if (session == null) {
         Scaffold(
-            topBar = { TopAppBar(title = { BrandTitle() }) },
+            topBar = {
+                TopAppBar(
+                    title = { Text("AutoService") },
+                    navigationIcon = { Image(painterResource(R.drawable.ic_launcher), null, Modifier.padding(start = 12.dp).size(36.dp)) },
+                )
+            },
             snackbarHost = { SnackbarHost(snackbarHost) },
         ) { padding ->
             LoginScreen(
@@ -241,7 +249,8 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { BrandTitle() },
+                title = { Text("AutoService", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                navigationIcon = { Image(painterResource(R.drawable.ic_launcher), null, Modifier.padding(start = 12.dp).size(36.dp)) },
                 actions = {
                     TextButton(onClick = {
                         viewModel.refresh { error ->
@@ -411,6 +420,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
 
             else -> VisitsScreen(
                 visits = visits,
+                mediaQueue = mediaQueue,
                 onCreate = { creatingVisit = true },
                 onOpen = { selectedVisitId = it.id },
                 modifier = Modifier.padding(padding),
@@ -444,7 +454,19 @@ private fun LoginScreen(
 
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                        MaterialTheme.colorScheme.background,
+                    ),
+                ),
+            )
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .padding(24.dp),
     ) {
         Spacer(Modifier.height(36.dp))
         Text("Вход в мастерскую", style = MaterialTheme.typography.headlineMedium)
@@ -659,29 +681,83 @@ private fun FindingScreen(
 @Composable
 private fun VisitsScreen(
     visits: List<VisitEntity>,
+    mediaQueue: List<MediaAssetEntity>,
     onCreate: () -> Unit,
     onOpen: (VisitEntity) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) {
-            Text("Принять автомобиль")
+    val pendingCount = mediaQueue.count { it.syncState != SyncState.SYNCED }
+    val attentionCount = mediaQueue.count { it.syncState == SyncState.RETRY || it.syncState == SyncState.BLOCKED }
+    val orderedVisits = visits.sortedBy { it.status in setOf(VisitStatus.COMPLETED, VisitStatus.CANCELLED) }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.56f),
+                        MaterialTheme.colorScheme.background,
+                    ),
+                ),
+            ),
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Text("Очередь мастерской", style = MaterialTheme.typography.headlineMedium)
+            Text("Откройте визит или примите следующий автомобиль.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(onClick = onCreate, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                Text("Принять автомобиль")
+            }
+            Surface(
+                color = if (attentionCount > 0) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                ) {
+                    Text(
+                        if (attentionCount > 0) "Нужно проверить: $attentionCount" else "Очередь загрузки: $pendingCount",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Text(
+                        if (attentionCount > 0) "Откройте визит и повторите загрузку материала." else if (pendingCount > 0) "Материалы сохраняются на телефоне и загрузятся автоматически." else "Все материалы загружены.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            Text("Визиты", style = MaterialTheme.typography.titleLarge)
         }
-        Spacer(Modifier.height(16.dp))
-        Text("Активные визиты", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(8.dp))
         if (visits.isEmpty()) {
-            Text("Пока нет визитов. Первый можно создать без подключения к сети.")
+            Text(
+                "Пока нет визитов. Первый можно создать без подключения к сети.",
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(visits, key = { it.id }) { visit ->
-                    Card(onClick = { onOpen(visit) }, modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(14.dp)) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+            ) {
+                items(orderedVisits, key = { it.id }) { visit ->
+                    Card(
+                        onClick = { onOpen(visit) },
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp),
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(14.dp)) {
                             Text(
                                 visit.vehicleLabel.ifBlank { visit.licensePlate },
                                 style = MaterialTheme.typography.titleMedium,
                             )
-                            Text("${visit.customerName.ifBlank { "Клиент" }} · ${visit.customerPhone}")
+                            Text(
+                                "${visit.customerName.ifBlank { "Клиент" }} · ${visit.customerPhone}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                             StatusPill(visit.status.label(), visit.status.color())
                         }
                     }
@@ -1051,15 +1127,15 @@ private fun VisitScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Button(onClick = onOpenCamera, modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onOpenCamera, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Text("Фото / видео к визиту")
                 }
-                Button(onClick = onCreateFinding, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onCreateFinding, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
                     Text("Добавить находку")
                 }
-                Button(
+                OutlinedButton(
                     onClick = { toggleVoice() },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) { Text(if (recordingVoice) "Остановить запись" else "Голосовая заметка к визиту") }
             }
         }
@@ -1296,7 +1372,7 @@ private fun FindingCard(
                 )
             }
             Spacer(Modifier.height(8.dp))
-            Button(onClick = onOpenCamera, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onOpenCamera, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                 Text("Добавить фото / видео к находке")
             }
             TextButton(onClick = onToggleVoice, modifier = Modifier.fillMaxWidth()) {
@@ -1436,7 +1512,7 @@ private fun VideoThumbnail(path: String, onOpen: () -> Unit) {
             shape = CircleShape,
             modifier = Modifier.align(Alignment.Center),
         ) {
-            Text("▶", modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+            Text("Видео", modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
         }
     }
 }
@@ -1587,7 +1663,7 @@ private fun VoicePlayer(path: String) {
             when {
                 !ready -> "Голос…"
                 playing -> "Пауза · ${durationMs.asDurationLabel()}"
-                else -> "▶ Голос · ${durationMs.asDurationLabel()}"
+                else -> "Воспроизвести · ${durationMs.asDurationLabel()}"
             },
         )
     }

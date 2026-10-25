@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { ReactNode, SVGProps } from "react";
 
 export type IconName = "dashboard" | "visits" | "customers" | "reminders" | "analytics" | "settings" | "search" | "arrow-right" | "arrow-left" | "car" | "phone" | "camera" | "check" | "clock" | "alert" | "refresh" | "more" | "logout";
@@ -28,5 +29,5 @@ export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconN
 }
 
 export function BrandMark({ compact = false }: { compact?: boolean }) {
-  return <div className="brand-mark" aria-label="AutoService"><span className="brand-symbol"><Icon name="car" /></span>{!compact && <span>Auto<span>Service</span></span>}</div>;
+  return <div className="brand-mark" aria-label="AutoService"><span className="brand-symbol"><Image src="/brand-logo.png" alt="" width={28} height={28} /></span>{!compact && <span>Auto<span>Service</span></span>}</div>;
 }
