@@ -43,17 +43,17 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
           </section>}
 
           <section className="section-block" id="findings">
-            <div className="section-heading"><div><h2>Находки и рекомендации</h2><p>То, что обнаружено во время диагностики</p></div><span className="subtle-action">Добавляются мастером в Android</span></div>
+            <div className="section-heading"><div><h2>Находки и рекомендации</h2><p>То, что обнаружено во время диагностики</p></div></div>
             <div className="findings-list">
               {approval && <div className="admin-notice admin-notice-success">Ссылка готова: <ActionLink href={approval} target="_blank" rel="noreferrer">Открыть согласование</ActionLink></div>}{error && <div className="form-error">Не удалось создать ссылку: проверьте цену и подтверждённые материалы.</div>}
               {visit.findings.length ? visit.findings.map((finding) => { const findingState = findingStatusMeta[finding.status]; const priority = priorityMeta[finding.priority]; return <article className="finding-card" key={finding.id}>
                 <div className={`finding-stripe stripe-${priority.tone}`} />
                 <div className="finding-body"><div className="finding-top"><div><StatusPill label={priority.label} tone={priority.tone} /><h3>{finding.title}</h3></div><strong className="finding-price">{finding.priceRub == null ? "Цена уточняется" : formatRub(finding.priceRub)}</strong></div><p>{finding.description}</p><div className="finding-footer"><span><Icon name="camera" /> {finding.mediaCount} материала</span><StatusPill label={findingState.label} tone={findingState.tone} />{finding.status === "READY_FOR_APPROVAL" && <form action={createApprovalLinkAction}><input type="hidden" name="visitId" value={visit.id} /><input type="hidden" name="findingId" value={finding.id} /><Button variant="primary" className="" type="submit">Подготовить ссылку</Button></form>}</div></div>
-              </article>; }) : <div className="empty-inline"><Icon name="check" /><p><strong>Находок пока нет</strong><small>Мастер добавит их из Android во время диагностики.</small></p></div>}
+              </article>; }) : <div className="empty-inline"><Icon name="check" /><p><strong>Находок пока нет</strong><small>Они появятся здесь во время диагностики.</small></p></div>}
             </div>
           </section>
 
-          <section className="section-block" id="media"><div className="section-heading"><div><h2>Материалы</h2><p>Фото и видео, подтверждённые сервером</p></div><StatusPill label={`${visit.mediaCount} файлов`} tone="neutral" /></div>{visit.mediaCount ? <div className="media-grid">{Array.from({ length: Math.min(visit.mediaCount, 3) }, (_, index) => <div className="media-placeholder intake" key={index}><Icon name="camera" /><span>Материал {index + 1}</span></div>)}</div> : <div className="empty-inline"><Icon name="camera" /><p><strong>Материалов пока нет</strong><small>Они появятся после загрузки из Android-приложения.</small></p></div>}</section>
+          <section className="section-block" id="media"><div className="section-heading"><div><h2>Материалы</h2><p>Фото и видео по этому визиту</p></div><StatusPill label={`${visit.mediaCount} файлов`} tone="neutral" /></div>{visit.mediaCount ? <div className="media-grid">{Array.from({ length: Math.min(visit.mediaCount, 3) }, (_, index) => <div className="media-placeholder intake" key={index}><Icon name="camera" /><span>Материал {index + 1}</span></div>)}</div> : <div className="empty-inline"><Icon name="camera" /><p><strong>Материалов пока нет</strong><small>Фото и видео появятся здесь во время работы.</small></p></div>}</section>
         </div>
 
         <aside className="visit-sidebar">

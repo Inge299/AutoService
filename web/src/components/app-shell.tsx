@@ -31,12 +31,13 @@ export function AppShell({ session, accessTokenExpiresAtEpochMs, backend, worksh
     .join("") || "АС";
   return (
     <div className="app-frame">
+      <a className="skip-link" href="#main-content">К содержимому</a>
       <SessionRefresher scope="staff" accessTokenExpiresAtEpochMs={accessTokenExpiresAtEpochMs} />
       <aside className="sidebar">
         <Link href="/dashboard" className="sidebar-brand"><BrandMark /></Link>
         <div className="workshop-card">
           <span className="workshop-avatar">{workshopInitials}</span>
-          <span><strong>{workshop.name}</strong><small>{workshop.phone || "Данные мастерской с сервера"}</small></span>
+          <span><strong>{workshop.name}</strong><small>{workshop.phone || "Рабочее пространство"}</small></span>
           <Icon name="more" />
         </div>
         <nav className="sidebar-nav" aria-label="Основная навигация">
@@ -56,7 +57,7 @@ export function AppShell({ session, accessTokenExpiresAtEpochMs, backend, worksh
         </nav>
         <div className="sidebar-footer">
           <div className={`backend-state backend-${backend.state.toLowerCase()}`}>
-            <span /><div><strong>{backend.label}</strong><small>Backend AutoService</small></div>
+            <span /><div><strong>{backend.state === "CONNECTED" ? "Всё работает" : backend.state === "UNAVAILABLE" ? "Нет связи" : "Проверяем связь"}</strong><small>Обновление данных</small></div>
           </div>
           <div className="profile-row">
             <span className="profile-avatar">{session.displayName.slice(0, 1).toUpperCase()}</span>
@@ -67,7 +68,7 @@ export function AppShell({ session, accessTokenExpiresAtEpochMs, backend, worksh
       </aside>
       <div className="main-column">
         <header className="mobile-header"><BrandMark /><span className={`backend-dot backend-${backend.state.toLowerCase()}`} /></header>
-        <main className="page-content">{children}</main>
+        <main id="main-content" className="page-content">{children}</main>
         <nav className="mobile-nav" aria-label="Мобильная навигация">
           {navigation.slice(0, 4).map((item) => (
             <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? "active" : undefined}>

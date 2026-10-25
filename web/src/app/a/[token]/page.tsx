@@ -21,12 +21,6 @@ export default async function ApprovalPage({ params }: { params: Promise<{ token
   }
   if (!approval) return <PublicUnavailable />;
   const priority = priorityMeta[approval.finding.priority];
-  const expiresAt = new Intl.DateTimeFormat("ru-RU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "Europe/Moscow",
-  }).format(new Date(approval.expiresAt));
   const phoneLink = approval.workshop.phone?.replace(/[^+\d]/g, "");
   const approvalStatus = approval.decision
     ? {
@@ -41,20 +35,20 @@ export default async function ApprovalPage({ params }: { params: Promise<{ token
     <main className="customer-page">
       <CustomerHeader phone={approval.workshop.phone} />
       <div className="customer-shell">
-        <section className="customer-intro"><span className="eyebrow">{approval.workshop.name}</span><h1>{approval.decision ? "Решение получено" : "Нужно ваше решение"}</h1><p>Во время диагностики мастерская нашла дополнительную работу и просит подтвердить её до продолжения ремонта.</p><div className="customer-car"><span><Icon name="car" /></span><div><strong>{approval.visit.vehicleLabel}</strong><small>{approval.visit.licensePlate} · {approval.visit.customerName}</small></div><StatusPill label={approvalStatus.label} tone={approvalStatus.tone} /></div></section>
+        <section className="customer-intro"><p className="customer-context">{approval.workshop.name}</p><h1>{approval.decision ? "Решение получено" : "Нужно ваше решение"}</h1><p>Мастер нашёл дополнительную работу и просит подтвердить её до продолжения ремонта.</p><div className="customer-car"><span><Icon name="car" /></span><div><strong>{approval.visit.vehicleLabel}</strong><small>{approval.visit.licensePlate} · {approval.visit.customerName}</small></div><StatusPill label={approvalStatus.label} tone={approvalStatus.tone} /></div></section>
 
         <div className="customer-layout">
           <section className="approval-detail">
-            <div className="approval-heading"><StatusPill label={priority.label} tone={priority.tone} /><span>Рекомендация мастерской</span></div>
+            <div className="approval-heading"><StatusPill label={priority.label} tone={priority.tone} /></div>
             <h2>{approval.finding.title}</h2>
             <p className="approval-lead">{approval.finding.description}</p>
-            {approval.media.length ? <div className="evidence-media" aria-label="Материалы мастера">{approval.media.map((media) => media.kind === "PHOTO" ? <figure key={media.id}><img src={media.url} alt="Материал мастера" /><figcaption><Icon name="camera" /> Фото мастера</figcaption></figure> : media.kind === "VIDEO" ? <figure key={media.id}><video controls preload="metadata" src={media.url} /><figcaption><Icon name="camera" /> Видео мастера</figcaption></figure> : <figure key={media.id}><audio controls preload="metadata" src={media.url} /><figcaption><Icon name="phone" /> Голосовая заметка</figcaption></figure>)}</div> : <div className="empty-inline"><Icon name="camera" /><p><strong>Материалы не приложены</strong><small>Решение можно принять по описанию или запросить звонок.</small></p></div>}
+            {approval.media.length > 0 && <div className="evidence-media" aria-label="Материалы мастера">{approval.media.map((media) => media.kind === "PHOTO" ? <figure key={media.id}><img src={media.url} alt="Материал мастера" /><figcaption><Icon name="camera" /> Фото мастера</figcaption></figure> : media.kind === "VIDEO" ? <figure key={media.id}><video controls preload="metadata" src={media.url} /><figcaption><Icon name="camera" /> Видео мастера</figcaption></figure> : <figure key={media.id}><audio controls preload="metadata" src={media.url} /><figcaption><Icon name="phone" /> Голосовая заметка</figcaption></figure>)}</div>}
             <div className="price-box"><div><small>Стоимость работы</small><strong>{formatRub(approval.finding.priceRub)}</strong></div><p>Работа и материалы включены. Изменение стоимости потребует нового согласования.</p></div>
           </section>
-          <aside className="customer-decision">{!approval.media.length && <div className="customer-help"><Icon name="camera" /><p><strong>Согласование по описанию</strong><small>Вы можете принять решение по описанию или запросить звонок мастера.</small></p></div>}<ApprovalDecision token={token} priceRub={approval.finding.priceRub} initialDecision={approval.decision} /><div className="customer-help"><Icon name="phone" /><p><strong>Остались вопросы?</strong><small>{approval.workshop.phone ? <>Позвоните по номеру <a href={`tel:${phoneLink}`}>{approval.workshop.phone}</a> или выберите «Нужен звонок».</> : <>Выберите «Нужен звонок», и мастерская свяжется с вами.</>}</small></p></div><ActionLink variant="secondary"  href={`/customer/login?approval=${encodeURIComponent(token)}`}>Личный кабинет</ActionLink><ActionLink variant="secondary"  href={`/customer/register?approval=${encodeURIComponent(token)}`}>Создать кабинет</ActionLink></aside>
+          <aside className="customer-decision"><ApprovalDecision token={token} priceRub={approval.finding.priceRub} initialDecision={approval.decision} /><div className="customer-help"><Icon name="phone" /><p><strong>Остались вопросы?</strong><small>{approval.workshop.phone ? <>Позвоните по номеру <a href={`tel:${phoneLink}`}>{approval.workshop.phone}</a> или выберите «Нужен звонок».</> : <>Выберите «Нужен звонок», и мастерская свяжется с вами.</>}</small></p></div><ActionLink variant="secondary"  href={`/customer/login?approval=${encodeURIComponent(token)}`}>Личный кабинет</ActionLink><ActionLink variant="secondary"  href={`/customer/register?approval=${encodeURIComponent(token)}`}>Создать кабинет</ActionLink></aside>
         </div>
       </div>
-      <footer className="customer-footer"><span>AutoService</span><p>Защищённая персональная ссылка · действует до {expiresAt}</p></footer>
+      <footer className="customer-footer"><span>AutoService</span></footer>
     </main>
   );
 }

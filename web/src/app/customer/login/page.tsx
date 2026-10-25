@@ -33,9 +33,9 @@ export default async function CustomerLoginPage({ searchParams }: {
   const activeMode = mode ?? (approval ? undefined : "sms");
   const dialPhone = callPhone?.replace(/[^\d+]/g, "");
   return <main className="login-page">
-    <section className="login-story"><Link href="/" className="login-brand"><BrandMark /></Link><div className="login-message"><span className="eyebrow light">Личный кабинет клиента</span><h1>Ваши автомобили.<br />Ваш ремонт.</h1><p>Следите за статусами, согласовывайте работы и храните историю обслуживания в одном месте.</p></div></section>
+    <section className="login-story"><Link href="/" className="login-brand"><BrandMark /></Link><div className="login-message"><h1>Ваши автомобили.<br />Ваш ремонт.</h1><p>Следите за статусами, согласовывайте работы и храните историю обслуживания в одном месте.</p></div></section>
     <section className="login-panel"><div className="login-form-wrap">
-      <p className="eyebrow">Клиентский кабинет</p>
+      <Link href="/" className="mobile-login-brand" aria-label="AutoService"><BrandMark /></Link>
       <h2>{activeMode === "call" ? "Позвоните для входа" : activeMode === "code" ? "Введите код" : "Войти в кабинет"}</h2>
       <p className="muted login-subtitle">{activeMode === "call" ? "Позвоните с указанного номера — звонок будет сброшен автоматически." : activeMode === "code" ? "Код из SMS действует 5 минут." : activeMode === "sms" ? "Укажите номер — подтвердите вход звонком." : "Войдите с телефоном или e-mail и паролем."}</p>
       {error && <div className="form-error"><Icon name="alert" />{errors[error] ?? "Не удалось войти."}</div>}
