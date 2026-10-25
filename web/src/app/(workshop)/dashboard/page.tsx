@@ -36,13 +36,12 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <PageHeader eyebrow={currentDate} title={`Добрый день, ${session.displayName}`} description="Вот что происходит в мастерской прямо сейчас." actions={<ActionLink variant="secondary" href="/visits" ><Icon name="search" /> Найти визит</ActionLink>} />
+      <PageHeader eyebrow={currentDate} title={`Добрый день, ${session.displayName}`} description="Рабочая очередь мастерской на сегодня." actions={<ActionLink variant="secondary" href="/visits"><Icon name="search" /> Найти визит</ActionLink>} />
 
-      <section className="metric-grid" aria-label="Сводка за сегодня">
-        <article className="metric-card"><span className="metric-icon teal"><Icon name="car" /></span><div><small>Автомобилей в работе</small><strong>{active.length}</strong><p>По данным сервера</p></div></article>
-        <article className="metric-card"><span className="metric-icon amber"><Icon name="clock" /></span><div><small>Ждут решения клиента</small><strong>{active.filter((visit) => visit.status === "WAITING_APPROVAL").length}</strong><p>Активные согласования</p></div></article>
-        <article className="metric-card"><span className="metric-icon green"><Icon name="check" /></span><div><small>Согласовано</small><strong>{formatRub(approvedValue)}</strong><p><b>{approvedFindings.length}</b> подтверждено</p></div></article>
-        <article className="metric-card"><span className="metric-icon coral"><Icon name="alert" /></span><div><small>Нужно внимание</small><strong>{attention.length}</strong><p>{attention.length ? "Требуется действие" : "Нет задерживающих задач"}</p></div></article>
+      <section className="operations-summary" aria-label="Сводка за сегодня">
+        <div><span>В работе</span><strong>{active.length}</strong></div>
+        <div><span>Ждут решения</span><strong>{active.filter((visit) => visit.status === "WAITING_APPROVAL").length}</strong></div>
+        <div><span>Согласовано</span><strong>{formatRub(approvedValue)}</strong><small>{approvedFindings.length} {pluralRu(approvedFindings.length, "работа", "работы", "работ")}</small></div>
       </section>
 
       <div className="dashboard-layout">
@@ -50,13 +49,13 @@ export default async function DashboardPage() {
           <section className="section-block">
             <div className="section-heading"><div><h2>Нужно внимание</h2><p>Сначала действия, которые задерживают ремонт</p></div><StatusPill label={`${attention.length} ${pluralRu(attention.length, "задача", "задачи", "задач")}`} tone="danger" /></div>
             <div className="attention-list">
-              {attention.map((visit) => (
+              {attention.length ? attention.map((visit) => (
                 <Link key={visit.id} href={`/visits/${visit.id}`} className="attention-card">
                   <span className={`attention-icon ${visit.syncHealth === "ATTENTION" ? "coral" : "amber"}`}><Icon name={visit.syncHealth === "ATTENTION" ? "refresh" : "phone"} /></span>
                   <span className="attention-copy"><strong>{visit.attention}</strong><small>{visit.vehicle} · {visit.plate} · {visit.customer}</small></span>
                   <span className="attention-action">{visit.nextAction}<Icon name="arrow-right" /></span>
                 </Link>
-              ))}
+              )) : <p className="attention-empty"><Icon name="check" /> Нет действий, задерживающих ремонт</p>}
             </div>
           </section>
 
@@ -75,7 +74,6 @@ export default async function DashboardPage() {
         </div>
 
         <aside className="dashboard-side">
-          <section className="side-card revenue-card"><p className="eyebrow light">Текущий результат</p><h3>Согласованные работы</h3><strong>{formatRub(approvedValue)}</strong><p>по загруженным визитам</p><div className="mini-chart" aria-label="Состояние согласований"><i style={{height:"24%"}}/><i style={{height:"24%"}}/><i style={{height:"24%"}}/><i style={{height: approvedValue ? "78%" : "24%"}}/><i style={{height: approvedValue ? "78%" : "24%"}}/><i style={{height: approvedValue ? "78%" : "24%"}}/><i style={{height: approvedValue ? "78%" : "24%"}}/></div><small><b>{approvedFindings.length}</b> работ подтверждено</small></section>
           <section className="side-card"><div className="side-card-title"><h3>Ближайшие напоминания</h3><ActionLink href="/reminders">Все напоминания</ActionLink></div>{reminders.length ? reminders.slice(0, 2).map((reminder) => <div className="reminder-mini" key={reminder.id}><span>{reminder.due}</span><div><strong>{reminder.customer}</strong><small>{reminder.reason} · {reminder.vehicle}</small></div></div>) : <p className="board-empty">Напоминаний пока нет</p>}</section>
         </aside>
       </div>

@@ -31,6 +31,7 @@ export function AppShell({ session, accessTokenExpiresAtEpochMs, backend, worksh
     .join("") || "АС";
   return (
     <div className="app-frame">
+      <a className="skip-link" href="#main-content">К содержимому</a>
       <SessionRefresher scope="staff" accessTokenExpiresAtEpochMs={accessTokenExpiresAtEpochMs} />
       <aside className="sidebar">
         <Link href="/dashboard" className="sidebar-brand"><BrandMark /></Link>
@@ -67,7 +68,7 @@ export function AppShell({ session, accessTokenExpiresAtEpochMs, backend, worksh
       </aside>
       <div className="main-column">
         <header className="mobile-header"><BrandMark /><span className={`backend-dot backend-${backend.state.toLowerCase()}`} /></header>
-        <main className="page-content">{children}</main>
+        <main id="main-content" className="page-content">{children}</main>
         <nav className="mobile-nav" aria-label="Мобильная навигация">
           {navigation.slice(0, 4).map((item) => (
             <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? "active" : undefined}>

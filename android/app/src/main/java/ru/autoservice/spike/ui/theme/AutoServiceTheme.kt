@@ -9,37 +9,37 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 
 private val AutoServiceColors = lightColorScheme(
-    primary = Color(0xFF0F6B78),
+    primary = Color(0xFF1C4F8C),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFDDEFF1),
-    onPrimaryContainer = Color(0xFF00363E),
-    secondary = Color(0xFF365F9C),
+    primaryContainer = Color(0xFFE7EEF8),
+    onPrimaryContainer = Color(0xFF12375F),
+    secondary = Color(0xFF315F9B),
     onSecondary = Color.White,
     secondaryContainer = Color(0xFFD9E2FF),
     onSecondaryContainer = Color(0xFF001A41),
-    tertiary = Color(0xFF1E7A46),
+    tertiary = Color(0xFF267147),
     onTertiary = Color.White,
     tertiaryContainer = Color(0xFFE2F3E8),
     onTertiaryContainer = Color(0xFF07371B),
-    error = Color(0xFFB3261E),
+    error = Color(0xFFAA3028),
     onError = Color.White,
     errorContainer = Color(0xFFFBE9E7),
     onErrorContainer = Color(0xFF410002),
-    background = Color(0xFFF7F7F8),
-    onBackground = Color(0xFF1B1B1F),
+    background = Color(0xFFF6F7F9),
+    onBackground = Color(0xFF20242B),
     surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF1B1B1F),
-    surfaceVariant = Color(0xFFF1F4F3),
-    onSurfaceVariant = Color(0xFF5F6368),
-    outline = Color(0xFFD9DDE3),
+    onSurface = Color(0xFF20242B),
+    surfaceVariant = Color(0xFFF0F3F7),
+    onSurfaceVariant = Color(0xFF5B6470),
+    outline = Color(0xFFD6DBE3),
 )
 
 private val AutoServiceShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(20.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(20.dp),
 )
 
 @Composable
