@@ -28,5 +28,5 @@ export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconN
 }
 
 export function BrandMark({ compact = false }: { compact?: boolean }) {
-  return <div className="brand-mark" aria-label="AutoService"><span className="brand-symbol"><Icon name="car" /></span>{!compact && <span>Auto<span>Service</span></span>}</div>;
+  return <div className="brand-mark" aria-label="AutoService"><span className="brand-symbol"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="currentColor" d="m9 18.5 3.2-7.5a5 5 0 0 1 4.6-3h14.4a5 5 0 0 1 4.6 3l3.2 7.5a6 6 0 0 1 4 5.5v9a6 6 0 0 1-6 6H25l-7 6v-6h-7a6 6 0 0 1-6-6v-9a6 6 0 0 1 4-5.5Z"/><path fill="#fff" d="M15.7 13.2a2 2 0 0 1 1.8-1.2h13a2 2 0 0 1 1.8 1.2l2.1 4.8H13.6l2.1-4.8Z"/><circle cx="24" cy="28" r="7" fill="#1d2927"/><path fill="none" stroke="#fff" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" d="m20.5 28 2.3 2.3 4.8-5"/><circle cx="11.5" cy="28" r="2" fill="#fff"/><circle cx="36.5" cy="28" r="2" fill="#fff"/></svg></span>{!compact && <span>Auto<span>Service</span></span>}</div>;
 }

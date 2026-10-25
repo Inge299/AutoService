@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -169,7 +170,12 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
 
     if (session == null) {
         Scaffold(
-            topBar = { TopAppBar(title = { Text("AutoService") }) },
+            topBar = {
+                TopAppBar(
+                    title = { Text("AutoService") },
+                    navigationIcon = { Image(painterResource(R.drawable.ic_launcher), null, Modifier.padding(start = 12.dp).size(36.dp)) },
+                )
+            },
             snackbarHost = { SnackbarHost(snackbarHost) },
         ) { padding ->
             LoginScreen(
@@ -224,6 +230,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
         topBar = {
             TopAppBar(
                 title = { Text("AutoService", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                navigationIcon = { Image(painterResource(R.drawable.ic_launcher), null, Modifier.padding(start = 12.dp).size(36.dp)) },
                 actions = {
                     TextButton(onClick = {
                         viewModel.refresh { error ->

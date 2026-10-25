@@ -176,7 +176,7 @@
 .sidebar{padding:24px 14px 16px;background:var(--surface);color:var(--ink);border-inline-end:1px solid var(--line)}
 .brand-mark{color:var(--ink)}
 .brand-mark>span:last-child>span{color:var(--teal)}
-.brand-symbol{background:var(--teal);box-shadow:none}
+.brand-symbol{color:var(--teal);background:#fff;border:1px solid var(--line);box-shadow:none}
 .workshop-card{background:var(--soft);border-color:var(--line)}
 .workshop-card strong{color:var(--ink)}
 .workshop-card small,.profile-row small{color:var(--muted)}
@@ -300,7 +300,7 @@ body{background:var(--canvas)}
 .app-frame{grid-template-columns:240px minmax(0,1fr);background:linear-gradient(145deg,#e9f3f0 0%,#f6f8f7 48%,#edf3f5 100%)}
 .sidebar{padding:26px 16px 18px;background:transparent;border-inline-end:0}
 .sidebar-brand{padding-inline:8px}
-.brand-symbol{border-radius:12px;box-shadow:0 6px 16px #0f6b7828}
+.brand-symbol{border-radius:12px;box-shadow:0 6px 16px #0f6b7820}
 .workshop-card{background:#ffffffa8;border-color:#ffffffc9;box-shadow:0 5px 18px #18332e0b}
 .sidebar-nav a{border-radius:12px;transition-timing-function:var(--ease-out)}
 .sidebar-nav a.active{color:var(--teal-dark);background:#fff;box-shadow:var(--shadow-soft)}
