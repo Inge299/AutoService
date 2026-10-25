@@ -134,6 +134,7 @@ export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
             where: {
               workshopId,
               customerPhone: body.customerPhone,
+              visit: { vehicleId: vehicle.id },
               returnVisitId: null,
               visitId: { not: saved.id },
               state: { in: ["PENDING", "SENT", "DELIVERED"] },

@@ -17,6 +17,36 @@ async function mediaApp(prisma: unknown, storage: unknown = {}) {
 }
 
 describe("P0 reliability regressions", () => {
+  it("lists confirmed photo, video and unassigned audio with private signed URLs", async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      { id, findingId: null, kind: "PHOTO", mimeType: "image/jpeg", objectKey: "private/photo" },
+      { id: "video", findingId: id, kind: "VIDEO", mimeType: "video/mp4", objectKey: "private/video" },
+      { id: "voice", findingId: null, kind: "VOICE", mimeType: "audio/mp4", objectKey: "private/voice" },
+    ]);
+    const createDownloadTarget = vi.fn(async (key: string) => ({ url: `https://storage.example/${key}?signed=synthetic`, expiresInSeconds: 900 }));
+    const app = await mediaApp({ visit: { findFirst: async () => ({ id }) }, mediaAsset: { findMany } }, { createDownloadTarget });
+    try {
+      const response = await app.inject({ method: "GET", url: `/v1/visits/${id}/media` });
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["cache-control"]).toBe("private, no-store");
+      expect(response.json().map((item: { kind: string }) => item.kind)).toEqual(["PHOTO", "VIDEO", "VOICE"]);
+      expect(response.json()[2]).toMatchObject({ findingId: null, expiresInSeconds: 900 });
+      expect(response.json()[0]).not.toHaveProperty("objectKey");
+      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { visitId: id, workshopId: id, state: { in: ["VERIFIED", "READY"] } } }));
+    } finally { await app.close(); }
+  });
+
+  it("does not sign media for a visit outside the actor workshop", async () => {
+    const createDownloadTarget = vi.fn();
+    const findMany = vi.fn();
+    const app = await mediaApp({ visit: { findFirst: async () => null }, mediaAsset: { findMany } }, { createDownloadTarget });
+    try {
+      expect((await app.inject({ method: "GET", url: `/v1/visits/${id}/media` })).statusCode).toBe(404);
+      expect(findMany).not.toHaveBeenCalled();
+      expect(createDownloadTarget).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
   it("never issues a writable target for verified evidence", async () => {
     const createUploadTarget = vi.fn();
     const app = await mediaApp({ visit: { findFirst: async () => ({ id }) }, finding: { findFirst: async () => ({ id }) }, mediaAsset: { findUnique: async () => asset } }, { createUploadTarget });

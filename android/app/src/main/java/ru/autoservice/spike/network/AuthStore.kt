@@ -23,6 +23,7 @@ data class AuthSession(
     val workshopId: String,
     val displayName: String,
     val role: String,
+    val mustChangePassword: Boolean = false,
 )
 
 class AuthStore(context: Context) {
@@ -43,6 +44,7 @@ class AuthStore(context: Context) {
             .put("workshopId", session.workshopId)
             .put("displayName", session.displayName)
             .put("role", session.role)
+            .put("mustChangePassword", session.mustChangePassword)
             .toString()
             .toByteArray(Charsets.UTF_8)
         val cipher = Cipher.getInstance(TRANSFORMATION).apply {
@@ -92,6 +94,7 @@ class AuthStore(context: Context) {
                 workshopId = json.getString("workshopId"),
                 displayName = json.getString("displayName"),
                 role = json.getString("role"),
+                mustChangePassword = json.optBoolean("mustChangePassword", false),
             )
         }.getOrNull()
         if (session == null || session.refreshTokenExpiresAtEpochMs <= System.currentTimeMillis()) {

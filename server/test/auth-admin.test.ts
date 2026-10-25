@@ -243,7 +243,7 @@ describe("database authentication and administration", () => {
     await app.close();
   });
 
-  it("lets an administrator pre-register an employee by a verified phone without a password", async () => {
+  it("creates an employee with a temporary password and no phone", async () => {
     const userCreate = vi.fn().mockResolvedValue({ id: "33333333-3333-4333-8333-333333333333" });
     const membershipCreate = vi.fn().mockResolvedValue({});
     const auditCreate = vi.fn().mockResolvedValue({});
@@ -261,21 +261,21 @@ describe("database authentication and administration", () => {
       method: "POST",
       url: "/v1/admin/users",
       headers,
-      payload: { displayName: "Иван Петров", phone: "8 (999) 123-45-67", role: "EMPLOYEE" },
+      payload: { displayName: "Иван Петров", login: "ivan", password: "temporary-password", role: "EMPLOYEE" },
     });
 
     expect(response.statusCode).toBe(201);
     expect(userCreate).toHaveBeenCalledWith({ data: expect.objectContaining({
-      login: null,
-      phone: "+79991234567",
-      passwordHash: null,
+      login: "ivan",
+      passwordHash: expect.any(String),
+      mustChangePassword: true,
       displayName: "Иван Петров",
     }) });
     expect(membershipCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ workshopId, role: "EMPLOYEE" }) });
     await app.close();
   });
 
-  it("requires a password and login for another administrator", async () => {
+  it.each(["ADMIN", "EMPLOYEE"])("requires a password and login for %s", async (role) => {
     const prisma = basePrisma() as unknown as PrismaClient;
     const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
 
@@ -283,7 +283,7 @@ describe("database authentication and administration", () => {
       method: "POST",
       url: "/v1/admin/users",
       headers,
-      payload: { displayName: "Старший мастер", phone: "+79991234567", role: "ADMIN" },
+      payload: { displayName: "Старший мастер", phone: "+79991234567", role },
     });
 
     expect(response.statusCode).toBe(400);

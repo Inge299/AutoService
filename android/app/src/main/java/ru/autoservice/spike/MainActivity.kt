@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
@@ -98,6 +99,7 @@ import ru.autoservice.spike.data.VisitStatus
 import ru.autoservice.spike.media.VoiceRecorder
 import ru.autoservice.spike.network.OtpChallenge
 import ru.autoservice.spike.network.ApiException
+import ru.autoservice.spike.network.CustomerMatch
 import ru.autoservice.spike.ui.CameraCaptureScreen
 import ru.autoservice.spike.ui.QueueViewModel
 import ru.autoservice.spike.ui.ReportComposerDialog
@@ -217,6 +219,25 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
         return
     }
 
+    if (session?.mustChangePassword == true) {
+        Scaffold(
+            topBar = { TopAppBar(title = { Text("Смените временный пароль") }) },
+            snackbarHost = { SnackbarHost(snackbarHost) },
+        ) { padding ->
+            ChangePasswordScreen(
+                onSubmit = { current, password, completed ->
+                    viewModel.changePassword(current, password, completed) {
+                        completed()
+                        message(authErrorMessage(it))
+                    }
+                },
+                onLogout = { viewModel.logout() },
+                modifier = Modifier.padding(padding),
+            )
+        }
+        return
+    }
+
     // Approval decisions are recorded on the server by a public link. Keep the
     // foreground app current even when the master does not leave this screen.
     LaunchedEffect(session?.accessToken) {
@@ -260,6 +281,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
             }
 
             creatingVisit -> IntakeScreen(
+                onSearchCustomers = { viewModel.searchCustomers(it) },
                 vehicleBrands = vehicleBrandSuggestions,
                 commonComplaints = complaintSuggestions,
                 onCancel = { creatingVisit = false },
@@ -409,13 +431,21 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
 }
 
 @Composable
+private fun BrandTitle() {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Image(painterResource(R.drawable.ic_brand_emblem), contentDescription = null, modifier = Modifier.size(32.dp))
+        Text("AutoService", maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
 private fun LoginScreen(
     onPasswordLogin: (String, String, () -> Unit) -> Unit,
     onRequestCode: (String, (OtpChallenge?) -> Unit) -> Unit,
     onVerifyCode: (String, String, () -> Unit) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var mode by remember { mutableStateOf(LoginMode.SMS) }
+    var mode by remember { mutableStateOf(LoginMode.PASSWORD) }
     var login by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -531,9 +561,6 @@ private fun LoginScreen(
                     enabled = !loading && login.isNotBlank() && password.isNotBlank(),
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(if (loading) "Подключение…" else "Войти") }
-                TextButton(onClick = { mode = LoginMode.SMS }, enabled = !loading) {
-                    Text("Войти по SMS")
-                }
             }
         }
         Text(
@@ -544,6 +571,32 @@ private fun LoginScreen(
 }
 
 private enum class LoginMode { SMS, CODE, PASSWORD }
+
+@Composable
+private fun ChangePasswordScreen(
+    onSubmit: (String, String, () -> Unit) -> Unit,
+    onLogout: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var current by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var confirmation by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(false) }
+    Column(modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("Перед началом работы задайте свой пароль: минимум 12 символов.")
+        OutlinedTextField(current, { current = it }, label = { Text("Временный пароль") }, singleLine = true,
+            visualTransformation = PasswordVisualTransformation(), enabled = !loading)
+        OutlinedTextField(password, { password = it }, label = { Text("Новый пароль") }, singleLine = true,
+            visualTransformation = PasswordVisualTransformation(), enabled = !loading)
+        OutlinedTextField(confirmation, { confirmation = it }, label = { Text("Повторите пароль") }, singleLine = true,
+            visualTransformation = PasswordVisualTransformation(), enabled = !loading)
+        Button(onClick = { loading = true; onSubmit(current, password) { loading = false } },
+            enabled = !loading && current.isNotEmpty() && password.length in 12..256 && password == confirmation) {
+            Text(if (loading) "Сохранение…" else "Сохранить пароль")
+        }
+        TextButton(onClick = onLogout, enabled = !loading) { Text("Выйти") }
+    }
+}
 
 private fun authErrorMessage(error: Throwable): String = when (error.message) {
     "invalid_credentials" -> "Неверный логин или пароль"
@@ -716,7 +769,8 @@ private fun VisitsScreen(
 }
 
 @Composable
-private fun IntakeScreen(
+internal fun IntakeScreen(
+    onSearchCustomers: suspend (String) -> List<CustomerMatch>,
     vehicleBrands: List<String>,
     commonComplaints: List<String>,
     onCancel: () -> Unit,
@@ -729,13 +783,74 @@ private fun IntakeScreen(
     var plate by remember { mutableStateOf("") }
     var mileage by remember { mutableStateOf("") }
     var complaint by remember { mutableStateOf("") }
+    var search by remember { mutableStateOf("") }
+    var matches by remember { mutableStateOf<List<CustomerMatch>>(emptyList()) }
+    var searchMessage by remember { mutableStateOf<String?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    var selectedVehicle by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(bottom = 24.dp),
-        modifier = modifier.fillMaxSize().padding(16.dp),
+        modifier = modifier.fillMaxSize().imePadding().padding(16.dp).testTag("intake-form"),
     ) {
         item { Text("Новый визит", style = MaterialTheme.typography.headlineSmall) }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Клиент уже был у нас?", style = MaterialTheme.typography.titleMedium)
+                OutlinedTextField(value = search, onValueChange = { search = it; matches = emptyList(); searchMessage = null },
+                    label = { Text("Госномер или телефон клиента") }, singleLine = true,
+                    enabled = !searching, modifier = Modifier.fillMaxWidth())
+                OutlinedButton(onClick = {
+                    scope.launch {
+                        searching = true
+                        searchMessage = null
+                        try {
+                            matches = onSearchCustomers(search)
+                            searchMessage = if (matches.isEmpty()) "Не найдено. Заполните данные нового клиента ниже."
+                                else "Выберите автомобиль клиента."
+                        } catch (error: Exception) {
+                            if (error is kotlinx.coroutines.CancellationException) throw error
+                            matches = emptyList()
+                            searchMessage = "Не удалось выполнить поиск. Проверьте соединение и повторите."
+                        } finally { searching = false }
+                    }
+                }, enabled = !searching && search.trim().length >= 3, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (searching) "Поиск…" else "Найти клиента")
+                }
+                searchMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (matches.size == 25) Text("Показаны первые 25 клиентов. Уточните запрос.", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        items(matches, key = { "customer-${it.id}" }) { customer ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(customer.name.ifBlank { "Клиент" }, style = MaterialTheme.typography.titleMedium)
+                    Text(customer.phone)
+                    customer.vehicles.forEach { existing ->
+                        OutlinedButton(onClick = {
+                            customerName = customer.name
+                            phone = customer.phone
+                            vehicle = existing.label
+                            plate = existing.licensePlate
+                            mileage = ""
+                            selectedVehicle = "${existing.label} · ${existing.licensePlate}"
+                            matches = emptyList()
+                            searchMessage = null
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text("${existing.label.ifBlank { "Автомобиль" }} · ${existing.licensePlate.ifBlank { "Без госномера" }}")
+                        }
+                    }
+                    TextButton(onClick = {
+                        customerName = customer.name; phone = customer.phone
+                        vehicle = ""; plate = ""; mileage = ""; selectedVehicle = null
+                        matches = emptyList(); searchMessage = "Клиент выбран. Укажите новый автомобиль ниже."
+                    }) { Text("Другой автомобиль этого клиента") }
+                }
+            }
+        }
+        selectedVehicle?.let { selected -> item { Text("Выбран: $selected. Укажите текущий пробег и жалобы.", style = MaterialTheme.typography.bodySmall) } }
         item {
             OutlinedTextField(
                 value = phone,
@@ -1112,6 +1227,9 @@ private fun VisitScreen(
                 initialCompletedWork = visit.reportCompletedWork.orEmpty(),
                 initialRecommendations = visit.reportRecommendations.orEmpty(),
                 initialNextVisitAtEpochMs = visit.reportNextVisitAtEpochMs,
+                completedFindingTitles = findings.filter { it.status == FindingStatus.COMPLETED }.map { it.title },
+                futureFindingTitles = findings.filter { it.status != FindingStatus.COMPLETED && it.status != FindingStatus.DECLINED &&
+                    (it.status == FindingStatus.DEFERRED || it.priority == FindingPriority.PLANNED) }.map { it.title },
                 onDismiss = { showReportComposer = false },
                 onPublish = { draft ->
                     showReportComposer = false

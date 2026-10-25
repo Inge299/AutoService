@@ -17,6 +17,7 @@ import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.time.Instant
 
 class ApiException(val statusCode: Int, message: String) : IOException(message)
@@ -41,6 +42,9 @@ data class ReportLink(
     val publicUrl: String,
     val expiresAtEpochMs: Long,
 )
+
+data class CustomerVehicle(val id: String, val label: String, val licensePlate: String)
+data class CustomerMatch(val id: String, val name: String, val phone: String, val vehicles: List<CustomerVehicle>)
 
 interface WorkshopRemote {
     suspend fun loadWorkshop(): WorkshopSnapshot
@@ -74,6 +78,19 @@ class AutoServiceApi(
     private val baseUrl = baseUrl.trimEnd('/')
     private val refreshMutex get() = authStore.refreshMutex
 
+    suspend fun searchCustomers(query: String): List<CustomerMatch> = withContext(Dispatchers.IO) {
+        val response = requestArray("GET", "/v1/customers?q=${URLEncoder.encode(query.trim(), "UTF-8")}&limit=25")
+        List(response.length()) { index ->
+            val customer = response.getJSONObject(index)
+            val vehicles = customer.getJSONArray("vehicles")
+            CustomerMatch(customer.getString("id"), customer.getString("name"), customer.getString("phone"),
+                List(vehicles.length()) { vehicleIndex ->
+                    val vehicle = vehicles.getJSONObject(vehicleIndex)
+                    CustomerVehicle(vehicle.getString("id"), vehicle.getString("label"), vehicle.getString("licensePlate"))
+                })
+        }
+    }
+
     suspend fun login(login: String, password: String): AuthSession = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("login", login.trim())
@@ -88,6 +105,7 @@ class AutoServiceApi(
             workshopId = json.getString("workshopId"),
             displayName = json.getString("displayName"),
             role = json.getString("role"),
+            mustChangePassword = json.optBoolean("mustChangePassword", false),
         )
         authStore.save(session)
         session
@@ -123,9 +141,16 @@ class AutoServiceApi(
             workshopId = identity.getString("workshopId"),
             displayName = identity.getString("displayName"),
             role = identity.getString("role"),
+            mustChangePassword = identity.optBoolean("mustChangePassword", false),
         )
         authStore.save(session)
         session
+    }
+
+    suspend fun changePassword(currentPassword: String, newPassword: String) = withContext(Dispatchers.IO) {
+        request("POST", "/v1/auth/change-password", JSONObject()
+            .put("currentPassword", currentPassword).put("newPassword", newPassword))
+        authStore.session.value?.let { authStore.save(it.copy(mustChangePassword = false)) }
     }
 
     suspend fun logout() = withContext(Dispatchers.IO) {
