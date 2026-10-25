@@ -207,7 +207,10 @@
 .visit-state small{font-size:11px}
 .reminder-mini strong{font-size:12px;line-height:1.4}
 .reminder-mini small{font-size:11px;line-height:1.45}
-.reminder-mini>span{width:auto;min-width:72px;min-height:38px;height:auto;padding:4px 6px;line-height:1.2}
+.reminder-mini{grid-template-columns:88px minmax(0,1fr);align-items:start}
+.reminder-mini>div{min-width:0}
+.reminder-mini>span{width:100%;min-width:0;min-height:38px;height:auto;padding:4px 6px;line-height:1.2}
+.login-form-wrap>.button{width:100%;margin-top:12px}
 .finding-top h3{font-size:15px;line-height:1.4}
 .finding-price{font-size:14px;font-variant-numeric:tabular-nums}
 .operations-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:24px;background:var(--surface);border-block:1px solid var(--line)}
