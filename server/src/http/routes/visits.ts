@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient, VisitStatus } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { normalizePhone } from "../../security/phone.js";
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 const listQuerySchema = z.object({
@@ -12,7 +13,7 @@ const listQuerySchema = z.object({
 });
 const bodySchema = z.object({
   customerName: z.string().trim().max(200),
-  customerPhone: z.string().trim().min(10).max(32),
+  customerPhone: z.string().trim().min(10).max(32).transform(normalizePhone),
   vehicleLabel: z.string().trim().max(200),
   licensePlate: z.string().trim().max(32),
   mileageKm: z.number().int().nonnegative().nullable(),
@@ -21,6 +22,8 @@ const bodySchema = z.object({
   createdAtEpochMs: z.number().int().nonnegative(),
   updatedAtEpochMs: z.number().int().nonnegative(),
   baseServerVersion: z.number().int().positive().nullable().default(null),
+}).refine(body => body.vehicleLabel.length > 0 || body.licensePlate.length > 0, {
+  path: ["vehicleLabel"], message: "vehicle_or_plate_required",
 });
 
 export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
@@ -88,6 +91,10 @@ export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
       const visit = await serializable(prisma, async (tx) => {
         const existing = await tx.visit.findUnique({ where: { id } });
         if (existing && existing.workshopId !== workshopId) return null;
+        if (existing && ["COMPLETED", "CANCELLED"].includes(existing.status)) {
+          return { closed: true as const };
+        }
+        if (body.status === "COMPLETED") return { reportRequired: true as const };
         if (existing && body.baseServerVersion !== existing.serverVersion) {
           return { conflict: true as const, visit: existing };
         }
@@ -166,6 +173,8 @@ export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
       });
 
       if (!visit) return reply.code(404).send({ error: "not_found" });
+      if (visit.closed) return reply.code(409).send({ error: "visit_closed" });
+      if (visit.reportRequired) return reply.code(409).send({ error: "visit_status_managed_by_report" });
       if (visit.conflict) return reply.code(409).send({ error: "version_conflict", server: visit.visit });
       return reply.send(visit.visit);
     });
