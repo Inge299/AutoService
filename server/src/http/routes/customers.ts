@@ -11,6 +11,36 @@ const querySchema = z.object({
 
 export function customerRoutes(prisma: PrismaClient): FastifyPluginAsync {
   return async (app) => {
+    app.get("/v1/customers/:id/history", async (request, reply) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const query = z.object({ page: z.coerce.number().int().min(1).max(1_000_000).default(1),
+        futurePage: z.coerce.number().int().min(1).max(1_000_000).default(1), vehicleId: z.string().uuid().optional() }).parse(request.query);
+      const workshopId = request.actor.workshopId, pageSize = 20;
+      const result = await prisma.$transaction(async tx => {
+        const customer = await tx.customer.findFirst({ where: { id, workshopId }, select: { id: true, name: true, phone: true } });
+        if (!customer) return null;
+        const vehicles = await tx.vehicle.findMany({ where: { workshopId, customerId: id }, orderBy: [{ label: "asc" }, { id: "asc" }],
+          select: { id: true, label: true, licensePlate: true, _count: { select: { visits: true } } } });
+        if (query.vehicleId && !vehicles.some(v => v.id === query.vehicleId)) return null;
+        const where = { workshopId, customerId: id, ...(query.vehicleId ? { vehicleId: query.vehicleId } : {}) };
+        const futureWhere = { workshopId, status: "DEFERRED" as const, visit: where };
+        const [visits, total, futureWork, futureTotal] = await Promise.all([
+          tx.visit.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (query.page - 1) * pageSize, take: pageSize + 1,
+            include: { findings: { orderBy: { createdAt: "asc" }, include: { _count: { select: { media: true } }, media: { where: { state: { in: ["VERIFIED", "READY"] } }, select: { id: true } } } },
+              _count: { select: { media: true } }, report: { select: { status: true, completedWork: true, recommendations: true, nextVisitAt: true, publishedAt: true } } } }),
+          tx.visit.count({ where }),
+          tx.finding.findMany({ where: futureWhere, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (query.futurePage - 1) * pageSize, take: pageSize + 1,
+            select: { id: true, title: true, description: true, priceRub: true, priority: true, visitId: true, createdAt: true,
+              visit: { select: { vehicleLabel: true, licensePlate: true, report: { select: { status: true, nextVisitAt: true } } } } } }),
+          tx.finding.count({ where: futureWhere }),
+        ]);
+        return { customer, vehicles, visits: pageEnvelope(visits, total, { page: query.page, limit: pageSize }),
+          futureWork: pageEnvelope(futureWork, futureTotal, { page: query.futurePage, limit: pageSize }) };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+      if (!result) return reply.code(404).send({ error: "not_found" });
+      return result;
+    });
+
     app.get("/v1/customers", async (request) => {
       const query = querySchema.parse(request.query);
       const search = query.q || undefined;

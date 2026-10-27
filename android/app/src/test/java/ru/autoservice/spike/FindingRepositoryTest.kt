@@ -171,6 +171,7 @@ class FindingRepositoryTest {
     )
 
     private class FakeFindingDao : FindingDao {
+        override fun observeCallRequestedVisitIds() = kotlinx.coroutines.flow.flowOf(emptyList<String>())
         private val findings = MutableStateFlow<List<FindingEntity>>(emptyList())
         var saved: FindingEntity? = null
 

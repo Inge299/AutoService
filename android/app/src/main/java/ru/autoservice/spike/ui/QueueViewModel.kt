@@ -54,6 +54,9 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         initialValue = emptyList(),
     )
 
+    val callRequestedVisitIds: StateFlow<List<String>> = session.flatMapLatest { it?.let { container.forWorkshop(it.workshopId).database.findingDao().observeCallRequestedVisitIds() } ?: flowOf(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val vehicleBrandSuggestions: StateFlow<List<String>> = session.flatMapLatest { it?.let { container.forWorkshop(it.workshopId).localDictionaryRepository.suggestions(DictionaryKind.VEHICLE_BRAND) } ?: flowOf(SeededQuickValues.vehicleBrands) }
         .stateIn(
             scope = viewModelScope,

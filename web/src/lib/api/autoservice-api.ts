@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { FindingPriority, FindingStatus, VisitStatus, VisitMedia, ListPage, WorkshopSummary } from "@/lib/domain";
+import type { FindingPriority, FindingStatus, VisitStatus, VisitMedia, ListPage, WorkshopSummary, CustomerHistory } from "@/lib/domain";
 import type { BackendTokens, WebSession } from "@/lib/auth/session";
 import type { CustomerWebSession } from "@/lib/auth/session";
 
@@ -61,6 +61,7 @@ export interface ApiFinding {
 
 export interface ApiVisit {
   id: string;
+  customerId?: string | null;
   customerName: string;
   customerPhone: string;
   vehicleLabel: string;
@@ -357,6 +358,17 @@ export function listApiCustomerPage(session: WebSession, search?: string, page =
   const query = new URLSearchParams({ page: String(page), limit: "50" });
   if (search?.trim()) query.set("q", search.trim());
   return request<ListPage<ApiCustomer>>(`/v1/customers?${query}`, session);
+}
+
+export async function getApiCustomerHistory(session: WebSession, id: string, page: number, futurePage: number, vehicleId?: string) {
+  const query = new URLSearchParams({ page: String(page), futurePage: String(futurePage) });
+  if (vehicleId) query.set("vehicleId", vehicleId);
+  try {
+    return await request<Omit<CustomerHistory, "visits"> & { visits: ListPage<ApiVisit> }>(`/v1/customers/${encodeURIComponent(id)}/history?${query}`, session);
+  } catch (error) {
+    if (error instanceof AutoServiceApiError && (error.status === 404 || error.status === 400)) return null;
+    throw error;
+  }
 }
 
 export function listApiReminderPage(session: WebSession, page = 1) {

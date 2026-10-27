@@ -50,6 +50,7 @@ export interface VisitEvent {
 
 export interface Visit {
   id: string;
+  customerId?: string | null;
   vehicle: string;
   plate: string;
   customer: string;
@@ -94,6 +95,14 @@ export interface Customer {
   visitsCount: number;
   lastVisit: string;
   nextContact?: string;
+}
+
+export interface CustomerHistory {
+  customer: { id: string; name: string; phone: string };
+  vehicles: Array<{ id: string; label: string; licensePlate: string; _count: { visits: number } }>;
+  visits: ListPage<Visit & { recommendations: string | null; nextVisitAt: string | null }>;
+  futureWork: ListPage<{ id: string; title: string; description: string; priceRub: number | null; priority: FindingPriority; visitId: string;
+    visit: { vehicleLabel: string; licensePlate: string; report: { status: "DRAFT" | "PUBLISHED"; nextVisitAt: string | null } | null } }>;
 }
 
 export interface Reminder {

@@ -78,6 +78,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.material3.FilterChip
+import ru.autoservice.spike.ui.QueueFilter
+import ru.autoservice.spike.ui.filterVisitQueue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -138,6 +143,8 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     val snackbarHost = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val visits by viewModel.visits.collectAsState()
+    val callRequestedVisitIds by viewModel.callRequestedVisitIds.collectAsState()
+    val queueState = rememberSaveableStateHolder()
     val mediaQueue by viewModel.assets.collectAsState()
     val vehicleBrandSuggestions by viewModel.vehicleBrandSuggestions.collectAsState()
     val complaintSuggestions by viewModel.complaintSuggestions.collectAsState()
@@ -442,13 +449,14 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                 modifier = Modifier.padding(padding),
             )
 
-            else -> VisitsScreen(
+            else -> queueState.SaveableStateProvider(session!!.workshopId) { VisitsScreen(
                 visits = visits,
                 mediaQueue = mediaQueue,
+                attentionVisitIds = callRequestedVisitIds.toSet(),
                 onCreate = { creatingVisit = true },
                 onOpen = { selectedVisitId = it.id },
                 modifier = Modifier.padding(padding),
-            )
+            ) }
         }
     }
 }
@@ -709,13 +717,16 @@ internal fun VisitsScreen(
     onCreate: () -> Unit,
     onOpen: (VisitEntity) -> Unit,
     modifier: Modifier = Modifier,
+    attentionVisitIds: Set<String> = emptySet(),
 ) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf(QueueFilter.ACTIVE) }
+    val filtered = remember(visits, query, filter, attentionVisitIds) { filterVisitQueue(visits, query, filter, attentionVisitIds) }
     val pendingCount = mediaQueue.count { it.syncState != SyncState.SYNCED }
     val attentionCount = mediaQueue.count { it.syncState == SyncState.RETRY || it.syncState == SyncState.BLOCKED }
-    val activeVisits = visits
+    val activeVisits = filtered
         .filter { it.status !in setOf(VisitStatus.COMPLETED, VisitStatus.CANCELLED) }
-        .sortedWith(compareBy<VisitEntity> { it.status.queueRank() }.thenByDescending { it.updatedAtEpochMs })
-    val archivedVisits = visits
+    val archivedVisits = filtered
         .filter { it.status in setOf(VisitStatus.COMPLETED, VisitStatus.CANCELLED) }
         .sortedByDescending { it.updatedAtEpochMs }
 
@@ -776,13 +787,26 @@ internal fun VisitsScreen(
                         }
                     }
                 }
+                OutlinedTextField(query, { query = it }, label = { Text("Номер, телефон или имя") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("queue-search"), trailingIcon = {
+                        if (query.isNotEmpty()) TextButton(onClick = { query = "" }) { Text("Сбросить") }
+                    })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(QueueFilter.ACTIVE, QueueFilter.ARCHIVE).forEach { option -> FilterChip(selected = filter == option, onClick = { filter = option },
+                        label = { Text(option.label) }, modifier = Modifier.weight(1f).testTag("queue-filter-${option.name}")) }
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    QueueFilter.entries.filter { it !in setOf(QueueFilter.ACTIVE, QueueFilter.ARCHIVE) }.forEach { option -> FilterChip(selected = filter == option, onClick = { filter = option },
+                        label = { Text(option.label) }, modifier = Modifier.testTag("queue-filter-${option.name}")) }
+                }
+                Text("Найдено: ${filtered.size} · всего визитов: ${visits.size}", style = MaterialTheme.typography.bodySmall)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                 ) {
-                    Text("В работе", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    Text(filter.label, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     Text(
-                        activeVisits.size.toString(),
+                        filtered.size.toString(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -792,16 +816,16 @@ internal fun VisitsScreen(
         if (visits.isEmpty()) {
             item {
                 Text(
-                    "Пока нет визитов. Первый можно создать без подключения к сети.",
+                    "Пока нет визитов. Примите первый автомобиль.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
             }
         } else {
-            if (activeVisits.isEmpty()) {
+            if (filtered.isEmpty()) {
                 item {
                     Text(
-                        "Сейчас нет активных визитов.",
+                        "Ничего не найдено. Измените запрос или фильтр.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 8.dp),
@@ -809,7 +833,8 @@ internal fun VisitsScreen(
                 }
             }
             items(activeVisits, key = { it.id }) { visit ->
-                Box(Modifier.padding(horizontal = 20.dp)) {
+                Column(Modifier.padding(horizontal = 20.dp)) {
+                    if (visit.id in attentionVisitIds) Text("Клиент просит позвонить", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
                     VisitQueueRow(visit = visit, archived = false, onOpen = { onOpen(visit) })
                 }
             }
@@ -2047,14 +2072,6 @@ private fun VisitStatus.label(): String = when (this) {
     VisitStatus.WAITING_APPROVAL -> "На согласовании"
     VisitStatus.COMPLETED -> "Завершён"
     VisitStatus.CANCELLED -> "Отменён"
-}
-
-private fun VisitStatus.queueRank(): Int = when (this) {
-    VisitStatus.DRAFT -> 0
-    VisitStatus.IN_REPAIR -> 1
-    VisitStatus.WAITING_APPROVAL -> 2
-    VisitStatus.COMPLETED -> 3
-    VisitStatus.CANCELLED -> 4
 }
 
 private fun FindingStatus.actionRank(): Int = when (this) {

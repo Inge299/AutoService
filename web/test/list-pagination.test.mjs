@@ -21,3 +21,9 @@ test("page navigation preserves phone plus signs, Cyrillic queries and visit sta
   assert.equal(url.pathname, "/visits"); assert.equal(url.searchParams.get("page"), "3");
   assert.equal(url.searchParams.get("q"), "+7999 А123АА77"); assert.equal(url.searchParams.get("status"), "IN_REPAIR");
 });
+
+test("customer history keeps the car and the other independent page", () => {
+  const url = new URL(paginationHref("/customers/test", 3, undefined, undefined, {vehicleId:"car", page:"2"}, "futurePage"), "https://example.test");
+  assert.equal(url.searchParams.get("vehicleId"), "car"); assert.equal(url.searchParams.get("page"), "2");
+  assert.equal(url.searchParams.get("futurePage"), "3");
+});

@@ -6,11 +6,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeFalse
@@ -47,9 +50,32 @@ class VisitQueueLayoutTest {
         queue.performScrollToNode(hasText("Активный автомобиль"))
         compose.onNodeWithText("Активный автомобиль").assertIsDisplayed().performClick()
         compose.waitUntil(5_000) { opened == "active" }
+        queue.performScrollToNode(hasTestTag("queue-filter-ARCHIVE"))
+        compose.onNodeWithTag("queue-filter-ARCHIVE").performScrollTo().performClick()
         queue.performScrollToNode(hasText("Завершённый автомобиль"))
         compose.onNodeWithText("Завершённый автомобиль").assertIsDisplayed().performClick()
         compose.waitUntil(5_000) { opened == "completed" }
         compose.runOnIdle { assertEquals("completed", opened) }
+    }
+
+    @Test fun searchFindsLatinPlateAndArchiveKeepsQuery() {
+        val active = VisitEntity("active", "Семён", "+79991112233", "Тестовый активный", "А123ВС77", null, "", VisitStatus.DRAFT, 1, 1, SyncState.SYNCED)
+        val completed = active.copy(id = "closed", vehicleLabel = "Тестовый архивный", status = VisitStatus.COMPLETED)
+        compose.setContent { AutoServiceTheme { VisitsScreen(listOf(active, completed), emptyList(), {}, {}) } }
+        val queue = compose.onNodeWithTag("visit-queue")
+        queue.performScrollToNode(hasTestTag("queue-search"))
+        compose.onNodeWithTag("queue-search").performTextInput("a123bc77")
+        queue.performScrollToNode(hasText("Тестовый активный"))
+        compose.onNodeWithText("Тестовый активный").assertIsDisplayed()
+        queue.performScrollToNode(hasTestTag("queue-filter-ARCHIVE"))
+        compose.onNodeWithTag("queue-filter-ARCHIVE").performScrollTo().performClick()
+        queue.performScrollToNode(hasText("Тестовый архивный"))
+        compose.onNodeWithText("Тестовый архивный").assertIsDisplayed()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
+            java.io.File(instrumentation.targetContext.cacheDir, "queue-search-qa.png").outputStream().use {
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+        }
     }
 }
