@@ -75,6 +75,8 @@ class AutoServiceApi(
     baseUrl: String,
     private val authStore: AuthStore,
     private val expectedWorkshopId: String? = null,
+    private val connectionTimeoutMs: Int = 15_000,
+    private val requestTimeoutMs: Int = 60_000,
 ) : WorkshopRemote {
     private val baseUrl = baseUrl.trimEnd('/')
     private val refreshMutex get() = authStore.refreshMutex
@@ -321,7 +323,7 @@ class AutoServiceApi(
         try {
             connection.requestMethod = "PUT"
             connection.doOutput = true
-            connection.connectTimeout = 15_000
+            connection.connectTimeout = connectionTimeoutMs
             connection.readTimeout = 60_000
             connection.setFixedLengthStreamingMode(file.length())
             headers.keys().forEach { name -> connection.setRequestProperty(name, headers.getString(name)) }
@@ -459,8 +461,8 @@ class AutoServiceApi(
         val connection = URL("$baseUrl$path").openConnection() as HttpURLConnection
         try {
             connection.requestMethod = method
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 60_000
+            connection.connectTimeout = connectionTimeoutMs
+            connection.readTimeout = requestTimeoutMs
             connection.setRequestProperty("accept", "application/json")
             if (accessToken != null) connection.setRequestProperty("authorization", "Bearer $accessToken")
             if (body != null) {

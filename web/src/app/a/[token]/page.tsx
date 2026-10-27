@@ -1,4 +1,5 @@
 import { PublicUnavailable } from "@/components/public-unavailable";
+import { CustomerContact } from "@/components/customer-contact";
 import { CustomerHeader } from "@/components/customer-header";
 import { ActionLink } from "@/components/action";
 /* eslint-disable @next/next/no-img-element -- signed object-storage hosts are runtime-configured. */
@@ -21,7 +22,6 @@ export default async function ApprovalPage({ params }: { params: Promise<{ token
   }
   if (!approval) return <PublicUnavailable />;
   const priority = priorityMeta[approval.finding.priority];
-  const phoneLink = approval.workshop.phone?.replace(/[^+\d]/g, "");
   const approvalStatus = approval.decision
     ? {
         APPROVED: { label: "Согласовано", tone: "success" },
@@ -45,7 +45,7 @@ export default async function ApprovalPage({ params }: { params: Promise<{ token
             {approval.media.length > 0 && <div className="evidence-media" aria-label="Материалы мастера">{approval.media.map((media) => media.kind === "PHOTO" ? <figure key={media.id}><img src={media.url} alt="Материал мастера" /><figcaption><Icon name="camera" /> Фото мастера</figcaption></figure> : media.kind === "VIDEO" ? <figure key={media.id}><video controls preload="metadata" src={media.url} /><figcaption><Icon name="camera" /> Видео мастера</figcaption></figure> : <figure key={media.id}><audio controls preload="metadata" src={media.url} /><figcaption><Icon name="phone" /> Голосовая заметка</figcaption></figure>)}</div>}
             <div className="price-box"><div><small>Стоимость работы</small><strong>{formatRub(approval.finding.priceRub)}</strong></div><p>Работа и материалы включены. Изменение стоимости потребует нового согласования.</p></div>
           </section>
-          <aside className="customer-decision"><ApprovalDecision token={token} priceRub={approval.finding.priceRub} initialDecision={approval.decision} /><div className="customer-help"><Icon name="phone" /><p><strong>Остались вопросы?</strong><small>{approval.workshop.phone ? <>Позвоните по номеру <a href={`tel:${phoneLink}`}>{approval.workshop.phone}</a> или выберите «Нужен звонок».</> : <>Выберите «Нужен звонок», и мастерская свяжется с вами.</>}</small></p></div><ActionLink variant="secondary"  href={`/customer/login?approval=${encodeURIComponent(token)}`}>Личный кабинет</ActionLink><ActionLink variant="secondary"  href={`/customer/register?approval=${encodeURIComponent(token)}`}>Создать кабинет</ActionLink></aside>
+          <aside className="customer-decision"><ApprovalDecision token={token} priceRub={approval.finding.priceRub} initialDecision={approval.decision} /><CustomerContact phone={approval.workshop.phone} /><ActionLink variant="secondary"  href={`/customer/login?approval=${encodeURIComponent(token)}`}>Личный кабинет</ActionLink><ActionLink variant="secondary"  href={`/customer/register?approval=${encodeURIComponent(token)}`}>Создать кабинет</ActionLink></aside>
         </div>
       </div>
       <footer className="customer-footer"><span>AutoService</span></footer>

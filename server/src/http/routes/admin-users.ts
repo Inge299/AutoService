@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type MembershipRole, type PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { hashPassword } from "../../security/password.js";
+import { hashPassword, MIN_PASSWORD_LENGTH } from "../../security/password.js";
 import { normalizePhone } from "../../security/phone.js";
 
 const loginPattern = /^[\p{L}\p{N}._@-]+$/u;
@@ -13,7 +13,7 @@ const optionalLoginSchema = z.preprocess(
 );
 const optionalPasswordSchema = z.preprocess(
   (value) => typeof value === "string" && value === "" ? undefined : value,
-  z.string().min(8).max(256).optional(),
+  z.string().min(MIN_PASSWORD_LENGTH).max(256).optional(),
 );
 const createSchema = z.object({
   login: optionalLoginSchema,
@@ -34,7 +34,7 @@ const createSchema = z.object({
 });
 const stateSchema = z.object({ isActive: z.boolean() });
 const roleSchema = z.object({ role: z.enum(["ADMIN", "EMPLOYEE"]) });
-const passwordSchema = z.object({ password: z.string().min(8).max(256) });
+const passwordSchema = z.object({ password: z.string().min(MIN_PASSWORD_LENGTH).max(256) });
 
 function requireAdmin(request: FastifyRequest, reply: { code(status: number): { send(payload: unknown): unknown } }) {
   if (request.actor.role !== "ADMIN") {

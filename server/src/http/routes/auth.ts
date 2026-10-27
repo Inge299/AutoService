@@ -2,7 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { issueSession, revokeSession, rotateSession } from "../../security/auth-session.js";
-import { hashPassword, verifyPassword } from "../../security/password.js";
+import { hashPassword, verifyPassword, MIN_PASSWORD_LENGTH } from "../../security/password.js";
 
 const loginSchema = z.object({
   login: z.string().trim().min(1).max(128).transform((value) => value.toLocaleLowerCase("ru-RU")),
@@ -11,7 +11,7 @@ const loginSchema = z.object({
 const refreshSchema = z.object({ refreshToken: z.string().min(40).max(256) });
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(256),
-  newPassword: z.string().min(12).max(256),
+  newPassword: z.string().min(MIN_PASSWORD_LENGTH).max(256),
 });
 
 type AttemptWindow = { count: number; resetAt: number };

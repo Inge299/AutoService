@@ -127,6 +127,7 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
     fun changePassword(current: String, password: String, onSuccess: () -> Unit, onFailure: (Throwable) -> Unit) {
         viewModelScope.launch {
             runCatching {
+                require(isValidNewPassword(password)) { "Пароль должен содержать от $MIN_PASSWORD_LENGTH до 256 символов" }
                 container.api.changePassword(current, password)
                 synchronize()
             }.onSuccess { onSuccess() }.onFailure(onFailure)

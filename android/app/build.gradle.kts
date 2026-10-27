@@ -98,6 +98,9 @@ ksp {
 }
 
 dependencies {
+    // Room's migration schema reader uses serialization-json 1.8.1. Keep its
+    // core ABI aligned in the app and instrumentation APK (AGP consistent resolution).
+    implementation(platform("org.jetbrains.kotlinx:kotlinx-serialization-bom:1.8.1"))
     val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)

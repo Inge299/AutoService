@@ -1,4 +1,5 @@
 import { Button } from "@/components/action";
+import { MIN_PASSWORD_LENGTH } from "@/lib/password-policy";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
@@ -23,8 +24,8 @@ const messages: Record<string, string> = {
 };
 
 const errors: Record<string, string> = {
-  invalid_input: "Укажите имя, логин и временный пароль (минимум 8 символов). Телефон необязателен.",
-  password_length: "Пароль должен содержать не менее 8 символов.",
+  invalid_input: `Укажите имя, логин и временный пароль (минимум ${MIN_PASSWORD_LENGTH} символов). Телефон необязателен.`,
+  password_length: `Пароль должен содержать не менее ${MIN_PASSWORD_LENGTH} символов.`,
   login_taken: "Этот логин уже используется.",
   phone_taken: "Этот телефон уже привязан к другому пользователю.",
   cannot_disable_self: "Нельзя отключить свою учётную запись.",
@@ -51,7 +52,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
         <label>Имя<input name="displayName" minLength={2} maxLength={120} required placeholder="Иван Петров" /></label>
         <label>Рабочий телефон <small>необязательно</small><input name="phone" minLength={8} maxLength={32} placeholder="+7 999 000-00-00" inputMode="tel" /></label>
         <label>Роль<select name="role" defaultValue="EMPLOYEE"><option value="EMPLOYEE">Сотрудник</option><option value="ADMIN">Администратор</option></select></label>
-        <label>Временный пароль<input name="password" required type="password" minLength={8} maxLength={256} autoComplete="new-password" placeholder="Минимум 8 символов" /></label>
+        <label>Временный пароль<input name="password" required type="password" minLength={MIN_PASSWORD_LENGTH} maxLength={256} autoComplete="new-password" placeholder={`Минимум ${MIN_PASSWORD_LENGTH} символов`} /></label>
         <Button variant="primary" className="" type="submit">Создать пользователя</Button>
       </form>
     </section>
@@ -69,7 +70,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
           </form>
           <form action={resetUserPasswordAction} className="admin-inline-form admin-password-form">
             <input type="hidden" name="userId" value={user.id} />
-            <input name="password" type="password" minLength={8} maxLength={256} required autoComplete="new-password" placeholder="Новый пароль" />
+            <input name="password" type="password" minLength={MIN_PASSWORD_LENGTH} maxLength={256} required autoComplete="new-password" placeholder="Новый пароль" />
             <Button type="submit" variant="secondary" className=" button-small">Сменить</Button>
           </form>
           <form action={setUserStateAction}>
