@@ -13,6 +13,22 @@ import ru.autoservice.spike.data.VisitRepository
 
 class VisitRepositoryTest {
     @Test
+    fun `repeat intake passes selected IDs and normalizes a ten digit phone`() = runTest {
+        val delegate = FakeWorkshopRemote()
+        var selected: Pair<String?, String?>? = null
+        val remote = object : ru.autoservice.spike.network.WorkshopRemote by delegate {
+            override suspend fun saveIntake(visit: VisitEntity, customerId: String?, vehicleId: String?): VisitEntity {
+                selected = customerId to vehicleId
+                return delegate.saveVisit(visit)
+            }
+        }
+        val repository = VisitRepository(FakeVisitDao(), remote)
+        val visit = repository.createVisit(VisitDraft("Test", "9991234567", "Toyota renamed", "А123АА77", 123456, "Test",
+            customerId = "selected-client", vehicleId = "selected-car"))
+        assertEquals("+79991234567", visit.customerPhone)
+        assertEquals("selected-client" to "selected-car", selected)
+    }
+    @Test
     fun `creates offline visit and normalizes russian phone`() = runTest {
         val dao = FakeVisitDao()
         val repository = VisitRepository(visitDao = dao, api = FakeWorkshopRemote(), clock = { 123L })

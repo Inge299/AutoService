@@ -33,7 +33,7 @@ class VisitRepository(
             updatedAtEpochMs = now,
             syncState = SyncState.LOCAL,
         )
-        val saved = api.saveVisit(visit)
+        val saved = api.saveIntake(visit, draft.customerId, draft.vehicleId)
         visitDao.upsert(saved)
         return saved
     }
@@ -73,6 +73,7 @@ class VisitRepository(
         return when {
             digits.length == 11 && digits.startsWith("8") -> "+7${digits.drop(1)}"
             digits.length == 11 && digits.startsWith("7") -> "+$digits"
+            digits.length == 10 -> "+7$digits"
             else -> "+$digits"
         }
     }
@@ -85,4 +86,6 @@ data class VisitDraft(
     val licensePlate: String,
     val mileageKm: Int?,
     val complaint: String,
+    val customerId: String? = null,
+    val vehicleId: String? = null,
 )

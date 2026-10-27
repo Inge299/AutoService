@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { FindingPriority, FindingStatus, VisitStatus, VisitMedia } from "@/lib/domain";
+import type { FindingPriority, FindingStatus, VisitStatus, VisitMedia, ListPage, WorkshopSummary } from "@/lib/domain";
 import type { BackendTokens, WebSession } from "@/lib/auth/session";
 import type { CustomerWebSession } from "@/lib/auth/session";
 
@@ -16,6 +16,8 @@ interface VersionedPayload {
 }
 
 export interface VisitUpsertPayload extends VersionedPayload {
+  customerId?: string;
+  vehicleId?: string;
   customerName: string;
   customerPhone: string;
   vehicleLabel: string;
@@ -341,6 +343,28 @@ export function listApiVisits(
   if (filters.status) query.set("status", filters.status);
   const suffix = query.size ? `?${query.toString()}` : "";
   return request<ApiVisit[]>(`/v1/visits${suffix}`, session);
+}
+
+export function listApiVisitPage(session: WebSession, filters: { query?: string; status?: VisitStatus; attention?: boolean } = {}, page = 1, limit = 50) {
+  const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (filters.query?.trim()) query.set("q", filters.query.trim());
+  if (filters.status) query.set("status", filters.status);
+  if (filters.attention) query.set("attention", "true");
+  return request<ListPage<ApiVisit>>(`/v1/visits?${query}`, session);
+}
+
+export function listApiCustomerPage(session: WebSession, search?: string, page = 1) {
+  const query = new URLSearchParams({ page: String(page), limit: "50" });
+  if (search?.trim()) query.set("q", search.trim());
+  return request<ListPage<ApiCustomer>>(`/v1/customers?${query}`, session);
+}
+
+export function listApiReminderPage(session: WebSession, page = 1) {
+  return request<ListPage<ApiReminder>>(`/v1/reminders?page=${page}&limit=50`, session);
+}
+
+export function getApiWorkshopSummary(session: WebSession) {
+  return request<Omit<WorkshopSummary, "upcomingReminders"> & { upcomingReminders: ApiReminder[] }>("/v1/workshop/summary", session);
 }
 
 export async function getApiVisit(id: string, session: WebSession): Promise<ApiVisit | null> {

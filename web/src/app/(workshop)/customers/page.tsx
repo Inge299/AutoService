@@ -3,17 +3,19 @@ import type { Metadata } from "next";
 import { Icon } from "@/components/icons";
 import { PageHeader } from "@/components/page-header";
 import { workshopRepository } from "@/lib/repository";
+import { ListPagination, parsePage } from "@/components/list-pagination";
 
 export const metadata: Metadata = { title: "Клиенты" };
 
-export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const { q } = await searchParams;
-  const customers = await workshopRepository.listCustomers(q);
+export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
+  const { q, page } = await searchParams;
+  const result = await workshopRepository.listCustomerPage(q, parsePage(page));
+  const customers = result.items;
   return (
     <>
       <PageHeader eyebrow="Клиентская база" title="Клиенты и автомобили" description="История формируется автоматически из визитов." />
       <section className="content-card list-card">
-        <div className="list-toolbar"><ListSearch query={q} label="Поиск клиентов" placeholder="Имя, телефон, автомобиль или госномер" /><span className="result-count">{customers.length} клиентов</span></div>
+        <div className="list-toolbar"><ListSearch query={q} label="Поиск клиентов" placeholder="Имя, телефон, автомобиль или госномер" /><span className="result-count">Всего: {result.total}</span></div>
         <div className="customer-table">
           <div className="table-head"><span>Клиент</span><span>Автомобиль</span><span>Визиты</span><span>Следующий контакт</span></div>
           {customers.map((customer) => { const primaryVehicle = customer.vehicles[0] ?? "Автомобиль не указан"; return <article className="customer-row" key={customer.id}>
@@ -24,6 +26,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
           </article>; })}
           {!customers.length && <div className="empty-state"><Icon name="search" /><h3>Клиентов пока нет</h3><p>Карточки появятся автоматически после загрузки визитов.</p></div>}
         </div>
+        <ListPagination path="/customers" {...result} query={q} />
       </section>
     </>
   );

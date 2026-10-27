@@ -33,6 +33,18 @@ private val AutoServiceColors = lightColorScheme(
     onSurfaceVariant = Color(0xFF626D6A),
     outline = Color(0xFFA8B7B2),
     outlineVariant = Color(0xFFDCE5E2),
+    surfaceTint = Color(0xFF0F6B78),
+    surfaceBright = Color(0xFFFFFFFF),
+    surfaceDim = Color(0xFFDCE4E1),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF7FAF9),
+    surfaceContainer = Color(0xFFF1F5F3),
+    surfaceContainerHigh = Color(0xFFEBF0EE),
+    surfaceContainerHighest = Color(0xFFE4EBE8),
+    inverseSurface = Color(0xFF263330),
+    inverseOnSurface = Color(0xFFEDF4F1),
+    inversePrimary = Color(0xFF78D6DE),
+    scrim = Color.Black,
 )
 
 private val AutoServiceShapes = Shapes(
