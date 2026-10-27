@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { Config } from "../src/config.js";
 import type { ObjectStorage } from "../src/infrastructure/object-storage.js";
-import { hashPassword } from "../src/security/password.js";
+import { hashPassword, verifyPassword } from "../src/security/password.js";
 
 const config: Config = {
   NODE_ENV: "test",
@@ -34,6 +34,29 @@ function basePrisma(role: "ADMIN" | "EMPLOYEE" = "ADMIN") {
 }
 
 describe("database authentication and administration", () => {
+  it.each(["1234", "x".repeat(257)])("rejects out-of-range passwords on create, reset and change", async password => {
+    const app = await buildApp(config, { prisma: basePrisma() as unknown as PrismaClient, storage: {} as ObjectStorage });
+    try {
+      for (const [url, payload] of [
+        ["/v1/admin/users", { displayName: "Тестовый сотрудник", login: "boundary", password }],
+        [`/v1/admin/users/${userId}/password`, { password }],
+        ["/v1/auth/change-password", { currentPassword: "old", newPassword: password }],
+      ] as const) expect((await app.inject({ method: "POST", url, headers, payload })).statusCode).toBe(400);
+    } finally { await app.close(); }
+  });
+
+  it("resets to five characters, stores a hash and revokes old sessions", async () => {
+    const update = vi.fn().mockResolvedValue({}), revoke = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = { ...basePrisma(), user: { update }, authSession: { updateMany: revoke },
+      auditEvent: { create: vi.fn().mockResolvedValue({}) }, $transaction: vi.fn(async values => Promise.all(values)) } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+    try {
+      expect((await app.inject({ method: "POST", url: `/v1/admin/users/${userId}/password`, headers, payload: { password: "Qa123" } })).statusCode).toBe(200);
+      expect(await verifyPassword("Qa123", update.mock.calls[0]![0].data.passwordHash)).toBe(true);
+      expect(update.mock.calls[0]![0].data.mustChangePassword).toBe(true); expect(revoke).toHaveBeenCalledOnce();
+    } finally { await app.close(); }
+  });
+
   it("authenticates an active database user", async () => {
     const passwordHash = await hashPassword("strong-password");
     const prisma = {
@@ -204,9 +227,10 @@ describe("database authentication and administration", () => {
 
     const changed = await app.inject({
       method: "POST", url: "/v1/auth/change-password", headers,
-      payload: { currentPassword: "temporary-password", newPassword: "a-new-long-password" },
+      payload: { currentPassword: "temporary-password", newPassword: "Qa123" },
     });
     expect(changed.statusCode).toBe(204);
+    expect(await verifyPassword("Qa123", update.mock.calls[0]![0].data.passwordHash)).toBe(true);
     expect(update).toHaveBeenCalledWith({
       where: { id: userId },
       data: expect.objectContaining({ mustChangePassword: false }),
@@ -261,10 +285,11 @@ describe("database authentication and administration", () => {
       method: "POST",
       url: "/v1/admin/users",
       headers,
-      payload: { displayName: "Иван Петров", login: "ivan", password: "temporary-password", role: "EMPLOYEE" },
+      payload: { displayName: "Иван Петров", login: "ivan", password: "Qa123", role: "EMPLOYEE" },
     });
 
     expect(response.statusCode).toBe(201);
+    expect(await verifyPassword("Qa123", userCreate.mock.calls[0]![0].data.passwordHash)).toBe(true);
     expect(userCreate).toHaveBeenCalledWith({ data: expect.objectContaining({
       login: "ivan",
       passwordHash: expect.any(String),

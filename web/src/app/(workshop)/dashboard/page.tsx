@@ -18,10 +18,13 @@ const board: Array<{ status: VisitStatus; label: string }> = [
 ];
 
 export default async function DashboardPage() {
-  const [session, visits, reminders] = await Promise.all([
+  const [session, summary, draft, repair, waiting, urgent] = await Promise.all([
     requireSession(),
-    workshopRepository.listVisits(),
-    workshopRepository.listReminders(),
+    workshopRepository.getSummary(),
+    workshopRepository.listVisitPage({ status: "DRAFT" }, 1, 10),
+    workshopRepository.listVisitPage({ status: "IN_REPAIR" }, 1, 10),
+    workshopRepository.listVisitPage({ status: "WAITING_APPROVAL" }, 1, 10),
+    workshopRepository.listVisitPage({ attention: true }, 1, 5),
   ]);
   const currentDate = new Intl.DateTimeFormat("ru-RU", {
     weekday: "long",
@@ -29,25 +32,24 @@ export default async function DashboardPage() {
     month: "long",
     timeZone: "Europe/Moscow",
   }).format(new Date());
-  const active = visits.filter((visit) => !["COMPLETED", "CANCELLED"].includes(visit.status));
-  const attention = active.filter((visit) => visit.attention);
-  const approvedFindings = visits.flatMap((visit) => visit.findings).filter((finding) => ["APPROVED", "COMPLETED"].includes(finding.status));
-  const approvedValue = approvedFindings.reduce((sum, finding) => sum + (finding.priceRub ?? 0), 0);
+  const active = [...draft.items, ...repair.items, ...waiting.items];
+  const attention = urgent.items;
+  const reminders = summary.upcomingReminders;
 
   return (
     <>
       <PageHeader title="Сегодня в мастерской" description={`${currentDate}. ${session.displayName}, здесь собраны текущие визиты и решения клиентов.`} actions={<ActionLink variant="secondary" href="/visits"><Icon name="search" /> Найти визит</ActionLink>} />
 
       <section className="operations-summary" aria-label="Сводка за сегодня">
-        <div><span>В работе</span><strong>{active.length}</strong></div>
-        <div><span>Ждут решения</span><strong>{active.filter((visit) => visit.status === "WAITING_APPROVAL").length}</strong></div>
-        <div><span>Согласовано</span><strong>{formatRub(approvedValue)}</strong><small>{approvedFindings.length} {pluralRu(approvedFindings.length, "работа", "работы", "работ")}</small></div>
+        <div><span>В работе</span><strong>{summary.activeVisits}</strong></div>
+        <div><span>Ждут решения</span><strong>{summary.visitCounts.WAITING_APPROVAL ?? 0}</strong></div>
+        <div><span>Согласовано</span><strong>{formatRub(summary.approvedValue)}</strong><small>{summary.approved} {pluralRu(summary.approved, "работа", "работы", "работ")}</small></div>
       </section>
 
       <div className="dashboard-layout">
         <div className="dashboard-main">
           <section className="section-block">
-            <div className="section-heading"><div><h2>Нужно внимание</h2><p>Сначала действия, которые задерживают ремонт</p></div><StatusPill label={`${attention.length} ${pluralRu(attention.length, "задача", "задачи", "задач")}`} tone="danger" /></div>
+            <div className="section-heading"><div><h2>Нужно внимание</h2><p>Сначала действия, которые задерживают ремонт</p></div><StatusPill label={`${summary.attentionVisits} ${pluralRu(summary.attentionVisits, "задача", "задачи", "задач")}`} tone="danger" /></div>
             <div className="attention-list">
               {attention.length ? attention.map((visit) => (
                 <Link key={visit.id} href={`/visits/${visit.id}`} className="attention-card">
@@ -60,13 +62,14 @@ export default async function DashboardPage() {
           </section>
 
           <section className="section-block">
-            <div className="section-heading"><div><h2>Автомобили сегодня</h2><p>{active.length} {pluralRu(active.length, "активный визит", "активных визита", "активных визитов")}</p></div><ActionLink variant="secondary" href="/visits" >Все визиты <Icon name="arrow-right" /></ActionLink></div>
+            <div className="section-heading"><div><h2>Текущие автомобили</h2><p>{summary.activeVisits} {pluralRu(summary.activeVisits, "активный визит", "активных визита", "активных визитов")}</p></div><ActionLink variant="secondary" href="/visits" >Все визиты <Icon name="arrow-right" /></ActionLink></div>
             <div className="work-board">
               {board.map((column) => {
                 const items = active.filter((visit) => visit.status === column.status);
                 return <div className="board-column" key={column.status}>
-                  <div className="board-title"><span className={`board-dot ${visitStatusMeta[column.status].tone}`} />{column.label}<em>{items.length}</em></div>
+                  <div className="board-title"><span className={`board-dot ${visitStatusMeta[column.status].tone}`} />{column.label}<em>{summary.visitCounts[column.status] ?? 0}</em></div>
                   <div className="board-items">{items.length ? items.map((visit) => <VisitRow key={visit.id} visit={visit} compact />) : <p className="board-empty">Нет автомобилей</p>}</div>
+                  {(summary.visitCounts[column.status] ?? 0) > items.length && <Link href={`/visits?status=${column.status}`}>Показать все →</Link>}
                 </div>;
               })}
             </div>

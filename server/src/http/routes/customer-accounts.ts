@@ -5,7 +5,7 @@ import { z } from "zod";
 import { verifyAccessToken } from "../../security/access-token.js";
 import { issueSession, revokeSession } from "../../security/auth-session.js";
 import { hashOtpCode, otpHashesEqual } from "../../security/otp.js";
-import { hashPassword, verifyPassword } from "../../security/password.js";
+import { hashPassword, verifyPassword, MIN_PASSWORD_LENGTH } from "../../security/password.js";
 import { normalizePhone } from "../../security/phone.js";
 
 const approvalTokenSchema = z.string().min(32).max(200).regex(/^[A-Za-z0-9_-]+$/);
@@ -14,11 +14,11 @@ const registerSchema = z.object({
   challengeId: z.string().uuid(),
   code: z.string().regex(/^\d{6}$/).optional(),
   email: z.string().trim().email().max(254).transform((value) => value.toLocaleLowerCase("ru-RU")),
-  password: z.string().min(8).max(256),
+  password: z.string().min(MIN_PASSWORD_LENGTH).max(256),
 });
 const loginSchema = z.object({
   identity: z.string().trim().min(3).max(254),
-  password: z.string().min(8).max(256),
+  password: z.string().min(1).max(256),
 });
 
 interface CustomerActor {
