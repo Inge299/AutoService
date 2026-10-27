@@ -1,6 +1,7 @@
 import { ActionLink, Button } from "@/components/action";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { Icon } from "@/components/icons";
 import { StatusPill } from "@/components/status-pill";
 import { VisitMediaSection } from "@/components/visit-media-section";
@@ -22,7 +23,7 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
     <>
       <ActionLink variant="secondary" href="/visits" ><Icon name="arrow-left" /> Все визиты</ActionLink>
       <header className="visit-header">
-        <div className="visit-identity"><span className="vehicle-large"><Icon name="car" /></span><div><div className="title-line"><h1>{visit.vehicle}</h1><StatusPill label={status.label} tone={status.tone} /></div><p>{visit.plate} · {visit.customer} · {visit.phone}</p></div></div>
+        <div className="visit-identity"><span className="vehicle-large"><Icon name="car" /></span><div><div className="title-line"><h1>{visit.vehicle}</h1><StatusPill label={status.label} tone={status.tone} /></div><p>{visit.plate} · {visit.customer} · {visit.phone}</p>{visit.customerId && <Link href={`/customers/${visit.customerId}`}>Все автомобили и история клиента →</Link>}</div></div>
         <div className="visit-header-actions"><span className={`sync-label sync-${visit.syncHealth.toLowerCase()}`}><Icon name={visit.syncHealth === "ATTENTION" ? "alert" : "refresh"} />{visit.syncHealth === "SYNCED" ? "Синхронизировано" : visit.syncHealth === "SYNCING" ? "Идёт синхронизация" : "Нужна проверка"}</span></div>
       </header>
 

@@ -10,6 +10,7 @@ import android.media.MediaPlayer
 import android.os.Bundle
 import android.widget.MediaController
 import android.widget.VideoView
+import androidx.compose.foundation.BorderStroke
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -18,6 +19,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -37,11 +39,27 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.DirectionsCar
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AssistChip
@@ -60,12 +78,18 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.material3.FilterChip
+import ru.autoservice.spike.ui.QueueFilter
+import ru.autoservice.spike.ui.filterVisitQueue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -119,6 +143,8 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     val snackbarHost = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val visits by viewModel.visits.collectAsState()
+    val callRequestedVisitIds by viewModel.callRequestedVisitIds.collectAsState()
+    val queueState = rememberSaveableStateHolder()
     val mediaQueue by viewModel.assets.collectAsState()
     val vehicleBrandSuggestions by viewModel.vehicleBrandSuggestions.collectAsState()
     val complaintSuggestions by viewModel.complaintSuggestions.collectAsState()
@@ -253,12 +279,16 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                 title = { Text("AutoService", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = { Image(painterResource(R.drawable.ic_launcher), null, Modifier.padding(start = 12.dp).size(36.dp)) },
                 actions = {
-                    TextButton(onClick = {
+                    IconButton(onClick = {
                         viewModel.refresh { error ->
                             message(error.message ?: "Не удалось обновить данные")
                         }
-                    }) { Text("Обновить") }
-                    TextButton(onClick = viewModel::logout) { Text("Выйти") }
+                    }) {
+                        Icon(Icons.Outlined.Refresh, contentDescription = "Обновить")
+                    }
+                    IconButton(onClick = viewModel::logout) {
+                        Icon(Icons.AutoMirrored.Outlined.Logout, contentDescription = "Выйти")
+                    }
                 },
             )
         },
@@ -419,13 +449,14 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                 modifier = Modifier.padding(padding),
             )
 
-            else -> VisitsScreen(
+            else -> queueState.SaveableStateProvider(session!!.workshopId) { VisitsScreen(
                 visits = visits,
                 mediaQueue = mediaQueue,
+                attentionVisitIds = callRequestedVisitIds.toSet(),
                 onCreate = { creatingVisit = true },
                 onOpen = { selectedVisitId = it.id },
                 modifier = Modifier.padding(padding),
-            )
+            ) }
         }
     }
 }
@@ -680,90 +711,203 @@ private fun FindingScreen(
 }
 
 @Composable
-private fun VisitsScreen(
+internal fun VisitsScreen(
     visits: List<VisitEntity>,
     mediaQueue: List<MediaAssetEntity>,
     onCreate: () -> Unit,
     onOpen: (VisitEntity) -> Unit,
     modifier: Modifier = Modifier,
+    attentionVisitIds: Set<String> = emptySet(),
 ) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf(QueueFilter.ACTIVE) }
+    val filtered = remember(visits, query, filter, attentionVisitIds) { filterVisitQueue(visits, query, filter, attentionVisitIds) }
     val pendingCount = mediaQueue.count { it.syncState != SyncState.SYNCED }
     val attentionCount = mediaQueue.count { it.syncState == SyncState.RETRY || it.syncState == SyncState.BLOCKED }
-    val orderedVisits = visits.sortedBy { it.status in setOf(VisitStatus.COMPLETED, VisitStatus.CANCELLED) }
+    val activeVisits = filtered
+        .filter { it.status !in setOf(VisitStatus.COMPLETED, VisitStatus.CANCELLED) }
+    val archivedVisits = filtered
+        .filter { it.status in setOf(VisitStatus.COMPLETED, VisitStatus.CANCELLED) }
+        .sortedByDescending { it.updatedAtEpochMs }
 
-    Column(
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(bottom = 28.dp),
         modifier = modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.56f),
-                        MaterialTheme.colorScheme.background,
-                    ),
-                ),
-            ),
+            .background(MaterialTheme.colorScheme.background).testTag("visit-queue"),
     ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        ) {
-            Text("Очередь мастерской", style = MaterialTheme.typography.headlineMedium)
-            Text("Откройте визит или примите следующий автомобиль.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Button(onClick = onCreate, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
-                Text("Принять автомобиль")
-            }
-            Surface(
-                color = if (attentionCount > 0) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth(),
+        item(key = "queue-header") {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
             ) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                Text("Очередь мастерской", style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    "Текущие автомобили и согласования в работе.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(
+                    onClick = onCreate,
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp, pressedElevation = 0.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                 ) {
-                    Text(
-                        if (attentionCount > 0) "Нужно проверить: $attentionCount" else "Очередь загрузки: $pendingCount",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Text(
-                        if (attentionCount > 0) "Откройте визит и повторите загрузку материала." else if (pendingCount > 0) "Материалы сохраняются на телефоне и загрузятся автоматически." else "Все материалы загружены.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    Icon(Icons.Outlined.DirectionsCar, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Принять автомобиль")
                 }
-            }
-            Text("Визиты", style = MaterialTheme.typography.titleLarge)
-        }
-        if (visits.isEmpty()) {
-            Text(
-                "Пока нет визитов. Первый можно создать без подключения к сети.",
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
-            ) {
-                items(orderedVisits, key = { it.id }) { visit ->
-                    Card(
-                        onClick = { onOpen(visit) },
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp),
+                Surface(
+                    color = if (attentionCount > 0) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, if (attentionCount > 0) MaterialTheme.colorScheme.error.copy(alpha = 0.24f) else MaterialTheme.colorScheme.outlineVariant),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(14.dp)) {
+                        Icon(
+                            imageVector = if (attentionCount > 0) Icons.Outlined.WarningAmber else Icons.Outlined.Check,
+                            contentDescription = null,
+                            tint = if (attentionCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Column(Modifier.weight(1f)) {
                             Text(
-                                visit.vehicleLabel.ifBlank { visit.licensePlate },
-                                style = MaterialTheme.typography.titleMedium,
+                                if (attentionCount > 0) "Нужно проверить: $attentionCount" else if (pendingCount > 0) "Загружается: $pendingCount" else "Все материалы загружены",
+                                style = MaterialTheme.typography.labelLarge,
                             )
-                            Text(
-                                "${visit.customerName.ifBlank { "Клиент" }} · ${visit.customerPhone}",
+                            if (attentionCount > 0 || pendingCount > 0) Text(
+                                if (attentionCount > 0) "Откройте визит и повторите загрузку." else "Можно продолжать работу — загрузка идёт в фоне.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            StatusPill(visit.status.label(), visit.status.color())
                         }
                     }
                 }
+                OutlinedTextField(query, { query = it }, label = { Text("Номер, телефон или имя") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("queue-search"), trailingIcon = {
+                        if (query.isNotEmpty()) TextButton(onClick = { query = "" }) { Text("Сбросить") }
+                    })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(QueueFilter.ACTIVE, QueueFilter.ARCHIVE).forEach { option -> FilterChip(selected = filter == option, onClick = { filter = option },
+                        label = { Text(option.label) }, modifier = Modifier.weight(1f).testTag("queue-filter-${option.name}")) }
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    QueueFilter.entries.filter { it !in setOf(QueueFilter.ACTIVE, QueueFilter.ARCHIVE) }.forEach { option -> FilterChip(selected = filter == option, onClick = { filter = option },
+                        label = { Text(option.label) }, modifier = Modifier.testTag("queue-filter-${option.name}")) }
+                }
+                Text("Найдено: ${filtered.size} · всего визитов: ${visits.size}", style = MaterialTheme.typography.bodySmall)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                ) {
+                    Text(filter.label, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    Text(
+                        filtered.size.toString(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
+        }
+        if (visits.isEmpty()) {
+            item {
+                Text(
+                    "Пока нет визитов. Примите первый автомобиль.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+            }
+        } else {
+            if (filtered.isEmpty()) {
+                item {
+                    Text(
+                        "Ничего не найдено. Измените запрос или фильтр.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
+            }
+            items(activeVisits, key = { it.id }) { visit ->
+                Column(Modifier.padding(horizontal = 20.dp)) {
+                    if (visit.id in attentionVisitIds) Text("Клиент просит позвонить", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
+                    VisitQueueRow(visit = visit, archived = false, onOpen = { onOpen(visit) })
+                }
+            }
+            if (archivedVisits.isNotEmpty()) {
+                item {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 2.dp),
+                    ) {
+                        Text("Завершённые", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        Text(
+                            archivedVisits.size.toString(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            items(archivedVisits, key = { it.id }) { visit ->
+                Box(Modifier.padding(horizontal = 20.dp)) {
+                    VisitQueueRow(visit = visit, archived = true, onOpen = { onOpen(visit) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisitQueueRow(visit: VisitEntity, archived: Boolean, onOpen: () -> Unit) {
+    Card(
+        onClick = onOpen,
+        colors = CardDefaults.cardColors(
+            containerColor = if (archived) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (archived) 0.dp else 2.dp),
+        border = if (archived) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 76.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Surface(
+                color = if (archived) MaterialTheme.colorScheme.surfaceContainer else MaterialTheme.colorScheme.primaryContainer,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    Icons.Outlined.DirectionsCar,
+                    contentDescription = null,
+                    tint = if (archived) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(9.dp),
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.weight(1f)) {
+                Text(
+                    visit.vehicleLabel.ifBlank { visit.licensePlate },
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    listOf(visit.licensePlate, visit.customerName.ifBlank { "Клиент" })
+                        .filter(String::isNotBlank)
+                        .joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            StatusPill(visit.status.label(), visit.status.color())
         }
     }
 }
@@ -788,6 +932,8 @@ internal fun IntakeScreen(
     var searchMessage by remember { mutableStateOf<String?>(null) }
     var searching by remember { mutableStateOf(false) }
     var selectedVehicle by remember { mutableStateOf<String?>(null) }
+    var selectedCustomerId by remember { mutableStateOf<String?>(null) }
+    var selectedVehicleId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LazyColumn(
@@ -836,6 +982,8 @@ internal fun IntakeScreen(
                             plate = existing.licensePlate
                             mileage = ""
                             selectedVehicle = "${existing.label} · ${existing.licensePlate}"
+                            selectedCustomerId = customer.id
+                            selectedVehicleId = existing.id
                             matches = emptyList()
                             searchMessage = null
                         }, modifier = Modifier.fillMaxWidth()) {
@@ -845,6 +993,7 @@ internal fun IntakeScreen(
                     TextButton(onClick = {
                         customerName = customer.name; phone = customer.phone
                         vehicle = ""; plate = ""; mileage = ""; selectedVehicle = null
+                        selectedCustomerId = customer.id; selectedVehicleId = null
                         matches = emptyList(); searchMessage = "Клиент выбран. Укажите новый автомобиль ниже."
                     }) { Text("Другой автомобиль этого клиента") }
                 }
@@ -854,7 +1003,7 @@ internal fun IntakeScreen(
         item {
             OutlinedTextField(
                 value = phone,
-                onValueChange = { phone = it },
+                onValueChange = { phone = it; selectedCustomerId = null; selectedVehicleId = null; selectedVehicle = null },
                 label = { Text("Телефон клиента *") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 singleLine = true,
@@ -912,6 +1061,8 @@ internal fun IntakeScreen(
                                 licensePlate = plate,
                                 mileageKm = mileage.toIntOrNull(),
                                 complaint = complaint,
+                                customerId = selectedCustomerId,
+                                vehicleId = selectedVehicleId,
                             ),
                         )
                     },
@@ -1009,6 +1160,12 @@ private fun VisitScreen(
     var observedFindingStatuses by remember(visit.id) {
         mutableStateOf<Map<String, FindingStatus>?>(null)
     }
+    val activeFindings = findings
+        .filter { it.status !in setOf(FindingStatus.COMPLETED, FindingStatus.DECLINED, FindingStatus.DEFERRED) }
+        .sortedWith(compareBy<FindingEntity> { it.status.actionRank() }.thenByDescending { it.updatedAtEpochMs })
+    val resolvedFindings = findings
+        .filter { it.status in setOf(FindingStatus.COMPLETED, FindingStatus.DECLINED, FindingStatus.DEFERRED) }
+        .sortedByDescending { it.updatedAtEpochMs }
 
     LaunchedEffect(findings) {
         observedFindingStatuses?.let { previous ->
@@ -1058,28 +1215,64 @@ private fun VisitScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            TextButton(onClick = onBack) { Text("← Визиты") }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            TextButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Визиты")
+            }
             StatusPill(visit.status.label(), visit.status.color())
         }
-        Text(
-            visit.vehicleLabel.ifBlank { visit.licensePlate },
-            style = MaterialTheme.typography.headlineSmall,
-        )
-        Text("${visit.customerName.ifBlank { "Клиент" }} · ${visit.customerPhone}")
-        visit.mileageKm?.let { Text("Пробег: $it км") }
-        if (visit.complaint.isNotBlank()) Text("Жалоба: ${visit.complaint}")
-        Spacer(Modifier.height(16.dp))
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shape = MaterialTheme.shapes.medium,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.padding(16.dp)) {
+                Text(
+                    visit.vehicleLabel.ifBlank { visit.licensePlate },
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    listOf(visit.licensePlate, visit.customerName.ifBlank { "Клиент" }, visit.customerPhone)
+                        .filter(String::isNotBlank)
+                        .joinToString(" · "),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                visit.mileageKm?.let {
+                    Text("Пробег: $it км", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (visit.complaint.isNotBlank()) {
+                    Text("Жалоба: ${visit.complaint}", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+
+        if (visit.status !in setOf(VisitStatus.COMPLETED, VisitStatus.CANCELLED)) {
+            VisitNextStepCard(visit = visit, findings = findings)
+            Spacer(Modifier.height(14.dp))
+        }
 
         if (visit.status == VisitStatus.COMPLETED && visit.reportPublicUrl != null) {
             Text("Отчёт опубликован", color = MaterialTheme.colorScheme.primary)
             Button(onClick = { onShareReport(visit.reportPublicUrl) }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.Share, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
                 Text("Поделиться отчётом")
             }
             OutlinedButton(onClick = { showReportRevisionConfirmation = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.Edit, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
                 Text("Исправить и выпустить новую версию")
             }
             Spacer(Modifier.height(12.dp))
@@ -1091,6 +1284,8 @@ private fun VisitScreen(
             }
             if (visit.reportPreparationState == "READY" && visit.reportPublicUrl != null) {
                 Button(onClick = { onShareReport(visit.reportPublicUrl) }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.Share, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
                     Text("Поделиться отчётом")
                 }
             } else {
@@ -1107,47 +1302,75 @@ private fun VisitScreen(
 
         if (visit.status == VisitStatus.DRAFT) {
             Button(onClick = onStartRepair, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.Build, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
                 Text("Начать ремонт")
             }
             Spacer(Modifier.height(12.dp))
         }
 
-        VisitTimeline(
-            findingCount = findings.size,
-            readyForApprovalCount = findings.count { it.status == FindingStatus.READY_FOR_APPROVAL },
-            materialCount = assets.size,
-        )
-        Spacer(Modifier.height(16.dp))
-
         if (!capturePermissionsGranted) {
-            Button(onClick = onRequestPermissions, modifier = Modifier.fillMaxWidth()) {
+            Text("Материалы и находки", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = onRequestPermissions, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                Icon(Icons.Outlined.PhotoCamera, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
                 Text("Разрешить камеру и микрофон")
             }
         } else {
             Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                OutlinedButton(onClick = onOpenCamera, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Text("Фото / видео к визиту")
-                }
+                Text("Материалы и находки", style = MaterialTheme.typography.titleLarge)
                 Button(onClick = onCreateFinding, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                    Icon(Icons.Outlined.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
                     Text("Добавить находку")
                 }
-                OutlinedButton(
-                    onClick = { toggleVoice() },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                ) { Text(if (recordingVoice) "Остановить запись" else "Голосовая заметка к визиту") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = onOpenCamera, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                        Icon(Icons.Outlined.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Фото / видео")
+                    }
+                    OutlinedButton(
+                        onClick = { toggleVoice() },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    ) {
+                        Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (recordingVoice) "Стоп" else "Голос")
+                    }
+                }
             }
         }
 
         Spacer(Modifier.height(18.dp))
-        Text("Находки: ${findings.size}", style = MaterialTheme.typography.titleMedium)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text("Находки", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text(
+                findings.size.toString(),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Spacer(Modifier.height(8.dp))
         if (findings.isEmpty()) {
-            Text("Пока нет находок. Добавьте проблему и ориентировочную цену.")
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shape = MaterialTheme.shapes.small,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    "Пока нет находок. Добавьте проблему и ориентировочную цену.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(14.dp),
+                )
+            }
         } else {
-            findings.forEach { finding ->
+            activeFindings.forEach { finding ->
                 FindingCard(
                     finding = finding,
                     findingAssets = assets.filter { it.findingId == finding.id },
@@ -1163,7 +1386,38 @@ private fun VisitScreen(
                     onDelete = { asset -> deletionAsset = asset },
                 )
             }
+            if (resolvedFindings.isNotEmpty()) {
+                Text(
+                    "Завершённые и отложенные",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
+                )
+                resolvedFindings.forEach { finding ->
+                    FindingCard(
+                        finding = finding,
+                        findingAssets = assets.filter { it.findingId == finding.id },
+                        onOpenCamera = { onOpenFindingCamera(finding.id) },
+                        onToggleVoice = { toggleVoice(finding.id) },
+                        recordingVoice = recordingVoice && voiceFindingId == finding.id,
+                        onPrepare = { onPrepareFinding(finding) },
+                        onSendApprovalLink = { onSendApprovalLink(finding) },
+                        onRenewApprovalLink = { renewalFinding = finding },
+                        onEdit = { onEditFinding(finding) },
+                        onComplete = { completionFinding = finding },
+                        onRetryUpload = { asset -> viewModel.retry(asset) },
+                        onDelete = { asset -> deletionAsset = asset },
+                    )
+                }
+            }
         }
+        Spacer(Modifier.height(18.dp))
+        VisitTimeline(
+            findingCount = findings.size,
+            readyForApprovalCount = findings.count { it.status == FindingStatus.READY_FOR_APPROVAL },
+            decisionCount = findings.count { it.status.isCustomerDecision() },
+            materialCount = assets.size,
+        )
         renewalFinding?.let { finding ->
             AlertDialog(
                 onDismissRequest = { renewalFinding = null },
@@ -1277,17 +1531,77 @@ private fun VisitScreen(
 }
 
 @Composable
+private fun VisitNextStepCard(visit: VisitEntity, findings: List<FindingEntity>) {
+    val callRequested = findings.count { it.status == FindingStatus.CALL_REQUESTED }
+    val approved = findings.count { it.status == FindingStatus.APPROVED }
+    val needsApproval = findings.count { it.status in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL) }
+    val awaitingCustomer = findings.count { it.status == FindingStatus.SENT_TO_CUSTOMER }
+    val (title, detail) = when {
+        visit.status == VisitStatus.DRAFT ->
+            "Начните ремонт" to "Данные автомобиля сохранены. После проверки переведите визит в работу."
+        callRequested > 0 ->
+            "Клиент просит звонок" to "Запросов на звонок: $callRequested. Свяжитесь с клиентом и уточните решение."
+        approved > 0 ->
+            "Есть согласованные работы" to "Согласовано работ: $approved. После ремонта отметьте результат в карточке."
+        needsApproval > 0 ->
+            "Подготовьте согласование" to "Карточек к отправке: $needsApproval. Проверьте цену и материалы, затем отправьте ссылку клиенту."
+        awaitingCustomer > 0 ->
+            "Ожидайте решения" to "Согласование отправлено. Ответ клиента появится в карточке автоматически."
+        else ->
+            "Зафиксируйте результат осмотра" to "Добавьте находку, фото, видео или голосовую заметку."
+    }
+    val shape = MaterialTheme.shapes.medium
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 6.dp,
+                shape = shape,
+                ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+            )
+            .background(
+                brush = Brush.linearGradient(
+                    listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.inverseSurface),
+                ),
+                shape = shape,
+            )
+            .padding(16.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(
+                "Следующий шаг",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.72f),
+            )
+            Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimary)
+            Text(
+                detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.84f),
+            )
+        }
+    }
+}
+
+@Composable
 private fun VisitTimeline(
     findingCount: Int,
     readyForApprovalCount: Int,
+    decisionCount: Int,
     materialCount: Int,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(16.dp),
         ) {
-            Text("Ход визита", style = MaterialTheme.typography.titleMedium)
+            Text("Сводка визита", style = MaterialTheme.typography.titleMedium)
             TimelineStep(
                 number = "1",
                 title = "Приёмка сохранена",
@@ -1302,9 +1616,17 @@ private fun VisitTimeline(
             )
             TimelineStep(
                 number = "3",
-                title = if (readyForApprovalCount == 0) "Согласование не готово" else "Готово к согласованию: $readyForApprovalCount",
-                detail = "Для отправки клиенту нужны цена и серверная ссылка",
-                color = if (readyForApprovalCount == 0) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.secondaryContainer,
+                title = when {
+                    decisionCount > 0 -> "Решения клиента: $decisionCount"
+                    readyForApprovalCount > 0 -> "Готово к согласованию: $readyForApprovalCount"
+                    else -> "Согласование не готово"
+                },
+                detail = when {
+                    decisionCount > 0 -> "Проверьте ответы в карточках находок"
+                    readyForApprovalCount > 0 -> "Можно готовить ссылку для клиента"
+                    else -> "Добавьте цену и материалы к находкам"
+                },
+                color = if (readyForApprovalCount == 0 && decisionCount == 0) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.secondaryContainer,
             )
         }
     }
@@ -1342,20 +1664,32 @@ private fun FindingCard(
     onRetryUpload: (MediaAssetEntity) -> Unit,
     onDelete: (MediaAssetEntity) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(finding.title, style = MaterialTheme.typography.titleMedium)
-            finding.description.takeIf(String::isNotBlank)?.let { Text(it) }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(finding.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                StatusPill(finding.status.label(), finding.status.color())
+            }
+            finding.description.takeIf(String::isNotBlank)?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 StatusPill(finding.priority.label(), finding.priority.color())
                 finding.priceRub?.let { StatusPill("${it} ₽", MaterialTheme.colorScheme.secondaryContainer) }
             }
-            StatusPill(finding.status.label(), finding.status.color())
             val syncedAssets = findingAssets.filter { it.syncState == SyncState.SYNCED }
             val pendingAssets = findingAssets.filter { it.syncState != SyncState.SYNCED }
-            Text("Материалы: ${findingAssets.size} · готово ${syncedAssets.size}", style = MaterialTheme.typography.labelLarge)
+            Text(
+                "Материалы: ${findingAssets.size} · загружено ${syncedAssets.size}",
+                style = MaterialTheme.typography.labelLarge,
+            )
             if (findingAssets.isEmpty()) {
-                Text("Не прикреплены", style = MaterialTheme.typography.bodySmall)
+                Text("Материалы не прикреплены", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 FindingMediaGallery(
                     assets = findingAssets,
@@ -1363,7 +1697,7 @@ private fun FindingCard(
                     onDelete = onDelete,
                     allowDelete = finding.approvalPreparationState != "PENDING" && finding.status in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL),
                 )
-                Text("Прокрутите вправо, чтобы увидеть все материалы", style = MaterialTheme.typography.bodySmall)
+                Text("Листайте вправо, чтобы увидеть все материалы", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (pendingAssets.isNotEmpty() && finding.status in setOf(FindingStatus.READY_FOR_APPROVAL, FindingStatus.SENT_TO_CUSTOMER)) {
                 Text(
@@ -1372,12 +1706,17 @@ private fun FindingCard(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = onOpenCamera, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                Text("Добавить фото / видео к находке")
-            }
-            TextButton(onClick = onToggleVoice, modifier = Modifier.fillMaxWidth()) {
-                Text(if (recordingVoice) "Остановить голос" else "Записать голос для клиента")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onOpenCamera, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                    Icon(Icons.Outlined.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Фото / видео")
+                }
+                OutlinedButton(onClick = onToggleVoice, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                    Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (recordingVoice) "Стоп" else "Голос")
+                }
             }
             when (finding.approvalPreparationState) {
                 "PENDING" -> Text("Готовим ссылку · можно продолжать работу", color = MaterialTheme.colorScheme.primary)
@@ -1385,29 +1724,41 @@ private fun FindingCard(
                 "FAILED" -> Text(finding.approvalPreparationError ?: "Нужен повтор", color = MaterialTheme.colorScheme.error)
             }
             when (finding.status) {
-                FindingStatus.DRAFT -> Button(onClick = onSendApprovalLink, enabled = finding.approvalPreparationState != "PENDING", modifier = Modifier.fillMaxWidth()) {
+                FindingStatus.DRAFT -> Button(onClick = onSendApprovalLink, enabled = finding.approvalPreparationState != "PENDING", modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Text("Подготовить ссылку")
                 }
                 FindingStatus.READY_FOR_APPROVAL -> Button(
                     onClick = onSendApprovalLink,
                     enabled = finding.approvalPreparationState != "PENDING",
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) { Text(if (finding.approvalPreparationState == "FAILED") "Повторить подготовку" else "Подготовить ссылку") }
                 FindingStatus.SENT_TO_CUSTOMER -> Button(
                     onClick = onSendApprovalLink,
                     enabled = finding.approvalPreparationState != "PENDING",
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Поделиться") }
-                FindingStatus.APPROVED -> Button(onClick = onComplete, modifier = Modifier.fillMaxWidth()) {
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) {
+                    Icon(Icons.Outlined.Share, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Поделиться")
+                }
+                FindingStatus.APPROVED -> Button(onClick = onComplete, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Icon(Icons.Outlined.Check, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
                     Text("Отметить выполненной")
                 }
                 else -> Unit
             }
             if (finding.status == FindingStatus.DRAFT && finding.approvalPreparationState != "PENDING") {
-                TextButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text("Изменить") }
+                TextButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.Edit, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Изменить")
+                }
             }
             if (finding.status == FindingStatus.SENT_TO_CUSTOMER) {
                 OutlinedButton(onClick = onRenewApprovalLink, enabled = finding.approvalPreparationState != "PENDING", modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
                     Text(if (finding.approvalPreparationState == "FAILED") "Повторить подготовку" else "Обновить материалы")
                 }
             }
@@ -1448,7 +1799,12 @@ private fun FindingMediaPreview(
     var showVideo by remember(asset.id) { mutableStateOf(false) }
     val localFileExists = remember(asset.localPath) { File(asset.localPath).isFile }
 
-    Card(modifier = Modifier.width(156.dp)) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.width(156.dp),
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(8.dp)) {
             when (asset.kind) {
                 MediaKind.PHOTO -> PhotoThumbnail(
@@ -1674,7 +2030,12 @@ private fun Int.asDurationLabel(): String = "%d:%02d".format(this / 60_000, (thi
 
 @Composable
 private fun QueueItem(asset: MediaAssetEntity, onRetry: () -> Unit, onDelete: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text("${asset.kind.label()} · ${asset.syncState.label()}")
             Text(
@@ -1708,9 +2069,20 @@ private fun SyncState.label(): String = when (this) {
 private fun VisitStatus.label(): String = when (this) {
     VisitStatus.DRAFT -> "Черновик"
     VisitStatus.IN_REPAIR -> "В ремонте"
-    VisitStatus.WAITING_APPROVAL -> "Ожидает согласования"
+    VisitStatus.WAITING_APPROVAL -> "На согласовании"
     VisitStatus.COMPLETED -> "Завершён"
     VisitStatus.CANCELLED -> "Отменён"
+}
+
+private fun FindingStatus.actionRank(): Int = when (this) {
+    FindingStatus.CALL_REQUESTED -> 0
+    FindingStatus.APPROVED -> 1
+    FindingStatus.DRAFT -> 2
+    FindingStatus.READY_FOR_APPROVAL -> 3
+    FindingStatus.SENT_TO_CUSTOMER -> 4
+    FindingStatus.DEFERRED -> 5
+    FindingStatus.DECLINED -> 6
+    FindingStatus.COMPLETED -> 7
 }
 
 @Composable
@@ -1763,8 +2135,8 @@ private fun FindingPriority.label(): String = when (this) {
 
 private fun ru.autoservice.spike.data.FindingStatus.label(): String = when (this) {
     ru.autoservice.spike.data.FindingStatus.DRAFT -> "Черновик"
-    ru.autoservice.spike.data.FindingStatus.READY_FOR_APPROVAL -> "Готово к согласованию"
-    ru.autoservice.spike.data.FindingStatus.SENT_TO_CUSTOMER -> "Отправлено клиенту"
+    ru.autoservice.spike.data.FindingStatus.READY_FOR_APPROVAL -> "Готово"
+    ru.autoservice.spike.data.FindingStatus.SENT_TO_CUSTOMER -> "У клиента"
     ru.autoservice.spike.data.FindingStatus.APPROVED -> "Согласовано"
     ru.autoservice.spike.data.FindingStatus.COMPLETED -> "Выполнено"
     ru.autoservice.spike.data.FindingStatus.DECLINED -> "Отклонено"

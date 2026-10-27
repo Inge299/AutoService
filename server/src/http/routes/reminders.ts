@@ -1,26 +1,34 @@
-import type { ReminderState, PrismaClient } from "@prisma/client";
+import { Prisma, type ReminderState, type PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { paginationFields, parseCursor, pageEnvelope } from "../../domain/list-page.js";
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 const listSchema = z.object({
   state: z.enum(["PENDING", "SENT", "DELIVERED", "FAILED", "CANCELLED"]).optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(100),
-});
+  ...paginationFields,
+}).refine(q => !(q.page && q.pagination) && (!q.cursor || q.pagination === "cursor"), "invalid_pagination");
 
 export function reminderRoutes(prisma: PrismaClient): FastifyPluginAsync {
   return async (app) => {
     app.get("/v1/reminders", async (request) => {
       const query = listSchema.parse(request.query);
-      return prisma.reminder.findMany({
-        where: { workshopId: request.actor.workshopId, ...(query.state ? { state: query.state as ReminderState } : {}) },
-        orderBy: [{ sendAt: "asc" }, { createdAt: "desc" }],
-        take: query.limit,
-        include: {
+      const where = { workshopId: request.actor.workshopId, ...(query.state ? { state: query.state as ReminderState } : {}) };
+      const include = {
           returnVisit: { select: { id: true, status: true, updatedAt: true } },
           reportVersion: { select: { version: true, createdAt: true } },
-        },
-      });
+        } satisfies Prisma.ReminderInclude;
+      if (!query.page && !query.pagination) return prisma.reminder.findMany({ where,
+        orderBy: [{ sendAt: "asc" }, { createdAt: "desc" }, { id: "desc" }], take: query.limit, include });
+      const cursorWhere = parseCursor(query.cursor);
+      return prisma.$transaction(async tx => {
+        const [rows, total] = await Promise.all([
+          tx.reminder.findMany({ where: cursorWhere ? { AND: [where, cursorWhere] } : where,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: ((query.page ?? 1) - 1) * query.limit,
+            take: query.limit + 1, include }), tx.reminder.count({ where }),
+        ]);
+        return pageEnvelope(rows, total, query);
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
     });
 
     app.post("/v1/reminders/:id/cancel", async (request, reply) => {
