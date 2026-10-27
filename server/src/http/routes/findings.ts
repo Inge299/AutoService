@@ -50,10 +50,12 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
       }
 
       const result = await serializable(prisma, async (tx) => {
-        const visit = await tx.visit.findFirst({ where: { id: body.visitId, workshopId }, select: { id: true } });
+        const visit = await tx.visit.findFirst({ where: { id: body.visitId, workshopId }, select: { id: true, status: true } });
         if (!visit) return null;
+        if (["COMPLETED", "CANCELLED"].includes(visit.status)) return { visitClosed: true as const };
         const existing = await tx.finding.findUnique({ where: { id } });
         if (existing && existing.workshopId !== workshopId) return null;
+        if (existing && existing.visitId !== body.visitId) return { visitMismatch: true as const };
         if (existing && existing.status !== "DRAFT") return { statusProtected: true as const };
         if (existing && body.baseServerVersion !== existing.serverVersion) {
           return { conflict: true as const, finding: existing };
@@ -77,6 +79,8 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
       });
 
       if (!result) return reply.code(404).send({ error: "not_found" });
+      if (result.visitClosed) return reply.code(409).send({ error: "visit_closed" });
+      if (result.visitMismatch) return reply.code(409).send({ error: "finding_visit_mismatch" });
       if (result.statusProtected) return reply.code(403).send({ error: "finding_status_managed_by_approval" });
       if (result.conflict) return reply.code(409).send({ error: "version_conflict", server: result.finding });
       return reply.send(result.finding);
