@@ -703,7 +703,7 @@ private fun FindingScreen(
 }
 
 @Composable
-private fun VisitsScreen(
+internal fun VisitsScreen(
     visits: List<VisitEntity>,
     mediaQueue: List<MediaAssetEntity>,
     onCreate: () -> Unit,
@@ -719,112 +719,117 @@ private fun VisitsScreen(
         .filter { it.status in setOf(VisitStatus.COMPLETED, VisitStatus.CANCELLED) }
         .sortedByDescending { it.updatedAtEpochMs }
 
-    Column(
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(bottom = 28.dp),
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background).testTag("visit-queue"),
     ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
-        ) {
-            Text("Очередь мастерской", style = MaterialTheme.typography.headlineMedium)
-            Text(
-                "Текущие автомобили и согласования в работе.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(
-                onClick = onCreate,
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp, pressedElevation = 0.dp),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+        item(key = "queue-header") {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
             ) {
-                Icon(Icons.Outlined.DirectionsCar, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Принять автомобиль")
-            }
-            Surface(
-                color = if (attentionCount > 0) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, if (attentionCount > 0) MaterialTheme.colorScheme.error.copy(alpha = 0.24f) else MaterialTheme.colorScheme.outlineVariant),
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                ) {
-                    Icon(
-                        imageVector = if (attentionCount > 0) Icons.Outlined.WarningAmber else Icons.Outlined.Check,
-                        contentDescription = null,
-                        tint = if (attentionCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.size(22.dp),
-                    )
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            if (attentionCount > 0) "Нужно проверить: $attentionCount" else if (pendingCount > 0) "Загружается: $pendingCount" else "Все материалы загружены",
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        if (attentionCount > 0 || pendingCount > 0) Text(
-                            if (attentionCount > 0) "Откройте визит и повторите загрузку." else "Можно продолжать работу — загрузка идёт в фоне.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-            ) {
-                Text("В работе", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                Text("Очередь мастерской", style = MaterialTheme.typography.headlineMedium)
                 Text(
-                    activeVisits.size.toString(),
-                    style = MaterialTheme.typography.bodySmall,
+                    "Текущие автомобили и согласования в работе.",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-        }
-        if (visits.isEmpty()) {
-            Text(
-                "Пока нет визитов. Первый можно создать без подключения к сети.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp),
-            )
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
-            ) {
-                if (activeVisits.isEmpty()) {
-                    item {
-                        Text(
-                            "Сейчас нет активных визитов.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 8.dp),
+                Button(
+                    onClick = onCreate,
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp, pressedElevation = 0.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                ) {
+                    Icon(Icons.Outlined.DirectionsCar, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Принять автомобиль")
+                }
+                Surface(
+                    color = if (attentionCount > 0) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, if (attentionCount > 0) MaterialTheme.colorScheme.error.copy(alpha = 0.24f) else MaterialTheme.colorScheme.outlineVariant),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (attentionCount > 0) Icons.Outlined.WarningAmber else Icons.Outlined.Check,
+                            contentDescription = null,
+                            tint = if (attentionCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(22.dp),
                         )
-                    }
-                }
-                items(activeVisits, key = { it.id }) { visit ->
-                    VisitQueueRow(visit = visit, archived = false, onOpen = { onOpen(visit) })
-                }
-                if (archivedVisits.isNotEmpty()) {
-                    item {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 2.dp),
-                        ) {
-                            Text("Завершённые", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        Column(Modifier.weight(1f)) {
                             Text(
-                                archivedVisits.size.toString(),
+                                if (attentionCount > 0) "Нужно проверить: $attentionCount" else if (pendingCount > 0) "Загружается: $pendingCount" else "Все материалы загружены",
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                            if (attentionCount > 0 || pendingCount > 0) Text(
+                                if (attentionCount > 0) "Откройте визит и повторите загрузку." else "Можно продолжать работу — загрузка идёт в фоне.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
                 }
-                items(archivedVisits, key = { it.id }) { visit ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                ) {
+                    Text("В работе", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    Text(
+                        activeVisits.size.toString(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        if (visits.isEmpty()) {
+            item {
+                Text(
+                    "Пока нет визитов. Первый можно создать без подключения к сети.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+            }
+        } else {
+            if (activeVisits.isEmpty()) {
+                item {
+                    Text(
+                        "Сейчас нет активных визитов.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
+            }
+            items(activeVisits, key = { it.id }) { visit ->
+                Box(Modifier.padding(horizontal = 20.dp)) {
+                    VisitQueueRow(visit = visit, archived = false, onOpen = { onOpen(visit) })
+                }
+            }
+            if (archivedVisits.isNotEmpty()) {
+                item {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 2.dp),
+                    ) {
+                        Text("Завершённые", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        Text(
+                            archivedVisits.size.toString(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            items(archivedVisits, key = { it.id }) { visit ->
+                Box(Modifier.padding(horizontal = 20.dp)) {
                     VisitQueueRow(visit = visit, archived = true, onOpen = { onOpen(visit) })
                 }
             }
