@@ -2,7 +2,7 @@ import "server-only";
 
 import { customers, reminders, visits } from "@/lib/demo-data";
 import { requireSession } from "@/lib/auth/session";
-import type { Customer, Reminder, Visit, VisitMedia, VisitReport, VisitStatus } from "@/lib/domain";
+import type { Customer, Reminder, Visit, VisitMedia, VisitReport, VisitStatus, ListPage, WorkshopSummary } from "@/lib/domain";
 import {
   getApiVisit,
   getApiVisitMedia,
@@ -10,6 +10,7 @@ import {
   listApiReminders,
   listApiCustomers,
   listApiVisits,
+  listApiVisitPage, listApiCustomerPage, listApiReminderPage, getApiWorkshopSummary,
   type ApiCustomer,
   type ApiVisit,
 } from "@/lib/api/autoservice-api";
@@ -17,9 +18,14 @@ import {
 export interface VisitFilters {
   query?: string;
   status?: VisitStatus;
+  attention?: boolean;
 }
 
 export interface WorkshopRepository {
+  listVisitPage(filters?: VisitFilters, page?: number, limit?: number): Promise<ListPage<Visit>>;
+  listCustomerPage(query?: string, page?: number): Promise<ListPage<Customer>>;
+  listReminderPage(page?: number): Promise<ListPage<Reminder>>;
+  getSummary(): Promise<WorkshopSummary>;
   listVisits(filters?: VisitFilters): Promise<Visit[]>;
   getVisit(id: string): Promise<Visit | null>;
   getVisitMedia(id: string): Promise<VisitMedia[]>;
@@ -29,6 +35,27 @@ export interface WorkshopRepository {
 }
 
 class DemoWorkshopRepository implements WorkshopRepository {
+  async listVisitPage(filters: VisitFilters = {}, page = 1, limit = 50) {
+    const rows = (await this.listVisits(filters)).filter(v => !filters.attention || Boolean(v.attention));
+    return demoPage(rows, page, limit);
+  }
+  async listCustomerPage(query?: string, page = 1) { return demoPage(await this.listCustomers(query), page, 50); }
+  async listReminderPage(page = 1) { return demoPage(await this.listReminders(), page, 50); }
+  async getSummary(): Promise<WorkshopSummary> {
+    await requireSession();
+    const findings = visits.flatMap(v => v.findings);
+    const answered = ["APPROVED", "COMPLETED", "DECLINED", "CALL_REQUESTED", "DEFERRED"];
+    const approved = findings.filter(f => ["APPROVED", "COMPLETED"].includes(f.status));
+    return { totalVisits: visits.length, activeVisits: visits.filter(v => !["COMPLETED", "CANCELLED"].includes(v.status)).length,
+      attentionVisits: visits.filter(v => v.attention && !["COMPLETED", "CANCELLED"].includes(v.status)).length,
+      visitCounts: Object.fromEntries(["DRAFT", "IN_REPAIR", "WAITING_APPROVAL", "COMPLETED", "CANCELLED"].map(status => [status, visits.filter(v => v.status === status).length])),
+      sent: findings.filter(f => answered.includes(f.status) || f.status === "SENT_TO_CUSTOMER").length,
+      decisions: findings.filter(f => answered.includes(f.status)).length,
+      approved: approved.length, approvedValue: approved.reduce((sum, f) => sum + (f.priceRub ?? 0), 0),
+      upcomingReminders: reminders.filter(r => r.deliveryState === "PENDING").slice(0, 2),
+      reminderCounts: Object.fromEntries(["PENDING", "SENT", "DELIVERED", "FAILED", "CANCELLED"].map(state => [state, reminders.filter(r => r.deliveryState === state).length])),
+      urgentReminders: reminders.filter(r => r.deliveryState === "PENDING" && r.state !== "UPCOMING").length };
+  }
   async getVisitMedia(): Promise<VisitMedia[]> {
     await requireSession();
     return [];
@@ -74,6 +101,11 @@ class DemoWorkshopRepository implements WorkshopRepository {
     await requireSession();
     return reminders;
   }
+}
+
+function demoPage<T>(items: T[], page: number, pageSize: number): ListPage<T> {
+  return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize,
+    hasNext: page * pageSize < items.length, nextCursor: null };
 }
 
 const statusActions: Record<VisitStatus, string> = {
@@ -226,6 +258,22 @@ function customersFromVisits(apiVisits: ApiVisit[]): Customer[] {
 }
 
 class ApiWorkshopRepository implements WorkshopRepository {
+  async listVisitPage(filters: VisitFilters = {}, page = 1, limit = 50): Promise<ListPage<Visit>> {
+    const result = await listApiVisitPage(await requireSession(), filters, page, limit);
+    return { ...result, items: result.items.map(mapVisit) };
+  }
+  async listCustomerPage(query?: string, page = 1): Promise<ListPage<Customer>> {
+    const result = await listApiCustomerPage(await requireSession(), query, page);
+    return { ...result, items: result.items.map(mapCustomer) };
+  }
+  async listReminderPage(page = 1): Promise<ListPage<Reminder>> {
+    const result = await listApiReminderPage(await requireSession(), page);
+    return { ...result, items: result.items.map(mapReminder) };
+  }
+  async getSummary(): Promise<WorkshopSummary> {
+    const result = await getApiWorkshopSummary(await requireSession());
+    return { ...result, upcomingReminders: result.upcomingReminders.map(mapReminder) };
+  }
   async getVisitMedia(id: string): Promise<VisitMedia[]> {
     return getApiVisitMedia(id, await requireSession());
   }

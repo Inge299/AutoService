@@ -75,13 +75,13 @@ describe("visit integrity", () => {
   });
 
   it("normalizes the phone before resolving the customer", async () => {
-    const upsert = vi.fn().mockResolvedValue({ id });
+    const create = vi.fn().mockResolvedValue({ id });
     const app = await appFor({ visit: { findUnique: async () => ({ workshopId, status: "DRAFT", serverVersion: 1 }), update: async () => ({ id }) },
-      customer: { upsert }, vehicle: { findFirst: async () => ({ id }), update: async () => ({ id }) } });
+      $queryRaw: async () => [], customer: { create }, vehicle: { create: async () => ({ id }) } });
     try {
       const r = await app.inject({ method: "PUT", url: `/v1/visits/${id}`, payload: { ...visitBody, customerPhone: "8 (999) 123-45-67" } });
       expect(r.statusCode).toBe(200);
-      expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { workshopId_phone: { workshopId, phone: "+79991234567" } } }));
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ workshopId, phone: "+79991234567" }) }));
     } finally { await app.close(); }
   });
 

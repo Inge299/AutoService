@@ -907,6 +907,8 @@ internal fun IntakeScreen(
     var searchMessage by remember { mutableStateOf<String?>(null) }
     var searching by remember { mutableStateOf(false) }
     var selectedVehicle by remember { mutableStateOf<String?>(null) }
+    var selectedCustomerId by remember { mutableStateOf<String?>(null) }
+    var selectedVehicleId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LazyColumn(
@@ -955,6 +957,8 @@ internal fun IntakeScreen(
                             plate = existing.licensePlate
                             mileage = ""
                             selectedVehicle = "${existing.label} · ${existing.licensePlate}"
+                            selectedCustomerId = customer.id
+                            selectedVehicleId = existing.id
                             matches = emptyList()
                             searchMessage = null
                         }, modifier = Modifier.fillMaxWidth()) {
@@ -964,6 +968,7 @@ internal fun IntakeScreen(
                     TextButton(onClick = {
                         customerName = customer.name; phone = customer.phone
                         vehicle = ""; plate = ""; mileage = ""; selectedVehicle = null
+                        selectedCustomerId = customer.id; selectedVehicleId = null
                         matches = emptyList(); searchMessage = "Клиент выбран. Укажите новый автомобиль ниже."
                     }) { Text("Другой автомобиль этого клиента") }
                 }
@@ -973,7 +978,7 @@ internal fun IntakeScreen(
         item {
             OutlinedTextField(
                 value = phone,
-                onValueChange = { phone = it },
+                onValueChange = { phone = it; selectedCustomerId = null; selectedVehicleId = null; selectedVehicle = null },
                 label = { Text("Телефон клиента *") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 singleLine = true,
@@ -1031,6 +1036,8 @@ internal fun IntakeScreen(
                                 licensePlate = plate,
                                 mileageKm = mileage.toIntOrNull(),
                                 complaint = complaint,
+                                customerId = selectedCustomerId,
+                                vehicleId = selectedVehicleId,
                             ),
                         )
                     },

@@ -416,3 +416,6 @@ body{background:var(--canvas)}
   .login-panel{background-image:linear-gradient(#f4f9f7e8,#f4f9f7f5),url('/images/customer-workshop.jpg');background-position:62% center;background-size:cover}
   .mobile-login-brand{margin-bottom:32px}
 }
+.list-pagination{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:20px;border-top:1px solid var(--border,#d8dfdf);font-size:14px}
+.list-pagination a{padding:10px 14px;border:1px solid var(--border,#d8dfdf);border-radius:12px;text-decoration:none}
+.list-pagination a:focus-visible{outline:2px solid currentColor;outline-offset:3px}

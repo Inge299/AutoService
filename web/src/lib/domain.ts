@@ -5,6 +5,16 @@ export type VisitStatus =
   | "COMPLETED"
   | "CANCELLED";
 
+export interface ListPage<T> { items: T[]; total: number; page: number; pageSize: number; hasNext: boolean; nextCursor: string | null }
+export interface WorkshopSummary {
+  totalVisits: number; activeVisits: number; attentionVisits: number;
+  visitCounts: Partial<Record<VisitStatus, number>>;
+  sent: number; decisions: number; approved: number; approvedValue: number;
+  upcomingReminders: Reminder[];
+  reminderCounts: Partial<Record<"PENDING" | "SENT" | "DELIVERED" | "FAILED" | "CANCELLED", number>>;
+  urgentReminders: number;
+}
+
 export type FindingPriority = "CRITICAL" | "IMPORTANT" | "PLANNED";
 
 export type FindingStatus =
