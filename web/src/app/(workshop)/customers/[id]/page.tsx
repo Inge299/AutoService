@@ -5,6 +5,7 @@ import { ListPagination, parsePage } from "@/components/list-pagination";
 import { VisitRow } from "@/components/visit-row";
 import { workshopRepository } from "@/lib/repository";
 import { formatRub } from "@/lib/domain";
+import { FollowUpPlan } from "@/components/follow-up-plan";
 
 export const metadata = { title: "Карточка клиента" };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -44,11 +45,13 @@ export default async function CustomerPage({ params, searchParams }: {
     </section>
     <section className="section-block customer-history-section">
       <div className="section-heading"><h2>Отложенные работы</h2><span>Всего: {futureWork.total}</span></div>
-      <p>Работы, которые клиент отложил. Срок из отчёта относится ко всему следующему визиту. История сохраняется; выполнение проверяйте по последующим визитам.</p>
+      <p>Назначьте каждой работе удобный срок. При переносе напоминание обновится, при выполнении — отменится. История визита сохранится.</p>
       <div className="customer-future-list">{futureWork.items.map(work => <article className="content-card customer-future" key={work.id}>
         <strong>{work.title}</strong><p>{work.description}</p><small>{work.visit.vehicleLabel} · {work.visit.licensePlate}</small>
         {work.priceRub !== null && <span>{formatRub(work.priceRub)}</span>}
-        <p>{work.visit.report?.status === "PUBLISHED" && work.visit.report.nextVisitAt ? `Общий срок из отчёта: ${date(work.visit.report.nextVisitAt)}` : "Срок не назначен"}</p>
+        <FollowUpPlan findingId={work.id} customerId={id} visitId={work.visitId} version={work.serverVersion}
+          dueAt={work.followUpConfigured ? work.followUpDueAt : work.visit.report?.nextVisitAt ?? null}
+          inherited={!work.followUpConfigured && !!work.visit.report?.nextVisitAt} state={work.followUpState}/>
         <Link href={`/visits/${work.visitId}`}>Открыть исходный визит →</Link>
       </article>)}</div>
       {!futureWork.items.length && <p>Отложенных работ на этой странице нет.</p>}

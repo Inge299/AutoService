@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import type { PrismaClient, ReportStatus } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { reportRecommendations } from "../../domain/report-recommendations.js";
+import { reportRecommendations, futureWork } from "../../domain/report-recommendations.js";
+import { scheduleWorkReminder } from "../../domain/follow-up-reminders.js";
 import { cancelVisitReminders } from "../../domain/cancel-visit-reminders.js";
 import { isPastVisitDate } from "../../domain/visit-date.js";
 
@@ -122,7 +123,8 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
           tx.finding.findMany({
             where: { workshopId, visitId: id },
             orderBy: { createdAt: "asc" },
-            select: { id: true, title: true, description: true, priceRub: true, priority: true, status: true },
+            select: { id: true, title: true, description: true, priceRub: true, priority: true, status: true,
+              followUpDueAt: true, followUpConfigured: true, followUpState: true },
           }),
           tx.mediaAsset.findMany({
             where: { workshopId, visitId: id, state: { in: ["VERIFIED", "READY"] } },
@@ -131,6 +133,10 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
           }),
         ]);
         const recommendations = reportRecommendations(report.recommendations, findings, report.nextVisitAt);
+        const planned = futureWork(findings);
+        if (planned.some(work => isPastVisitDate(work.followUpConfigured ? work.followUpDueAt ?? null : report.nextVisitAt))) {
+          return { kind: "past_date" as const };
+        }
         const version = await tx.reportVersion.create({
           data: {
             operationId: body.operationId,
@@ -147,7 +153,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
             completedWork: report.completedWork,
             recommendations,
             nextVisitAt: report.nextVisitAt,
-            findings,
+            findings: findings.map(finding => ({ ...finding, followUpDueAt: finding.followUpDueAt?.toISOString() ?? null })),
             mediaIds: media.map((asset) => asset.id),
           },
         });
@@ -155,31 +161,13 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
           data: { reportVersionId: version.id, tokenHash: hashedToken, expiresAt },
         });
         await cancelVisitReminders(tx, workshopId, id, "Superseded by a new report version");
-        if (report.nextVisitAt) {
-          const sendAt = new Date(Math.max(Date.now(), report.nextVisitAt.getTime() - 7 * 24 * 60 * 60_000));
-          const reminder = await tx.reminder.create({
-            data: {
-              workshopId,
-              reportVersionId: version.id,
-              visitId: id,
-              customerName: report.visit.customerName,
-              customerPhone: report.visit.customerPhone,
-              vehicleLabel: report.visit.vehicleLabel,
-              reason: recommendations || "Плановое обслуживание",
-              dueAt: report.nextVisitAt,
-              sendAt,
-            },
-          });
-          await tx.backgroundJob.create({
-            data: {
-              workshopId,
-              reminderId: reminder.id,
-              type: "SEND_REMINDER_SMS",
-              payload: { reminderId: reminder.id },
-              idempotencyKey: `reminder:${reminder.id}:sms`,
-              runAfter: sendAt,
-            },
-          });
+        const reminderVisit = { ...report.visit, id, workshopId };
+        for (const work of planned) {
+          const dueAt = work.followUpConfigured ? work.followUpDueAt ?? null : report.nextVisitAt;
+          if (dueAt) await scheduleWorkReminder(tx, reminderVisit, version.id, work.id, `Необходимо выполнить: ${work.title}`, dueAt);
+        }
+        if (!planned.length && report.nextVisitAt) {
+          await scheduleWorkReminder(tx, reminderVisit, version.id, null, recommendations || "Плановое обслуживание", report.nextVisitAt);
         }
         await tx.report.update({
           where: { id: report.id },

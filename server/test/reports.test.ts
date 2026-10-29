@@ -88,7 +88,7 @@ describe("visit reports", () => {
     expect(recommendations).toContain("Не выполнено в этот визит: Ремень. Необходимо выполнить в дальнейшем.");
     if (dated) {
       expect(recommendations).toContain("Рекомендуемый срок: до 20.11.2099.");
-      expect(transaction.reminder.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reportVersionId, visitId, reason: recommendations, dueAt: nextVisitAt }) }));
+      expect(transaction.reminder.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reportVersionId, visitId, findingId: "deferred", reason: "Необходимо выполнить: Ремень", dueAt: nextVisitAt }) }));
       expect(transaction.backgroundJob.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: "SEND_REMINDER_SMS", reminderId: "99999999-9999-4999-8999-999999999999" }) }));
     } else {
       expect(recommendations).toContain("Срок необходимо согласовать с мастерской.");

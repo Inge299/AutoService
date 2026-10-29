@@ -420,6 +420,26 @@ body{background:var(--canvas)}
 .list-pagination a{padding:10px 14px;border:1px solid var(--border,#d8dfdf);border-radius:12px;text-decoration:none}
 .list-pagination a:focus-visible{outline:2px solid currentColor;outline-offset:3px}
 .customer-history-section { margin-top: 28px; }
+.follow-up-plan{padding:16px;background:#f1f7f5;border:1px solid #d8e7e1;border-radius:14px;min-width:0;color:#24483f;grid-column:1/-1}
+.finding-card>.follow-up-plan{margin:0 16px 16px}
+.follow-up-heading{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.follow-up-heading span,.follow-up-plan>small{font-size:12px;color:#566c64}
+.follow-up-current{margin:0 0 12px;font-weight:600;font-size:14px;line-height:1.5}
+.follow-up-editor>summary{cursor:pointer;min-height:44px;padding:11px 12px;border:1px solid #bfd3c9;border-radius:10px;background:#fff;font-size:13px;font-weight:600}
+.follow-up-editor[open]>summary{margin-bottom:14px}
+.follow-up-editor>summary:focus-visible{outline:3px solid #167b81;outline-offset:3px}
+.follow-up-plan form{display:grid;gap:12px}
+.follow-up-date{display:grid;gap:6px;font-size:13px;font-weight:600}
+.follow-up-date input{min-width:0;width:100%;min-height:46px;border:1px solid #a9c2b8;border-radius:10px;padding:10px 12px;background:white;color:#18392f;font:inherit;color-scheme:light}
+.follow-up-presets{display:flex;flex-wrap:wrap;gap:8px}
+.follow-up-presets button{min-height:40px;padding:7px 11px;border:1px solid #bfd3c9;border-radius:24px;background:#fff;color:#245447;cursor:pointer;font:inherit;font-size:12px}
+.follow-up-actions{display:flex;gap:10px;flex-wrap:wrap}
+.follow-up-actions .button{flex:1 1 140px;min-height:46px;white-space:normal;text-align:center}
+.follow-up-other{font-size:13px}.follow-up-other summary{cursor:pointer;padding:6px 0;color:#566c64}
+.follow-up-other p{margin:8px 0}.follow-up-plan>small{display:block;margin-top:12px;line-height:1.5}
+.follow-up-error{color:#9e2f2f}.follow-up-success{color:#1b684c}
+.follow-up-presets button:focus-visible,.follow-up-date input:focus-visible{outline:3px solid #167b81;outline-offset:3px}
+.follow-up-plan button:disabled{opacity:.6;cursor:wait}
 .customer-phone { display: inline-block; padding: 10px 0; overflow-wrap: anywhere; }
 .customer-name a,.customer-phone { text-decoration: underline; text-underline-offset: 3px; }
 .customer-vehicle:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }

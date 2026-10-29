@@ -246,6 +246,13 @@ class AutoServiceApi(
         request("POST", "/v1/findings/$findingId/complete", JSONObject()).toFinding()
     }
 
+    suspend fun updateFollowUp(finding: FindingEntity, dueAtEpochMs: Long?, state: String): FindingEntity = withContext(Dispatchers.IO) {
+        request("PUT", "/v1/findings/${finding.id}/follow-up", JSONObject()
+            .put("baseServerVersion", finding.serverVersion)
+            .put("dueAt", dueAtEpochMs?.let { Instant.ofEpochMilli(it).toString() } ?: JSONObject.NULL)
+            .put("state", state)).toFinding()
+    }
+
     override suspend fun saveReport(
         visitId: String,
         completedWork: String,
@@ -494,6 +501,9 @@ class AutoServiceApi(
                     "customer_identity_ambiguous" -> "Найдено несколько клиентов с этим телефоном. Найдите клиента и выберите его автомобиль."
                     "vehicle_identity_ambiguous" -> "Найдено несколько автомобилей с этим номером. Выберите нужный автомобиль через поиск клиента."
                     "customer_identity_mismatch", "vehicle_identity_mismatch" -> "Данные выбранного клиента или автомобиля изменились. Выполните поиск ещё раз."
+                    "work_date_in_past" -> "Выберите сегодняшний или будущий день"
+                    "work_not_deferred" -> "Для этой работы нельзя изменить дальнейший план"
+                    "version_conflict" -> "Данные уже изменились. Обновите экран и повторите действие"
                     else -> code?.takeIf(String::isNotBlank) ?: "Ошибка сервера (${response.status})"
                 },
             )
@@ -532,4 +542,8 @@ private fun JSONObject.toFinding(): FindingEntity = FindingEntity(
     createdAtEpochMs = Instant.parse(getString("createdAt")).toEpochMilli(),
     updatedAtEpochMs = Instant.parse(getString("updatedAt")).toEpochMilli(),
     serverVersion = getInt("serverVersion"),
+    followUpDueAtEpochMs = optString("followUpDueAt").takeIf { it.isNotBlank() && it != "null" }?.let { Instant.parse(it).toEpochMilli() },
+    followUpConfigured = optBoolean("followUpConfigured", false),
+    followUpState = optString("followUpState", "OPEN"),
+    followUpCompletedAtEpochMs = optString("followUpCompletedAt").takeIf { it.isNotBlank() && it != "null" }?.let { Instant.parse(it).toEpochMilli() },
 )

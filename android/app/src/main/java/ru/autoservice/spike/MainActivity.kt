@@ -1157,6 +1157,7 @@ private fun VisitScreen(
     var renewalFinding by remember { mutableStateOf<FindingEntity?>(null) }
     var deletionAsset by remember { mutableStateOf<MediaAssetEntity?>(null) }
     var completionFinding by remember { mutableStateOf<FindingEntity?>(null) }
+    var followUpFinding by remember { mutableStateOf<FindingEntity?>(null) }
     var showReportComposer by remember { mutableStateOf(false) }
     var showReportRevisionConfirmation by remember { mutableStateOf(false) }
     var observedFindingStatuses by remember(visit.id) {
@@ -1384,6 +1385,7 @@ private fun VisitScreen(
                     onRenewApprovalLink = { renewalFinding = finding },
                     onEdit = { onEditFinding(finding) },
                     onComplete = { completionFinding = finding },
+                    onPlan = { followUpFinding = finding },
                     onRetryUpload = { asset -> viewModel.retry(asset) },
                     onDelete = { asset -> deletionAsset = asset },
                 )
@@ -1407,6 +1409,7 @@ private fun VisitScreen(
                         onRenewApprovalLink = { renewalFinding = finding },
                         onEdit = { onEditFinding(finding) },
                         onComplete = { completionFinding = finding },
+                        onPlan = { followUpFinding = finding },
                         onRetryUpload = { asset -> viewModel.retry(asset) },
                         onDelete = { asset -> deletionAsset = asset },
                     )
@@ -1441,7 +1444,15 @@ private fun VisitScreen(
                 },
             )
         }
-        deletionAsset?.let { asset ->
+    followUpFinding?.let { finding ->
+        ru.autoservice.spike.ui.FollowUpPlanDialog(finding, visit.reportNextVisitAtEpochMs,
+            onDismiss = { followUpFinding = null }, onSubmit = { dueAt, state, finished ->
+                viewModel.updateFollowUp(finding, dueAt, state,
+                    onSuccess = { finished(null); followUpFinding = null; onMessage(if (state == "DONE") "Выполнение отмечено, напоминание отменено" else "План работы сохранён") },
+                    onFailure = { finished(it.message ?: "Не удалось сохранить план. Проверьте связь") })
+            })
+    }
+    deletionAsset?.let { asset ->
             AlertDialog(
                 onDismissRequest = { deletionAsset = null },
                 title = { Text("Удалить материал?") },
@@ -1484,7 +1495,8 @@ private fun VisitScreen(
                 initialRecommendations = visit.reportRecommendations.orEmpty(),
                 initialNextVisitAtEpochMs = visit.reportNextVisitAtEpochMs,
                 completedFindingTitles = findings.filter { it.status == FindingStatus.COMPLETED }.map { it.title },
-                futureFindingTitles = findings.filter { it.status != FindingStatus.COMPLETED && it.status != FindingStatus.DECLINED &&
+                hasIndividualPlans = findings.any { it.followUpState == "OPEN" && it.followUpConfigured && it.followUpDueAtEpochMs != null },
+                futureFindingTitles = findings.filter { it.followUpState == "OPEN" && it.status != FindingStatus.COMPLETED && it.status != FindingStatus.DECLINED &&
                     (it.status == FindingStatus.DEFERRED || it.priority == FindingPriority.PLANNED) }.map { it.title },
                 onDismiss = { showReportComposer = false },
                 onPublish = { draft ->
@@ -1663,6 +1675,7 @@ private fun FindingCard(
     onRenewApprovalLink: () -> Unit,
     onEdit: () -> Unit,
     onComplete: () -> Unit,
+    onPlan: () -> Unit,
     onRetryUpload: (MediaAssetEntity) -> Unit,
     onDelete: (MediaAssetEntity) -> Unit,
 ) {
@@ -1683,6 +1696,17 @@ private fun FindingCard(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 StatusPill(finding.priority.label(), finding.priority.color())
                 finding.priceRub?.let { StatusPill("${it} ₽", MaterialTheme.colorScheme.secondaryContainer) }
+            }
+            if (finding.status == FindingStatus.DEFERRED || (finding.priority == FindingPriority.PLANNED && finding.status !in setOf(FindingStatus.COMPLETED, FindingStatus.DECLINED))) {
+                val planLabel = when (finding.followUpState) {
+                    "DONE" -> "Выполнено позже"
+                    "CANCELLED" -> "Снято с плана"
+                    else -> finding.followUpDueAtEpochMs?.let { epoch ->
+                        "Выполнить до " + java.time.Instant.ofEpochMilli(epoch).atZone(java.time.ZoneId.of("Europe/Moscow")).format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+                    } ?: if (finding.followUpConfigured) "Срок не назначен" else "Срок следующего визита или индивидуальный"
+                }
+                Text(planLabel,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.primary)
+                OutlinedButton(onClick=onPlan,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text(if (finding.followUpState == "OPEN") "Срок и выполнение" else "Изменить план") }
             }
             val syncedAssets = findingAssets.filter { it.syncState == SyncState.SYNCED }
             val pendingAssets = findingAssets.filter { it.syncState != SyncState.SYNCED }

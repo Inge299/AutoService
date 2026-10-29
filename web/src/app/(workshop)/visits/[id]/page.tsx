@@ -8,6 +8,7 @@ import { VisitMediaSection } from "@/components/visit-media-section";
 import { findingStatusMeta, formatRub, priorityMeta, visitStatusMeta } from "@/lib/domain";
 import { workshopRepository } from "@/lib/repository";
 import { createApprovalLinkAction } from "./actions";
+import { FollowUpPlan } from "@/components/follow-up-plan";
 
 export const metadata: Metadata = { title: "Карточка визита" };
 
@@ -51,6 +52,10 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
               {visit.findings.length ? visit.findings.map((finding) => { const findingState = findingStatusMeta[finding.status]; const priority = priorityMeta[finding.priority]; return <article className="finding-card" key={finding.id}>
                 <div className={`finding-stripe stripe-${priority.tone}`} />
                 <div className="finding-body"><div className="finding-top"><div><StatusPill label={priority.label} tone={priority.tone} /><h3>{finding.title}</h3></div><strong className="finding-price">{finding.priceRub == null ? "Цена уточняется" : formatRub(finding.priceRub)}</strong></div><p>{finding.description}</p><div className="finding-footer"><span><Icon name="camera" /> {finding.mediaCount} материала</span><StatusPill label={findingState.label} tone={findingState.tone} />{finding.status === "READY_FOR_APPROVAL" && <form action={createApprovalLinkAction}><input type="hidden" name="visitId" value={visit.id} /><input type="hidden" name="findingId" value={finding.id} /><Button variant="primary" className="" type="submit">Подготовить ссылку</Button></form>}</div></div>
+                {(finding.status === "DEFERRED" || (finding.priority === "PLANNED" && !["COMPLETED","DECLINED"].includes(finding.status))) && finding.serverVersion && <FollowUpPlan
+                  findingId={finding.id} customerId={visit.customerId} visitId={visit.id} version={finding.serverVersion}
+                  dueAt={finding.followUpConfigured ? finding.followUpDueAt ?? null : report?.nextVisitAt ?? null}
+                  inherited={!finding.followUpConfigured && !!report?.nextVisitAt} state={finding.followUpState}/>}
               </article>; }) : <div className="empty-inline"><Icon name="check" /><p><strong>Находок пока нет</strong><small>Они появятся здесь во время диагностики.</small></p></div>}
             </div>
           </section>

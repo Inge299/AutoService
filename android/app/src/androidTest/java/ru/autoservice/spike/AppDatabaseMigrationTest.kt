@@ -48,11 +48,12 @@ class AppDatabaseMigrationTest {
 
         helper.runMigrationsAndValidate(
             DATABASE_NAME,
-            8,
+            9,
             true,
             AppDatabase.MIGRATION_5_6,
             AppDatabase.MIGRATION_6_7,
             AppDatabase.MIGRATION_7_8,
+            AppDatabase.MIGRATION_8_9,
         ).use { database ->
             database.query("SELECT vehicleLabel, reportOperationId, reportPreparationState FROM visits WHERE id = 'visit-1'").use { cursor ->
                 assertTrue(cursor.moveToFirst())
