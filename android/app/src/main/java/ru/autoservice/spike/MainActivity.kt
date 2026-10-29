@@ -723,7 +723,10 @@ internal fun VisitsScreen(
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf(QueueFilter.ACTIVE) }
-    val filtered = remember(visits, query, filter, attentionVisitIds) { filterVisitQueue(visits, query, filter, attentionVisitIds) }
+    val uploadVisitIds = mediaQueue.filter { it.syncState != SyncState.SYNCED }.map { it.visitId }.toSet()
+    val filtered = remember(visits, query, filter, attentionVisitIds, uploadVisitIds) {
+        filterVisitQueue(visits, query, filter, attentionVisitIds, uploadVisitIds)
+    }
     val pendingCount = mediaQueue.count { it.syncState != SyncState.SYNCED }
     val attentionCount = mediaQueue.count { it.syncState == SyncState.RETRY || it.syncState == SyncState.BLOCKED }
     val activeVisits = filtered
@@ -760,6 +763,8 @@ internal fun VisitsScreen(
                     Text("Принять автомобиль")
                 }
                 Surface(
+                    onClick = { query = ""; filter = if (pendingCount > 0) QueueFilter.UPLOADS else QueueFilter.ACTIVE },
+                    enabled = pendingCount > 0,
                     color = if (attentionCount > 0) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, if (attentionCount > 0) MaterialTheme.colorScheme.error.copy(alpha = 0.24f) else MaterialTheme.colorScheme.outlineVariant),
                     shape = MaterialTheme.shapes.small,
@@ -782,7 +787,7 @@ internal fun VisitsScreen(
                                 style = MaterialTheme.typography.labelLarge,
                             )
                             if (attentionCount > 0 || pendingCount > 0) Text(
-                                if (attentionCount > 0) "Откройте визит и повторите загрузку." else "Можно продолжать работу — загрузка идёт в фоне.",
+                                if (attentionCount > 0) "Нажмите, чтобы найти визит и повторить загрузку." else "Нажмите, чтобы увидеть загрузки. Можно продолжать работу.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -836,6 +841,7 @@ internal fun VisitsScreen(
             }
             items(activeVisits, key = { it.id }) { visit ->
                 Column(Modifier.padding(horizontal = 20.dp)) {
+                    if (filter == QueueFilter.UPLOADS) Text("Материалов в очереди: ${mediaQueue.count { it.visitId == visit.id && it.syncState != SyncState.SYNCED }}", style = MaterialTheme.typography.labelLarge)
                     if (visit.id in attentionVisitIds) Text("Клиент просит позвонить", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
                     VisitQueueRow(visit = visit, archived = false, onOpen = { onOpen(visit) })
                 }

@@ -63,7 +63,9 @@ production MinIO. Сохраните дату, ID backup, версию release �
 ## Подключение systemd
 
 ```bash
-sudo install -m 755 deploy/{backup-autoservice,restore-drill-autoservice,monitor-autoservice}.sh /opt/autoservice/current/deploy/
+sudo install -m 755 deploy/{backup-autoservice,restore-drill-autoservice}.sh /opt/autoservice/current/deploy/
+sudo install -d -m 700 /opt/autoservice/operations
+sudo install -m 755 deploy/{monitor-autoservice,backup-local-autoservice}.sh /opt/autoservice/operations/
 sudo install -m 644 deploy/systemd/* /etc/systemd/system/
 sudo install -d -m 700 /etc/autoservice
 sudoedit /etc/autoservice/backup.env
@@ -87,3 +89,27 @@ sudo systemctl list-timers 'autoservice-*'
    проверенный backup и зафиксировать время инцидента.
 4. После восстановления повторить `health/live`, `health/ready`, `/health/metrics` и
    один безличный сквозной сценарий из P0 checklist.
+
+## Временный режим: копии только на Mia
+
+По решению владельца от 30.10.2026 отдельное хранилище и канал алертов пока не
+выбраны. Это ограничение тестовой эксплуатации, а не выполнение off-host критерия.
+`deploy/backup-local-autoservice.sh` создаёт dump PostgreSQL, архив постоянного
+хранилища MinIO, защищённую конфигурацию и SHA256SUMS. Для чтения MinIO запускается
+одноразовый контейнер без сети с read-only подключением тома; рабочие контейнеры
+не останавливаются. Копирование БД и файлов последовательно: оно не является
+атомарным снимком двух хранилищ при параллельных изменениях. Перед внешним пилотом
+нужны восстановление с проверкой ссылок на медиа и отдельное хранилище.
+
+Копии лежат в `/opt/autoservice/backups/automatic-local`, доступны только root.
+После успешного завершения удаляются только копии этого скрипта старше семи дней;
+существующие ручные/предрелизные копии не затрагиваются. При заполнении диска от
+85% новая копия не начинается, неудачный запуск не удаляет предыдущие копии.
+Таймер `autoservice-local-backup.timer` запускается ежедневно в 03:30 UTC с
+задержкой до 10 минут (06:30–06:40 по Москве). Сервис использует стабильный путь
+`/opt/autoservice/operations/backup-local-autoservice.sh`, отдельно от release.
+
+Мониторинг в этом режиме работает каждые пять минут. Результат записывается в
+`journalctl -u autoservice-monitor.service`, но доставки человеку нет до настройки
+`AUTOSERVICE_ALERT_WEBHOOK` или другого канала. `actionableBackgroundJobs` исключает
+задания отменённых напоминаний; общий `backgroundJobs` сохраняет всю историю.

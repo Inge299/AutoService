@@ -75,6 +75,43 @@ class VisitRepositoryTest {
         assertTrue(rejected)
     }
 
+    @Test
+    fun `synchronization imports replaces and clears the inherited server date`() = runTest {
+        val dao = FakeVisitDao()
+        val remote = FakeWorkshopRemote()
+        val server = VisitEntity("web-visit", "Test", "+79991234567", "Toyota", "", null, "",
+            ru.autoservice.spike.data.VisitStatus.COMPLETED, 1, 2,
+            ru.autoservice.spike.data.SyncState.SYNCED, serverVersion = 1, reportNextVisitAtEpochMs = 1234L)
+        remote.visits += server
+        val repository = VisitRepository(dao, remote)
+        repository.synchronizeLocal()
+        assertEquals(1234L, dao.find(server.id)?.reportNextVisitAtEpochMs)
+        remote.visits[0] = server.copy(reportNextVisitAtEpochMs = 5678L)
+        repository.synchronizeLocal()
+        assertEquals(5678L, dao.find(server.id)?.reportNextVisitAtEpochMs)
+        remote.visits[0] = server.copy(reportNextVisitAtEpochMs = null)
+        repository.synchronizeLocal()
+        assertEquals(null, dao.find(server.id)?.reportNextVisitAtEpochMs)
+    }
+
+    @Test
+    fun `synchronization preserves pending and failed publication dates including no date`() = runTest {
+        for (state in listOf("PENDING", "FAILED")) for (draftDate in listOf(1234L, null)) {
+            val dao = FakeVisitDao()
+            val remote = FakeWorkshopRemote()
+            val server = VisitEntity("web-visit", "Test", "+79991234567", "Toyota", "", null, "",
+                ru.autoservice.spike.data.VisitStatus.IN_REPAIR, 1, 2,
+                ru.autoservice.spike.data.SyncState.SYNCED, serverVersion = 1, reportNextVisitAtEpochMs = 5678L)
+            dao.upsert(server.copy(reportPreparationState = state, reportNextVisitAtEpochMs = draftDate,
+                reportOperationId = "operation", reportCompletedWork = "Local draft"))
+            remote.visits += server
+            VisitRepository(dao, remote).synchronizeLocal()
+            assertEquals(draftDate, dao.find(server.id)?.reportNextVisitAtEpochMs)
+            assertEquals("operation", dao.find(server.id)?.reportOperationId)
+            assertEquals("Local draft", dao.find(server.id)?.reportCompletedWork)
+        }
+    }
+
     private class FakeVisitDao : VisitDao {
         private val visits = MutableStateFlow<List<VisitEntity>>(emptyList())
         var saved: VisitEntity? = null

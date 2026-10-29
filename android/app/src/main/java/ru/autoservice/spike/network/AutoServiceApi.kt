@@ -529,6 +529,8 @@ private fun JSONObject.toVisit(): VisitEntity = VisitEntity(
     updatedAtEpochMs = Instant.parse(getString("updatedAt")).toEpochMilli(),
     syncState = SyncState.SYNCED,
     serverVersion = getInt("serverVersion"),
+    reportNextVisitAtEpochMs = optJSONObject("report")?.optString("nextVisitAt")
+        ?.takeIf { it.isNotBlank() && it != "null" }?.let { Instant.parse(it).toEpochMilli() },
 )
 
 private fun JSONObject.toFinding(): FindingEntity = FindingEntity(

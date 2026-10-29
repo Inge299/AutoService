@@ -4,11 +4,11 @@ import ru.autoservice.spike.data.VisitEntity
 import ru.autoservice.spike.data.VisitStatus
 
 internal enum class QueueFilter(val label: String) {
-    ACTIVE("Все активные"), ATTENTION("Нужен звонок"), DRAFT("Черновики"),
+    ACTIVE("Все активные"), UPLOADS("Загрузки"), ATTENTION("Нужен звонок"), DRAFT("Черновики"),
     IN_REPAIR("В ремонте"), WAITING_APPROVAL("Ждут решения"), ARCHIVE("Архив")
 }
 
-internal fun filterVisitQueue(visits: List<VisitEntity>, query: String, filter: QueueFilter, attentionIds: Set<String>): List<VisitEntity> {
+internal fun filterVisitQueue(visits: List<VisitEntity>, query: String, filter: QueueFilter, attentionIds: Set<String>, uploadIds: Set<String> = emptySet()): List<VisitEntity> {
     val text = query.trim().lowercase().replace('ё', 'е')
     val phone = phoneSearchKey(text)
     val phoneQuery = text.isNotEmpty() && text.all { it.isDigit() || it in "+ ()-" } && phone.length >= 3
@@ -16,6 +16,7 @@ internal fun filterVisitQueue(visits: List<VisitEntity>, query: String, filter: 
         val archived = visit.status in setOf(VisitStatus.COMPLETED, VisitStatus.CANCELLED)
         val scope = when (filter) {
             QueueFilter.ACTIVE -> !archived
+            QueueFilter.UPLOADS -> visit.id in uploadIds
             QueueFilter.ATTENTION -> !archived && visit.id in attentionIds
             QueueFilter.ARCHIVE -> archived
             else -> visit.status.name == filter.name

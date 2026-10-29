@@ -34,7 +34,7 @@ class FollowUpPlanDialogTest {
     @Test fun completionIsSeparateFromOriginalFindingAndCancellationRequiresASecondChoice() {
         unlocked();val actions=mutableListOf<String>()
         compose.setContent { AutoServiceTheme { FollowUpPlanDialog(finding,null,{},{_,value,done->actions+=value;done(null)}) } }
-        compose.onNodeWithText("Выполнено позже").performScrollTo().performClick();assertEquals(listOf("DONE"),actions)
+        compose.onNodeWithText("Отметить выполненной").performScrollTo().performClick();assertEquals(listOf("DONE"),actions)
         compose.onNodeWithText("Снять с плана").performScrollTo().performClick();assertEquals(listOf("DONE"),actions)
         compose.onNodeWithText("Оставить").performClick();assertEquals(listOf("DONE"),actions)
     }
