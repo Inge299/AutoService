@@ -7,8 +7,15 @@ It authorizes only this known transition:
 - production certificate: `2d3fba77411b2b68d0cae37ca4582c8720de142923a8381353e0a7cd11949c93`.
 
 It contains certificates and a signature, never private keys/passwords. The old
-key grants installed-data continuity only: signature permissions, shared UID,
-authenticator access and rollback to the old signer are disabled. The production
+final lineage grants installed-data continuity only: signature permissions, shared UID,
+authenticator access and rollback to the old signer are disabled.
+A separate `legacy-debug-to-release-permission-bridge.lineage` temporarily enables
+signature-permission continuity because Android otherwise rejects the app’s own
+AndroidX `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` as a duplicate at key rotation.
+Install the permission bridge first, then the same-version final transition APK
+to revoke that temporary capability, and finally the ordinary release. Verify
+installed signing-history capability flags after the final transition. Never
+leave the permission bridge as the final installation. The production
 private key stays in existing GitHub Secrets.
 
 CI publishes the ordinary `app-release` (Android 8+) first. It then builds a
@@ -16,7 +23,7 @@ separate `app-release-transition` with minSdk 28 and an explicit v3 signature an
 this lineage, for updating the old local debug installation on Android 9+.
 The transition file is not the normal APK for Android 8 devices. A matched
 production-signed instrumentation helper allows data checks on non-debuggable
-release without retaining debug-signer permission access.
+release. The final installation must not retain debug-signer permission access.
 
 Use only `adb install -r`; never uninstall the main app to bypass a signature
 failure. Before/after checks compare IDs, media SHA256, decrypted session
@@ -35,3 +42,6 @@ when stable production signing is configured. The data-check helper is a tempora
 test artifact, published only for a trusted PR explicitly labelled
 `device-release-migration`, retained for one day, and deleted after device checks.
 It is not part of the release distribution.
+
+The bridge generator takes the optional fourth argument `permission-bridge`.
+Both public lineage files are hash-pinned in CI.

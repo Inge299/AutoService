@@ -15,7 +15,7 @@ public final class CreateLegacyLineage {
     return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(cert.getEncoded()));
   }
   public static void main(String[] args) throws Exception {
-    if (args.length != 3) throw new IllegalArgumentException("legacy-debug.keystore production.apk output.lineage");
+    if (args.length < 3 || args.length > 4) throw new IllegalArgumentException("legacy-debug.keystore production.apk output.lineage [permission-bridge]");
     var result = new ApkVerifier.Builder(new File(args[1])).build().verify();
     if (!result.isVerified() || result.getSignerCertificates().size() != 1) throw new SecurityException("Production APK signature invalid");
     var target = result.getSignerCertificates().get(0);
@@ -30,7 +30,7 @@ public final class CreateLegacyLineage {
     var newSigner = new SigningCertificateLineage.SignerConfig.Builder((KeyConfig)null, target).build();
     var lineage = new SigningCertificateLineage.Builder(oldSigner, newSigner).setMinSdkVersion(28)
         .setOriginalCapabilities(new SigningCertificateLineage.SignerCapabilities.Builder()
-          .setInstalledData(true).setPermission(false).setSharedUid(false).setRollback(false).setAuth(false).build())
+          .setInstalledData(true).setPermission(args.length == 4 && args[3].equals("permission-bridge")).setSharedUid(false).setRollback(false).setAuth(false).build())
         .build();
     lineage.writeToFile(new File(args[2]));
     var checked = SigningCertificateLineage.readFromFile(new File(args[2])).getCertificatesInLineage();
