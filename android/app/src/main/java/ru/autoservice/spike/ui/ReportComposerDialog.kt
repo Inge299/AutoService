@@ -48,6 +48,7 @@ fun ReportComposerDialog(
     onPublish: (ReportDraft) -> Unit,
     completedFindingTitles: List<String> = emptyList(),
     futureFindingTitles: List<String> = emptyList(),
+    hasIndividualPlans: Boolean = false,
 ) {
     var completedWork by rememberSaveable(initialCompletedWork) { mutableStateOf(initialCompletedWork) }
     var recommendations by rememberSaveable(initialRecommendations) { mutableStateOf(initialRecommendations) }
@@ -96,7 +97,7 @@ fun ReportComposerDialog(
                     if (futureFindingTitles.isNotEmpty()) {
                         Text("Необходимо выполнить в дальнейшем", style = MaterialTheme.typography.titleMedium)
                         futureFindingTitles.distinct().forEach { Text("• $it") }
-                        Text("Эти работы не выполнены в текущий визит и будут добавлены в рекомендации отчёта. Дата следующего визита задаёт общий срок их выполнения.", style = MaterialTheme.typography.bodySmall)
+                        Text("Эти работы будут добавлены в рекомендации. Индивидуальный срок из плана работы имеет приоритет; для остальных используется дата следующего визита.", style = MaterialTheme.typography.bodySmall)
                     }
                     Text("Следующий визит", style = MaterialTheme.typography.titleMedium)
                     OutlinedButton(onClick = ::selectDate, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
@@ -110,7 +111,8 @@ fun ReportComposerDialog(
                     }
                     if (nextVisitAt != null) TextButton(onClick = { nextVisitAt = null }) { Text("Не планировать визит") }
                     else Text("Дату можно не назначать.", style = MaterialTheme.typography.bodySmall)
-                    Text(if (nextVisitAt != null) "Будет создано напоминание с рекомендациями за 7 дней до выбранной даты; если до неё меньше недели — сразу."
+                    Text(if (hasIndividualPlans) "Напоминания создаются отдельно для каждой работы с назначенным сроком. Следующий визит задаёт срок только работам без индивидуального плана."
+                        else if (nextVisitAt != null) "Для каждой работы будет создано напоминание за 7 дней до срока; если осталось меньше недели — сразу."
                         else "Без даты автоматическое напоминание не создаётся. Срок работ нужно согласовать с клиентом.", style = MaterialTheme.typography.bodySmall)
                 }
                 HorizontalDivider()

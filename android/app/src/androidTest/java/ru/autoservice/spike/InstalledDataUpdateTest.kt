@@ -21,7 +21,7 @@ class InstalledDataUpdateTest {
     }
     @Test fun captureBeforeApkUpdate() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("qaUpdatePhase") == "capture")
-        assertEquals(102L, androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0)))
+        assertEquals(103L, androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0)))
         val result = JSONObject()
         context.databaseList().filter { it.startsWith("autoservice-") && it.endsWith(".db") }.forEach { name ->
             val tables = JSONObject()
@@ -33,13 +33,13 @@ class InstalledDataUpdateTest {
     }
     @Test fun verifyAfterApkUpdate() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("qaUpdatePhase") == "verify")
-        assertEquals(103L, androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0)))
+        assertEquals(104L, androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0)))
         val before = JSONObject(checkpoint.readText())
         for (name in before.keys()) for (table in before.getJSONObject(name).keys()) {
             val hashes = before.getJSONObject(name).getJSONArray(table)
             val after = rows(name, table)
             for (index in 0 until hashes.length()) assertTrue("A record disappeared from $table during APK update", hashes.getString(index) in after)
         }
-        InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("stream", "INSTALLED_DATABASE_RECORDS_PRESERVED_102_TO_103\n") })
+        InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("stream", "INSTALLED_DATABASE_RECORDS_PRESERVED_103_TO_104\n") })
     }
 }

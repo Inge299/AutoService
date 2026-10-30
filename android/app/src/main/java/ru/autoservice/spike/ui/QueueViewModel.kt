@@ -259,6 +259,19 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateFollowUp(finding: FindingEntity, dueAt: Long?, state: String, onSuccess: () -> Unit, onFailure: (Throwable) -> Unit) {
+        val workshop = container.forWorkshop(requireNotNull(session.value).workshopId)
+        viewModelScope.launch {
+            runCatching {
+                val saved = workshop.api.updateFollowUp(finding, dueAt, state)
+                workshop.database.findingDao().update(finding.copy(followUpDueAtEpochMs = saved.followUpDueAtEpochMs,
+                    followUpConfigured = saved.followUpConfigured, followUpState = saved.followUpState,
+                    followUpCompletedAtEpochMs = saved.followUpCompletedAtEpochMs, serverVersion = saved.serverVersion,
+                    updatedAtEpochMs = saved.updatedAtEpochMs))
+            }.onSuccess { onSuccess() }.onFailure(onFailure)
+        }
+    }
+
     fun queueApproval(finding: FindingEntity, onSuccess: () -> Unit, onFailure: (Throwable) -> Unit) {
         val workshop = container.forWorkshop(requireNotNull(session.value).workshopId)
         viewModelScope.launch {

@@ -6,5 +6,5 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 EnvironmentFile=-/etc/autoservice/monitor.env
-ExecStart=/opt/autoservice/current/deploy/monitor-autoservice.sh
+ExecStart=/opt/autoservice/operations/monitor-autoservice.sh
 User=root

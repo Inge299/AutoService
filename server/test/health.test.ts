@@ -77,6 +77,25 @@ describe("health", () => {
     }
   });
 
+  it("keeps cancelled jobs in history but excludes them from actionable metrics", async () => {
+    const calls: unknown[] = [];
+    const app = await buildApp({ ...config, INTERNAL_API_KEY: "i".repeat(32) }, {
+      prisma: {
+        backgroundJob: { groupBy: async (args: { where?: unknown }) => {
+          calls.push(args.where);
+          return [{ state: "DEAD", _count: { _all: args.where ? 1 : 11 } }];
+        } },
+        mediaAsset: { groupBy: async () => [] },
+      } as unknown as PrismaClient,
+      storage: {} as ObjectStorage,
+    });
+    try {
+      const response = await app.inject({ method: "GET", url: "/health/metrics", headers: { "x-internal-api-key": "i".repeat(32) } });
+      expect(response.json()).toMatchObject({ backgroundJobs: { DEAD: 11 }, actionableBackgroundJobs: { DEAD: 1 } });
+      expect(calls).toContainEqual({ OR: [{ reminderId: null }, { reminder: { state: { not: "CANCELLED" } } }] });
+    } finally { await app.close(); }
+  });
+
   it("protects application routes", async () => {
     const app = await buildApp(config, {
       prisma: {} as PrismaClient,
