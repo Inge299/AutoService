@@ -78,4 +78,17 @@ class VisitQueueLayoutTest {
             }
         }
     }
+    @Test fun uploadSummaryFindsACompletedVisitWithFailedMedia() {
+        val active = VisitEntity("active", "QA", "+79991112233", "Обычный визит", "А123ВС77", null, "", VisitStatus.DRAFT, 1, 1, SyncState.SYNCED)
+        val completed = active.copy(id = "closed", vehicleLabel = "QA Проблемная загрузка", status = VisitStatus.COMPLETED)
+        val asset = ru.autoservice.spike.data.MediaAssetEntity("asset", "operation", completed.id, null,
+            ru.autoservice.spike.data.MediaKind.PHOTO, "image/jpeg", "/qa-not-used.jpg", 1, "qa", SyncState.RETRY,
+            1, null, "Synthetic error", 1, 1)
+        var opened: String? = null
+        compose.setContent { AutoServiceTheme { VisitsScreen(listOf(active, completed), listOf(asset), {}, { opened = it.id }) } }
+        compose.onNodeWithText("Нужно проверить: 1").performScrollTo().performClick()
+        compose.onNodeWithTag("visit-queue").performScrollToNode(hasText("QA Проблемная загрузка"))
+        compose.onNodeWithText("QA Проблемная загрузка").performClick()
+        compose.runOnIdle { assertEquals("closed", opened) }
+    }
 }
