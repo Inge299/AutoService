@@ -26,7 +26,8 @@ android {
 
     defaultConfig {
         applicationId = "ru.autoservice.spike"
-        minSdk = 26
+        // A one-time v3 signer transition is supported from Android 9 onwards.
+        minSdk = if (providers.gradleProperty("AUTOSERVICE_TRANSITION_RELEASE").orNull == "true") 28 else 26
         targetSdk = 37
         versionCode = ciVersionCode ?: 1
         versionName = "0.4.0+${ciVersionCode ?: 1}"

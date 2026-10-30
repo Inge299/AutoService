@@ -133,3 +133,37 @@ jobs:
           name: app-release
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
+
+      - name: Build one-time legacy signer transition and test helper
+        if: env.ANDROID_SIGNING_AVAILABLE == 'true'
+        run: |
+          echo "fc8a8dcee5680e7eb1658e59f3c672a1171d012cb08391d7f20dffc8c6eb751d  android/signing/legacy-debug-to-release.lineage" | sha256sum -c -
+          ./gradlew :android:app:assembleDebugAndroidTest --no-daemon --no-configuration-cache
+          cp android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk "$RUNNER_TEMP/app-release-test-helper.apk"
+          ./gradlew :android:app:assembleRelease -PAUTOSERVICE_TRANSITION_RELEASE=true --no-daemon --no-configuration-cache
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks "$AUTOSERVICE_KEYSTORE_FILE" --ks-key-alias "$AUTOSERVICE_KEY_ALIAS" \
+            --ks-pass env:AUTOSERVICE_KEYSTORE_PASSWORD --key-pass env:AUTOSERVICE_KEY_PASSWORD \
+            --lineage android/signing/legacy-debug-to-release.lineage \
+            --min-sdk-version 28 --rotation-min-sdk-version 28 \
+            --v1-signing-enabled false --v2-signing-enabled false --v3-signing-enabled true --v4-signing-enabled false \
+            --debuggable-apk-permitted false --out "$RUNNER_TEMP/app-release-transition.apk" \
+            android/app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --min-sdk-version 28 --print-certs "$RUNNER_TEMP/app-release-transition.apk" | tee "$RUNNER_TEMP/transition-signature.txt"
+          grep -Fq "Signer #1 certificate SHA-256 digest: 2d3fba77411b2b68d0cae37ca4582c8720de142923a8381353e0a7cd11949c93" "$RUNNER_TEMP/transition-signature.txt"
+          grep -Fq "Verified using v3 scheme (APK Signature Scheme v3): true" "$RUNNER_TEMP/transition-signature.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$RUNNER_TEMP/app-release-transition.apk" > "$RUNNER_TEMP/transition-badging.txt"
+          grep -Eq "^(sdkVersion|minSdkVersion):'28'" "$RUNNER_TEMP/transition-badging.txt"
+          if grep -q "application-debuggable" "$RUNNER_TEMP/transition-badging.txt"; then exit 1; fi
+      - uses: actions/upload-artifact@v6
+        if: env.ANDROID_SIGNING_AVAILABLE == 'true'
+        with:
+          name: app-release-transition
+          path: ${{ runner.temp }}/app-release-transition.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: env.ANDROID_SIGNING_AVAILABLE == 'true'
+        with:
+          name: app-release-test-helper
+          path: ${{ runner.temp }}/app-release-test-helper.apk
+          if-no-files-found: error
