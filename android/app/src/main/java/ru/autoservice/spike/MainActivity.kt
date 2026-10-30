@@ -723,7 +723,10 @@ internal fun VisitsScreen(
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf(QueueFilter.ACTIVE) }
-    val filtered = remember(visits, query, filter, attentionVisitIds) { filterVisitQueue(visits, query, filter, attentionVisitIds) }
+    val uploadVisitIds = mediaQueue.filter { it.syncState != SyncState.SYNCED }.map { it.visitId }.toSet()
+    val filtered = remember(visits, query, filter, attentionVisitIds, uploadVisitIds) {
+        filterVisitQueue(visits, query, filter, attentionVisitIds, uploadVisitIds)
+    }
     val pendingCount = mediaQueue.count { it.syncState != SyncState.SYNCED }
     val attentionCount = mediaQueue.count { it.syncState == SyncState.RETRY || it.syncState == SyncState.BLOCKED }
     val activeVisits = filtered
@@ -760,6 +763,8 @@ internal fun VisitsScreen(
                     Text("Принять автомобиль")
                 }
                 Surface(
+                    onClick = { query = ""; filter = if (pendingCount > 0) QueueFilter.UPLOADS else QueueFilter.ACTIVE },
+                    enabled = pendingCount > 0,
                     color = if (attentionCount > 0) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, if (attentionCount > 0) MaterialTheme.colorScheme.error.copy(alpha = 0.24f) else MaterialTheme.colorScheme.outlineVariant),
                     shape = MaterialTheme.shapes.small,
@@ -782,7 +787,7 @@ internal fun VisitsScreen(
                                 style = MaterialTheme.typography.labelLarge,
                             )
                             if (attentionCount > 0 || pendingCount > 0) Text(
-                                if (attentionCount > 0) "Откройте визит и повторите загрузку." else "Можно продолжать работу — загрузка идёт в фоне.",
+                                if (attentionCount > 0) "Нажмите, чтобы найти визит и повторить загрузку." else "Нажмите, чтобы увидеть загрузки. Можно продолжать работу.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -836,6 +841,7 @@ internal fun VisitsScreen(
             }
             items(activeVisits, key = { it.id }) { visit ->
                 Column(Modifier.padding(horizontal = 20.dp)) {
+                    if (filter == QueueFilter.UPLOADS) Text("Материалов в очереди: ${mediaQueue.count { it.visitId == visit.id && it.syncState != SyncState.SYNCED }}", style = MaterialTheme.typography.labelLarge)
                     if (visit.id in attentionVisitIds) Text("Клиент просит позвонить", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
                     VisitQueueRow(visit = visit, archived = false, onOpen = { onOpen(visit) })
                 }
@@ -1157,6 +1163,7 @@ private fun VisitScreen(
     var renewalFinding by remember { mutableStateOf<FindingEntity?>(null) }
     var deletionAsset by remember { mutableStateOf<MediaAssetEntity?>(null) }
     var completionFinding by remember { mutableStateOf<FindingEntity?>(null) }
+    var followUpFinding by remember { mutableStateOf<FindingEntity?>(null) }
     var showReportComposer by remember { mutableStateOf(false) }
     var showReportRevisionConfirmation by remember { mutableStateOf(false) }
     var observedFindingStatuses by remember(visit.id) {
@@ -1384,6 +1391,7 @@ private fun VisitScreen(
                     onRenewApprovalLink = { renewalFinding = finding },
                     onEdit = { onEditFinding(finding) },
                     onComplete = { completionFinding = finding },
+                    onPlan = { followUpFinding = finding },
                     onRetryUpload = { asset -> viewModel.retry(asset) },
                     onDelete = { asset -> deletionAsset = asset },
                 )
@@ -1407,6 +1415,7 @@ private fun VisitScreen(
                         onRenewApprovalLink = { renewalFinding = finding },
                         onEdit = { onEditFinding(finding) },
                         onComplete = { completionFinding = finding },
+                        onPlan = { followUpFinding = finding },
                         onRetryUpload = { asset -> viewModel.retry(asset) },
                         onDelete = { asset -> deletionAsset = asset },
                     )
@@ -1441,7 +1450,15 @@ private fun VisitScreen(
                 },
             )
         }
-        deletionAsset?.let { asset ->
+    followUpFinding?.let { finding ->
+        ru.autoservice.spike.ui.FollowUpPlanDialog(finding, visit.reportNextVisitAtEpochMs,
+            onDismiss = { followUpFinding = null }, onSubmit = { dueAt, state, finished ->
+                viewModel.updateFollowUp(finding, dueAt, state,
+                    onSuccess = { finished(null); followUpFinding = null; onMessage(if (state == "DONE") "Выполнение отмечено, напоминание отменено" else "План работы сохранён") },
+                    onFailure = { finished(it.message ?: "Не удалось сохранить план. Проверьте связь") })
+            })
+    }
+    deletionAsset?.let { asset ->
             AlertDialog(
                 onDismissRequest = { deletionAsset = null },
                 title = { Text("Удалить материал?") },
@@ -1484,7 +1501,8 @@ private fun VisitScreen(
                 initialRecommendations = visit.reportRecommendations.orEmpty(),
                 initialNextVisitAtEpochMs = visit.reportNextVisitAtEpochMs,
                 completedFindingTitles = findings.filter { it.status == FindingStatus.COMPLETED }.map { it.title },
-                futureFindingTitles = findings.filter { it.status != FindingStatus.COMPLETED && it.status != FindingStatus.DECLINED &&
+                hasIndividualPlans = findings.any { it.followUpState == "OPEN" && it.followUpConfigured && it.followUpDueAtEpochMs != null },
+                futureFindingTitles = findings.filter { it.followUpState == "OPEN" && it.status != FindingStatus.COMPLETED && it.status != FindingStatus.DECLINED &&
                     (it.status == FindingStatus.DEFERRED || it.priority == FindingPriority.PLANNED) }.map { it.title },
                 onDismiss = { showReportComposer = false },
                 onPublish = { draft ->
@@ -1663,6 +1681,7 @@ private fun FindingCard(
     onRenewApprovalLink: () -> Unit,
     onEdit: () -> Unit,
     onComplete: () -> Unit,
+    onPlan: () -> Unit,
     onRetryUpload: (MediaAssetEntity) -> Unit,
     onDelete: (MediaAssetEntity) -> Unit,
 ) {
@@ -1683,6 +1702,17 @@ private fun FindingCard(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 StatusPill(finding.priority.label(), finding.priority.color())
                 finding.priceRub?.let { StatusPill("${it} ₽", MaterialTheme.colorScheme.secondaryContainer) }
+            }
+            if (finding.status == FindingStatus.DEFERRED || (finding.priority == FindingPriority.PLANNED && finding.status !in setOf(FindingStatus.COMPLETED, FindingStatus.DECLINED))) {
+                val planLabel = when (finding.followUpState) {
+                    "DONE" -> "Выполнено позже"
+                    "CANCELLED" -> "Снято с плана"
+                    else -> finding.followUpDueAtEpochMs?.let { epoch ->
+                        "Выполнить до " + java.time.Instant.ofEpochMilli(epoch).atZone(java.time.ZoneId.of("Europe/Moscow")).format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+                    } ?: if (finding.followUpConfigured) "Срок не назначен" else "Срок следующего визита или индивидуальный"
+                }
+                Text(planLabel,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.primary)
+                OutlinedButton(onClick=onPlan,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text(if (finding.followUpState == "OPEN") "Срок и выполнение" else "Изменить план") }
             }
             val syncedAssets = findingAssets.filter { it.syncState == SyncState.SYNCED }
             val pendingAssets = findingAssets.filter { it.syncState != SyncState.SYNCED }

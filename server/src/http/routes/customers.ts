@@ -23,7 +23,9 @@ export function customerRoutes(prisma: PrismaClient): FastifyPluginAsync {
           select: { id: true, label: true, licensePlate: true, _count: { select: { visits: true } } } });
         if (query.vehicleId && !vehicles.some(v => v.id === query.vehicleId)) return null;
         const where = { workshopId, customerId: id, ...(query.vehicleId ? { vehicleId: query.vehicleId } : {}) };
-        const futureWhere = { workshopId, status: "DEFERRED" as const, visit: where };
+        const futureWhere: Prisma.FindingWhereInput = { workshopId, followUpState: "OPEN", visit: where, OR: [
+          { status: "DEFERRED" }, { priority: "PLANNED", status: { notIn: ["COMPLETED", "DECLINED"] } },
+        ] };
         const [visits, total, futureWork, futureTotal] = await Promise.all([
           tx.visit.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (query.page - 1) * pageSize, take: pageSize + 1,
             include: { findings: { orderBy: { createdAt: "asc" }, include: { _count: { select: { media: true } }, media: { where: { state: { in: ["VERIFIED", "READY"] } }, select: { id: true } } } },
@@ -31,6 +33,7 @@ export function customerRoutes(prisma: PrismaClient): FastifyPluginAsync {
           tx.visit.count({ where }),
           tx.finding.findMany({ where: futureWhere, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (query.futurePage - 1) * pageSize, take: pageSize + 1,
             select: { id: true, title: true, description: true, priceRub: true, priority: true, visitId: true, createdAt: true,
+              serverVersion: true, followUpDueAt: true, followUpConfigured: true, followUpState: true, followUpCompletedAt: true,
               visit: { select: { vehicleLabel: true, licensePlate: true, report: { select: { status: true, nextVisitAt: true } } } } } }),
           tx.finding.count({ where: futureWhere }),
         ]);

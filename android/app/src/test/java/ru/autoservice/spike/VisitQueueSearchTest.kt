@@ -24,4 +24,12 @@ class VisitQueueSearchTest {
         assertEquals("call", filterVisitQueue(rows, "", QueueFilter.ATTENTION, setOf("call", "closed")).single().id)
         assertTrue(filterVisitQueue(rows, "нет такого", QueueFilter.ACTIVE, emptySet()).isEmpty())
     }
+    @Test fun uploadFilterIncludesClosedVisitsAndDoesNotChangeCallFilter() {
+        val rows = listOf(visit("draft"), visit("closed", VisitStatus.COMPLETED), visit("call"))
+        assertEquals(setOf("draft", "closed"), filterVisitQueue(rows, "", QueueFilter.UPLOADS,
+            setOf("call"), setOf("draft", "closed")).map { it.id }.toSet())
+        assertEquals("call", filterVisitQueue(rows, "", QueueFilter.ATTENTION,
+            setOf("call"), setOf("draft", "closed")).single().id)
+        assertTrue(filterVisitQueue(rows, "missing", QueueFilter.UPLOADS, emptySet(), setOf("draft")).isEmpty())
+    }
 }

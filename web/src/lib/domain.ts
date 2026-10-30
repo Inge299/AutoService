@@ -38,6 +38,10 @@ export interface Finding {
   status: FindingStatus;
   mediaCount: number;
   mediaIds?: string[];
+  serverVersion?: number;
+  followUpDueAt?: string | null;
+  followUpConfigured?: boolean;
+  followUpState?: "OPEN" | "DONE" | "CANCELLED";
 }
 
 export interface VisitEvent {
@@ -102,6 +106,7 @@ export interface CustomerHistory {
   vehicles: Array<{ id: string; label: string; licensePlate: string; _count: { visits: number } }>;
   visits: ListPage<Visit & { recommendations: string | null; nextVisitAt: string | null }>;
   futureWork: ListPage<{ id: string; title: string; description: string; priceRub: number | null; priority: FindingPriority; visitId: string;
+    serverVersion: number; followUpDueAt: string | null; followUpConfigured: boolean; followUpState: "OPEN" | "DONE" | "CANCELLED";
     visit: { vehicleLabel: string; licensePlate: string; report: { status: "DRAFT" | "PUBLISHED"; nextVisitAt: string | null } | null } }>;
 }
 

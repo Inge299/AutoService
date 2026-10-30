@@ -1,0 +1,10 @@
+[Unit]
+Description=AutoService local PostgreSQL and MinIO safety backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/autoservice/operations/backup-local-autoservice.sh
+User=root
+UMask=0077

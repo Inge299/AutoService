@@ -31,7 +31,7 @@ class NetworkRecoveryTest {
     private fun store() = AuthStore(object : ContextWrapper(context) {
         override fun getSharedPreferences(name: String, mode: Int) = super.getSharedPreferences("qa-recovery-$name", mode)
     })
-    private fun database() = Room.databaseBuilder(context, AppDatabase::class.java, "qa-network-recovery-v8.db").build()
+    private fun database() = Room.databaseBuilder(context, AppDatabase::class.java, "qa-network-recovery-v8.db").addMigrations(AppDatabase.MIGRATION_8_9).build()
     private suspend fun login(store: AuthStore): AutoServiceApi {
         val args = InstrumentationRegistry.getArguments()
         assumeNotNull(args.getString("qaLogin"), args.getString("qaPassword"))

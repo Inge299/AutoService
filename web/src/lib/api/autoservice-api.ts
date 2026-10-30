@@ -53,6 +53,10 @@ export interface ApiFinding {
   priceRub: number | null;
   priority: FindingPriority;
   status: FindingStatus;
+  serverVersion?: number;
+  followUpDueAt?: string | null;
+  followUpConfigured?: boolean;
+  followUpState?: "OPEN" | "DONE" | "CANCELLED";
   createdAt: string;
   updatedAt: string;
   _count: { media: number };
@@ -369,6 +373,11 @@ export async function getApiCustomerHistory(session: WebSession, id: string, pag
     if (error instanceof AutoServiceApiError && (error.status === 404 || error.status === 400)) return null;
     throw error;
   }
+}
+
+export function updateFollowUp(session: WebSession, findingId: string,
+  payload: { baseServerVersion: number; dueAt: string | null; state: "OPEN" | "DONE" | "CANCELLED" }) {
+  return request<ApiFinding>(`/v1/findings/${encodeURIComponent(findingId)}/follow-up`, session, { method: "PUT", body: JSON.stringify(payload) });
 }
 
 export function listApiReminderPage(session: WebSession, page = 1) {

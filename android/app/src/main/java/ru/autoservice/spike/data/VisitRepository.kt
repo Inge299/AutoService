@@ -61,7 +61,10 @@ class VisitRepository(
                     reportPreparationState = local?.reportPreparationState,
                     reportCompletedWork = local?.reportCompletedWork,
                     reportRecommendations = local?.reportRecommendations,
-                    reportNextVisitAtEpochMs = local?.reportNextVisitAtEpochMs,
+                    // A pending publication owns its draft; otherwise use the latest server date,
+                    // including an explicitly removed date.
+                    reportNextVisitAtEpochMs = if (local?.reportPreparationState in setOf("PENDING", "FAILED"))
+                        local?.reportNextVisitAtEpochMs else server.reportNextVisitAtEpochMs,
                     reportPreparationError = local?.reportPreparationError,
                 ))
             }

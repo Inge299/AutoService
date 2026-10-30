@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily AutoService local backup (off-host backup still required)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
