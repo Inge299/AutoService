@@ -112,6 +112,7 @@ jobs:
         if: env.ANDROID_SIGNING_AVAILABLE == 'true'
         run: ./gradlew assembleRelease --no-daemon --no-configuration-cache
       - uses: actions/upload-artifact@v6
+        if: env.ANDROID_SIGNING_AVAILABLE != 'true'
         with:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
@@ -162,8 +163,9 @@ jobs:
           path: ${{ runner.temp }}/app-release-transition.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v6
-        if: env.ANDROID_SIGNING_AVAILABLE == 'true'
+        if: env.ANDROID_SIGNING_AVAILABLE == 'true' && contains(github.event.pull_request.labels.*.name, 'device-release-migration')
         with:
           name: app-release-test-helper
           path: ${{ runner.temp }}/app-release-test-helper.apk
           if-no-files-found: error
+          retention-days: 1

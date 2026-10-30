@@ -29,3 +29,9 @@ verified production-signed APK and an output lineage path. The generator checks
 both fingerprints before using the old private key; that key is never exported.
 
 Official tooling: https://developer.android.com/tools/apksigner .
+
+Production-signed debug APKs must not be distributed: CI does not upload app-debug
+when stable production signing is configured. The data-check helper is a temporary
+test artifact, published only for a trusted PR explicitly labelled
+`device-release-migration`, retained for one day, and deleted after device checks.
+It is not part of the release distribution.
