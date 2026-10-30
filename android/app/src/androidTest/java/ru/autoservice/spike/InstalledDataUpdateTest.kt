@@ -10,7 +10,7 @@ import org.junit.Test
 import java.io.File
 import java.security.MessageDigest
 
-/** Run capture on APK 102, update with adb install -r, then verify on APK 103. */
+/** Capture installed IDs, update with install -r, then verify; qaExpectedVersion selects the APK. */
 class InstalledDataUpdateTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private val checkpoint get() = File(context.cacheDir, "qa-installed-data-baseline.json")
@@ -21,7 +21,7 @@ class InstalledDataUpdateTest {
     }
     @Test fun captureBeforeApkUpdate() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("qaUpdatePhase") == "capture")
-        assertEquals(103L, androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0)))
+        assertEquals(InstrumentationRegistry.getArguments().getString("qaExpectedVersion")?.toLong() ?: 103L, androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0)))
         val result = JSONObject()
         context.databaseList().filter { it.startsWith("autoservice-") && it.endsWith(".db") }.forEach { name ->
             val tables = JSONObject()
@@ -33,13 +33,13 @@ class InstalledDataUpdateTest {
     }
     @Test fun verifyAfterApkUpdate() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("qaUpdatePhase") == "verify")
-        assertEquals(104L, androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0)))
+        assertEquals(InstrumentationRegistry.getArguments().getString("qaExpectedVersion")?.toLong() ?: 104L, androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0)))
         val before = JSONObject(checkpoint.readText())
         for (name in before.keys()) for (table in before.getJSONObject(name).keys()) {
             val hashes = before.getJSONObject(name).getJSONArray(table)
             val after = rows(name, table)
             for (index in 0 until hashes.length()) assertTrue("A record disappeared from $table during APK update", hashes.getString(index) in after)
         }
-        InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("stream", "INSTALLED_DATABASE_RECORDS_PRESERVED_103_TO_104\n") })
+        InstrumentationRegistry.getInstrumentation().sendStatus(0, android.os.Bundle().apply { putString("stream", "INSTALLED_DATABASE_RECORDS_PRESERVED\n") })
     }
 }
