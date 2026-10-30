@@ -36,8 +36,11 @@ export function healthRoutes(
       if (!hasInternalKey(request.headers["x-internal-api-key"], internalApiKey)) {
         return reply.code(401).send({ error: "unauthorized" });
       }
-      const [jobs, media] = await Promise.all([
+      const [jobs, actionableJobs, media] = await Promise.all([
         prisma.backgroundJob.groupBy({ by: ["state"], _count: { _all: true } }),
+        // Cancellation intentionally leaves DEAD jobs as history; these need no intervention.
+        prisma.backgroundJob.groupBy({ by: ["state"], _count: { _all: true },
+          where: { OR: [{ reminderId: null }, { reminder: { state: { not: "CANCELLED" } } }] } }),
         prisma.mediaAsset.groupBy({ by: ["state"], _count: { _all: true } }),
       ]);
       const runtime = runtimeMetrics?.() ?? {
@@ -53,6 +56,7 @@ export function healthRoutes(
           responses5xx: runtime.httpResponses5xx,
         },
         backgroundJobs: countsByState(jobs),
+        actionableBackgroundJobs: countsByState(actionableJobs),
         media: countsByState(media),
       };
     });

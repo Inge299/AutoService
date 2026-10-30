@@ -25,6 +25,7 @@ const headers = { "x-workshop-id": workshopId, "x-user-id": userId };
 
 function mockedPrisma(overrides: Record<string, unknown>): PrismaClient {
   return {
+    $queryRaw: vi.fn().mockResolvedValue([]),
     membership: { findUnique: vi.fn().mockResolvedValue({ role: "ADMIN", isActive: true, user: { isActive: true } }) },
     workshop: { findUnique: vi.fn().mockResolvedValue({ id: workshopId, name: "АвтоСфера", phone: "+79990000000" }) },
     customer: { findMany: vi.fn().mockResolvedValue([]) },

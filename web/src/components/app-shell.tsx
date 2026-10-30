@@ -2,6 +2,7 @@
 import { Button } from "@/components/action";
 
 import Link from "next/link";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { logoutAction } from "@/app/login/actions";
 import { BrandMark, Icon, type IconName } from "@/components/icons";
@@ -23,6 +24,7 @@ function isActive(pathname: string, href: string) {
 
 export function AppShell({ session, accessTokenExpiresAtEpochMs, backend, workshop, reminderCount, children }: { session: Pick<WebSession, "displayName" | "role">; accessTokenExpiresAtEpochMs: number; backend: BackendConnection; workshop: ApiWorkshop; reminderCount: number; children: React.ReactNode }) {
   const pathname = usePathname();
+  const [moreOpen, setMoreOpen] = useState(false);
   const workshopInitials = workshop.name
     .split(/\s+/)
     .filter(Boolean)
@@ -69,17 +71,24 @@ export function AppShell({ session, accessTokenExpiresAtEpochMs, backend, worksh
       <div className="main-column">
         <header className="mobile-header"><BrandMark /><span className={`backend-dot backend-${backend.state.toLowerCase()}`} /></header>
         <main id="main-content" className="page-content">{children}</main>
+        {moreOpen && <section id="mobile-more-menu" className="mobile-more-menu" aria-label="Дополнительная навигация">
+          <div className="mobile-more-heading"><strong>{session.displayName}</strong><button type="button" onClick={() => setMoreOpen(false)} aria-label="Закрыть меню">Закрыть</button></div>
+          <p role="status">{backend.state === "CONNECTED" ? "Связь с сервером есть" : backend.state === "UNAVAILABLE" ? "Нет связи с сервером" : "Проверяем связь"}</p>
+          <Link href="/analytics" onClick={() => setMoreOpen(false)}><Icon name="analytics" />Результаты</Link>
+          <Link href="/settings" onClick={() => setMoreOpen(false)}><Icon name="settings" />Настройки</Link>
+          {session.role === "ADMIN" && <Link href="/admin/users" onClick={() => setMoreOpen(false)}><Icon name="customers" />Доступ сотрудников</Link>}
+          <form action={logoutAction}><Button type="submit"><Icon name="logout" />Выйти</Button></form>
+        </section>}
         <nav className="mobile-nav" aria-label="Мобильная навигация">
           {navigation.slice(0, 4).map((item) => (
-            <Link key={item.href} href={item.href} className={isActive(pathname, item.href) ? "active" : undefined}>
+            <Link key={item.href} href={item.href} onClick={() => setMoreOpen(false)} className={isActive(pathname, item.href) ? "active" : undefined}>
               <Icon name={item.icon} /><span>{item.label}</span>
             </Link>
           ))}
-          {session.role === "ADMIN" ? <Link href="/admin/users" className={isActive(pathname, "/admin/users") ? "active" : undefined}>
-            <Icon name="customers" /><span>Доступ</span>
-          </Link> : <Link href="/settings" className={isActive(pathname, "/settings") ? "active" : undefined}>
-            <Icon name="settings" /><span>Настройки</span>
-          </Link>}
+          <button type="button" className={moreOpen || ["/analytics", "/settings", "/admin/users"].some(path => isActive(pathname, path)) ? "active" : undefined}
+            aria-expanded={moreOpen} aria-controls="mobile-more-menu" onClick={() => setMoreOpen(!moreOpen)}>
+            <Icon name="more" /><span>Ещё</span>
+          </button>
         </nav>
       </div>
     </div>

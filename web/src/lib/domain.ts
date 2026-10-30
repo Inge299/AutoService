@@ -5,6 +5,16 @@ export type VisitStatus =
   | "COMPLETED"
   | "CANCELLED";
 
+export interface ListPage<T> { items: T[]; total: number; page: number; pageSize: number; hasNext: boolean; nextCursor: string | null }
+export interface WorkshopSummary {
+  totalVisits: number; activeVisits: number; attentionVisits: number;
+  visitCounts: Partial<Record<VisitStatus, number>>;
+  sent: number; decisions: number; approved: number; approvedValue: number;
+  upcomingReminders: Reminder[];
+  reminderCounts: Partial<Record<"PENDING" | "SENT" | "DELIVERED" | "FAILED" | "CANCELLED", number>>;
+  urgentReminders: number;
+}
+
 export type FindingPriority = "CRITICAL" | "IMPORTANT" | "PLANNED";
 
 export type FindingStatus =
@@ -28,6 +38,10 @@ export interface Finding {
   status: FindingStatus;
   mediaCount: number;
   mediaIds?: string[];
+  serverVersion?: number;
+  followUpDueAt?: string | null;
+  followUpConfigured?: boolean;
+  followUpState?: "OPEN" | "DONE" | "CANCELLED";
 }
 
 export interface VisitEvent {
@@ -40,6 +54,7 @@ export interface VisitEvent {
 
 export interface Visit {
   id: string;
+  customerId?: string | null;
   vehicle: string;
   plate: string;
   customer: string;
@@ -84,6 +99,15 @@ export interface Customer {
   visitsCount: number;
   lastVisit: string;
   nextContact?: string;
+}
+
+export interface CustomerHistory {
+  customer: { id: string; name: string; phone: string };
+  vehicles: Array<{ id: string; label: string; licensePlate: string; _count: { visits: number } }>;
+  visits: ListPage<Visit & { recommendations: string | null; nextVisitAt: string | null }>;
+  futureWork: ListPage<{ id: string; title: string; description: string; priceRub: number | null; priority: FindingPriority; visitId: string;
+    serverVersion: number; followUpDueAt: string | null; followUpConfigured: boolean; followUpState: "OPEN" | "DONE" | "CANCELLED";
+    visit: { vehicleLabel: string; licensePlate: string; report: { status: "DRAFT" | "PUBLISHED"; nextVisitAt: string | null } | null } }>;
 }
 
 export interface Reminder {

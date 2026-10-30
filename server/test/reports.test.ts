@@ -45,7 +45,7 @@ describe("visit reports", () => {
   });
 
   it.each([true, false])("publishes future work in the immutable report and schedules only dated recommendations (dated=%s)", async (dated) => {
-    const nextVisitAt = dated ? new Date("2026-11-20T10:00:00.000Z") : null;
+    const nextVisitAt = dated ? new Date("2099-11-20T10:00:00.000Z") : null;
     const versionCreate = vi.fn().mockResolvedValue({ id: reportVersionId });
     const linkCreate = vi.fn().mockResolvedValue({ expiresAt: new Date("2026-10-01T12:00:00.000Z") });
     const transaction = {
@@ -63,7 +63,7 @@ describe("visit reports", () => {
       ]) },
       mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: "88888888-8888-4888-8888-888888888888" }]) },
       reportLink: { create: linkCreate },
-      reminder: { create: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999999" }) },
+      reminder: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999999" }) },
       backgroundJob: { create: vi.fn().mockResolvedValue({}) },
       visit: { update: vi.fn().mockResolvedValue({}) },
       auditEvent: { create: vi.fn().mockResolvedValue({}) },
@@ -87,8 +87,8 @@ describe("visit reports", () => {
     const recommendations = versionCreate.mock.calls[0]![0].data.recommendations;
     expect(recommendations).toContain("Не выполнено в этот визит: Ремень. Необходимо выполнить в дальнейшем.");
     if (dated) {
-      expect(recommendations).toContain("Рекомендуемый срок: до 20.11.2026.");
-      expect(transaction.reminder.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reportVersionId, visitId, reason: recommendations, dueAt: nextVisitAt }) }));
+      expect(recommendations).toContain("Рекомендуемый срок: до 20.11.2099.");
+      expect(transaction.reminder.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reportVersionId, visitId, findingId: "deferred", reason: "Необходимо выполнить: Ремень", dueAt: nextVisitAt }) }));
       expect(transaction.backgroundJob.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: "SEND_REMINDER_SMS", reminderId: "99999999-9999-4999-8999-999999999999" }) }));
     } else {
       expect(recommendations).toContain("Срок необходимо согласовать с мастерской.");

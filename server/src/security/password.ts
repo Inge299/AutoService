@@ -2,6 +2,7 @@ import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:cry
 import { promisify } from "node:util";
 
 const scrypt = promisify(scryptCallback);
+export const MIN_PASSWORD_LENGTH = 6;
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
