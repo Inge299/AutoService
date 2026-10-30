@@ -109,15 +109,26 @@ jobs:
           echo "AUTOSERVICE_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
       - run: ./gradlew lintDebug testDebugUnitTest assembleDebug --no-daemon --no-configuration-cache
       - name: Build signed release APK
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.ANDROID_SIGNING_AVAILABLE == 'true'
+        if: env.ANDROID_SIGNING_AVAILABLE == 'true'
         run: ./gradlew assembleRelease --no-daemon --no-configuration-cache
       - uses: actions/upload-artifact@v6
         with:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      - name: Verify release APK signature and build flags
+        if: env.ANDROID_SIGNING_AVAILABLE == 'true'
+        run: |
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/release-signature.txt"
+          grep -Fq "Signer #1 certificate SHA-256 digest: 2d3fba77411b2b68d0cae37ca4582c8720de142923a8381353e0a7cd11949c93" "$RUNNER_TEMP/release-signature.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" > "$RUNNER_TEMP/release-badging.txt"
+          if grep -q "application-debuggable" "$RUNNER_TEMP/release-badging.txt"; then
+            echo "Release APK must not be debuggable" >&2
+            exit 1
+          fi
       - uses: actions/upload-artifact@v6
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.ANDROID_SIGNING_AVAILABLE == 'true'
+        if: env.ANDROID_SIGNING_AVAILABLE == 'true'
         with:
           name: app-release
           path: android/app/build/outputs/apk/release/app-release.apk

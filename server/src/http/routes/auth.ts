@@ -129,10 +129,33 @@ export function authRoutes(prisma: PrismaClient, accessTokenSecret?: string): Fa
       if (!user?.isActive || !user.passwordHash || !await verifyPassword(body.currentPassword, user.passwordHash)) {
         return reply.code(401).send({ error: "invalid_credentials" });
       }
-      await prisma.user.update({
-        where: { id: request.actor.userId },
-        data: { passwordHash: await hashPassword(body.newPassword), mustChangePassword: false },
+      const passwordHash = await hashPassword(body.newPassword);
+      const changed = await prisma.$transaction(async tx => {
+        // Compare the verified hash so two concurrent changes cannot both replace the old password.
+        const updated = await tx.user.updateMany({
+          where: { id: request.actor.userId, isActive: true, passwordHash: user.passwordHash },
+          data: { passwordHash, mustChangePassword: false },
+        });
+        if (updated.count !== 1) return false;
+        const revoked = await tx.authSession.updateMany({
+          where: {
+            userId: request.actor.userId,
+            revokedAt: null,
+            ...(request.actor.sessionId ? { id: { not: request.actor.sessionId } } : {}),
+          },
+          data: { revokedAt: new Date() },
+        });
+        await tx.auditEvent.create({ data: {
+          workshopId: request.actor.workshopId,
+          actorUserId: request.actor.userId,
+          action: "USER_PASSWORD_CHANGED",
+          entityType: "user",
+          entityId: request.actor.userId,
+          metadata: { revokedSessions: revoked.count },
+        } });
+        return true;
       });
+      if (!changed) return reply.code(401).send({ error: "invalid_credentials" });
       return reply.code(204).send();
     });
 

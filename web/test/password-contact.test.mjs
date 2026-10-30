@@ -17,8 +17,8 @@ function load(path) {
 }
 const {isValidNewPassword}=load("../src/lib/password-policy.ts");
 const {CustomerContact}=load("../src/components/customer-contact.tsx");
-test("new passwords accept the five-character boundary and retain the maximum",()=>{
-  assert.equal(isValidNewPassword("1234"),false); assert.equal(isValidNewPassword("12345"),true);
+test("new passwords accept the six-character boundary and retain the maximum",()=>{
+  assert.equal(isValidNewPassword("1234"),false); assert.equal(isValidNewPassword("12345"),false); assert.equal(isValidNewPassword("123456"),true);
   assert.equal(isValidNewPassword("x".repeat(256)),true); assert.equal(isValidNewPassword("x".repeat(257)),false);
 });
 test("contact help offers an existing phone, never a vanished decision action",()=>{

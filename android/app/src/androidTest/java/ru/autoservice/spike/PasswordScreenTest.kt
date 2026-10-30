@@ -21,9 +21,9 @@ class PasswordScreenTest {
         compose.onNodeWithText("Новый пароль").performTextInput("Qa12")
         compose.onNodeWithText("Повторите пароль").performTextInput("Qa12")
         compose.onNodeWithText("Сохранить пароль").assertIsNotEnabled()
-        compose.onNodeWithText("Новый пароль").performTextClearance(); compose.onNodeWithText("Новый пароль").performTextInput("Qa123")
-        compose.onNodeWithText("Повторите пароль").performTextClearance(); compose.onNodeWithText("Повторите пароль").performTextInput("Qa123")
+        compose.onNodeWithText("Новый пароль").performTextClearance(); compose.onNodeWithText("Новый пароль").performTextInput("Qa1234")
+        compose.onNodeWithText("Повторите пароль").performTextClearance(); compose.onNodeWithText("Повторите пароль").performTextInput("Qa1234")
         compose.onNodeWithText("Сохранить пароль").assertIsEnabled().performClick()
-        compose.runOnIdle { assertEquals("Qa123", saved) }
+        compose.runOnIdle { assertEquals("Qa1234", saved) }
     }
 }
