@@ -448,3 +448,13 @@ body{background:var(--canvas)}
 .customer-vehicle.selected { border-color: var(--teal, #126c78); box-shadow: inset 0 0 0 1px var(--teal, #126c78); }
 .customer-recommendations { padding: 0 24px 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .customer-history-section .section-heading { flex-wrap: wrap; gap: 12px; }
+
+/* Additional mobile destinations and account actions. */
+.mobile-more-menu{display:none}
+@media(max-width:900px){
+  .mobile-nav>button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:0;background:transparent;color:var(--muted);font:inherit;font-size:10px;min-height:48px;cursor:pointer}
+  .mobile-nav>button svg{width:18px;height:18px}.mobile-nav>button.active{color:var(--teal)}
+  .mobile-more-menu{display:flex;position:fixed;z-index:35;bottom:calc(78px + env(safe-area-inset-bottom));inset-inline:14px;max-height:calc(100dvh - 170px);overflow:auto;flex-direction:column;gap:8px;padding:18px;background:var(--surface,#fff);border:1px solid var(--line);border-radius:18px;box-shadow:0 8px 32px #18332e29}
+  .mobile-more-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.mobile-more-heading button{min-height:44px;border:0;background:transparent;color:var(--teal-dark);font:inherit}
+  .mobile-more-menu>a{display:flex;align-items:center;gap:12px;min-height:48px;padding:8px;border-radius:10px}.mobile-more-menu>a svg{width:20px;height:20px}.mobile-more-menu p{margin:0;color:var(--muted)}.mobile-more-menu .button{width:100%;min-height:48px}
+}

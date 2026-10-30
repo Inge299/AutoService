@@ -63,6 +63,7 @@ export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
               media: { where: { state: { in: ["VERIFIED", "READY"] } }, select: { id: true } },
             },
           },
+          report: { select: { nextVisitAt: true } },
           _count: { select: { media: true } },
         } satisfies Prisma.VisitInclude;
       if (!query.page && !query.pagination) return prisma.visit.findMany({ where,
@@ -91,6 +92,7 @@ export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
               media: { where: { state: { in: ["VERIFIED", "READY"] } }, select: { id: true } },
             },
           },
+          report: { select: { nextVisitAt: true } },
           _count: { select: { media: true } },
         },
       });

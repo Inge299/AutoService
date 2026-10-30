@@ -19,13 +19,16 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+internal fun initialFollowUpDueAt(finding: FindingEntity, inheritedDueAt: Long?): Long? =
+    if (finding.followUpConfigured) finding.followUpDueAtEpochMs else inheritedDueAt
+
 @Composable
 internal fun FollowUpPlanDialog(finding: FindingEntity, inheritedDueAt: Long?, onDismiss: () -> Unit,
     onSubmit: (Long?, String, (String?) -> Unit) -> Unit) {
     val zone = ZoneId.of("Europe/Moscow")
     val today = LocalDate.now(zone)
     val context = LocalContext.current
-    var dueAt by rememberSaveable(finding.id) { mutableStateOf(if (finding.followUpConfigured) finding.followUpDueAtEpochMs else inheritedDueAt) }
+    var dueAt by rememberSaveable(finding.id) { mutableStateOf(initialFollowUpDueAt(finding, inheritedDueAt)) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirmCancel by remember { mutableStateOf(false) }
@@ -46,7 +49,7 @@ internal fun FollowUpPlanDialog(finding: FindingEntity, inheritedDueAt: Long?, o
             Column(Modifier.verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("План работы",style=MaterialTheme.typography.headlineSmall)
                 Text(finding.title,style=MaterialTheme.typography.titleMedium)
-                Text("Назначьте срок или отметьте выполнение позже. Исходный отчёт останется в истории.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Назначьте срок или отметьте выполнение. Исходный отчёт останется в истории.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Выполнить до",style=MaterialTheme.typography.labelLarge)
                 OutlinedButton(onClick=::chooseDate,enabled=!busy,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {
                     Text(dueAt?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalDate().format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) } ?: "Выбрать в календаре")
@@ -63,7 +66,7 @@ internal fun FollowUpPlanDialog(finding: FindingEntity, inheritedDueAt: Long?, o
                 error?.let { Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodyMedium) }
                 Button(onClick={submit("OPEN")},enabled=!busy,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text(if(busy)"Сохраняем…" else if(active)"Сохранить срок" else "Вернуть в план") }
                 if(active) {
-                    OutlinedButton(onClick={submit("DONE")},enabled=!busy,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text("Выполнено позже") }
+                    OutlinedButton(onClick={submit("DONE")},enabled=!busy,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text("Отметить выполненной") }
                     TextButton(onClick={confirmCancel=true},enabled=!busy,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text("Снять с плана") }
                 }
                 TextButton(onClick=onDismiss,enabled=!busy,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text("Закрыть") }

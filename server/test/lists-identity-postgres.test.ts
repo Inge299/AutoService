@@ -27,6 +27,24 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL list coverage and st
     return app.inject({ method: "PUT", url: `/v1/visits/${id}`, payload: body(overrides) });
   }
 
+  it("includes the inherited report date in legacy, numbered and cursor lists and visit details", async () => {
+    const id = randomUUID();
+    expect((await save(id, { customerName: "Synthetic report inheritance" })).statusCode).toBe(200);
+    const nextVisitAt = new Date("2035-12-20T09:00:00.000Z");
+    await prisma.report.create({ data: { workshopId, visitId: id, nextVisitAt } });
+    for (const suffix of ["", "&page=1", "&pagination=cursor"]) {
+      const response = await app.inject({ method: "GET", url: `/v1/visits?q=Synthetic%20report%20inheritance${suffix}` });
+      expect(response.statusCode).toBe(200);
+      const data = response.json(); const rows = Array.isArray(data) ? data : data.items;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].report).toEqual({ nextVisitAt: nextVisitAt.toISOString() });
+    }
+    const detail = await app.inject({ method: "GET", url: `/v1/visits/${id}` });
+    expect(detail.json().report).toEqual({ nextVisitAt: nextVisitAt.toISOString() });
+    await prisma.report.update({ where: { visitId: id }, data: { nextVisitAt: null } });
+    expect((await app.inject({ method: "GET", url: `/v1/visits/${id}` })).json().report).toEqual({ nextVisitAt: null });
+  });
+
   it("reads every one of 437 visits with tied timestamps and survives updates between cursor pages", async () => {
     const createdAt = new Date("2026-01-01");
     const ids = Array.from({ length: 437 }, () => randomUUID());
