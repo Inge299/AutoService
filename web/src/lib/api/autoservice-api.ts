@@ -237,7 +237,7 @@ export interface CustomerPortal {
 }
 
 export class AutoServiceApiError extends Error {
-  constructor(public readonly status: number, body: string) {
+  constructor(public readonly status: number, public readonly body: string) {
     super(`AutoService API ${status}: ${body.slice(0, 300)}`);
   }
 }
