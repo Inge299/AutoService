@@ -2,6 +2,7 @@ package ru.autoservice.spike
 
 import android.app.KeyguardManager
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -70,6 +71,32 @@ class RepeatVisitIntakeTest {
             assertEquals("Новая жалоба", saved!!.complaint)
             assertEquals("test-client", saved!!.customerId)
             assertEquals("car-2", saved!!.vehicleId)
+        }
+    }
+
+    @Test fun filledIntakeSurvivesSavedStateRestoration() {
+        var saved: VisitDraft? = null
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent {
+            AutoServiceTheme {
+                IntakeScreen(onSearchCustomers = { emptyList() }, vehicleBrands = emptyList(), commonComplaints = emptyList(),
+                    onCancel = {}, onSave = { saved = it })
+            }
+        }
+        scrollTo("Телефон клиента *").performTextInput("9991234567")
+        scrollTo("Имя клиента").performTextInput("Тестовый клиент")
+        scrollTo("Автомобиль").performTextInput("Тестовая машина")
+        scrollTo("Пробег, км").performTextInput("12345")
+        scrollTo("Жалобы клиента").performTextInput("Тестовая жалоба")
+        restoration.emulateSavedInstanceStateRestore()
+        scrollTo("Сохранить").performClick()
+        compose.waitUntil(5_000) { saved != null }
+        compose.runOnIdle {
+            assertEquals("9991234567", saved!!.customerPhone)
+            assertEquals("Тестовый клиент", saved!!.customerName)
+            assertEquals("Тестовая машина", saved!!.vehicleLabel)
+            assertEquals(12345, saved!!.mileageKm)
+            assertEquals("Тестовая жалоба", saved!!.complaint)
         }
     }
 
