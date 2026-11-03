@@ -2,6 +2,9 @@ package ru.autoservice.spike
 
 import android.graphics.Bitmap
 import android.app.KeyguardManager
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -26,6 +29,20 @@ class ReportComposerDialogTest {
     @Before fun deviceMustBeUnlocked() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         assumeFalse("Unlock the device before running the UI test", context.getSystemService(KeyguardManager::class.java).isKeyguardLocked)
+    }
+
+    @Test fun privateFindingAcknowledgementIsFrozenWhenComposerOpens() {
+        var published: ReportDraft? = null
+        var privateIds by mutableStateOf(listOf("11111111-1111-4111-8111-111111111111"))
+        compose.setContent {
+            AutoServiceTheme {
+                ReportComposerDialog("Диагностика", "", null, onDismiss = {}, onPublish = { published = it }, privateFindingIds = privateIds)
+            }
+        }
+        compose.onNodeWithText("Черновики и их материалы не войдут в отчёт: 1. Чтобы рекомендовать работу клиенту, опишите её в рекомендациях.").assertIsDisplayed()
+        compose.runOnIdle { privateIds = privateIds + "22222222-2222-4222-8222-222222222222" }
+        compose.onNodeWithText("Опубликовать отчёт").performClick()
+        compose.runOnIdle { assertTrue(published?.acknowledgedPrivateFindingIds == listOf("11111111-1111-4111-8111-111111111111")) }
     }
 
     @Test fun reportActionsStayVisibleAndDatePresetPublishesSelectedDate() {

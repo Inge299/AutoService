@@ -11,6 +11,7 @@ data class ReportDraft(
     val completedWork: String,
     val recommendations: String,
     val nextVisitAtEpochMs: Long?,
+    val acknowledgedPrivateFindingIds: List<String> = emptyList(),
 )
 
 class ReportRepository(
@@ -33,6 +34,7 @@ class ReportRepository(
             reportRecommendations = draft.recommendations.trim(),
             reportNextVisitAtEpochMs = draft.nextVisitAtEpochMs,
             reportPreparationError = null,
+            reportAcknowledgedPrivateFindingIds = encodePrivateIds(draft.acknowledgedPrivateFindingIds),
         )
         visitDao.upsert(pending)
         return pending
@@ -43,6 +45,7 @@ class ReportRepository(
         require(pending.reportPreparationState == "PENDING") { "Нет отчёта для публикации" }
         val operationId = requireNotNull(pending.reportOperationId)
         val token = requireNotNull(pending.reportToken)
+        val acknowledged = decodePrivateIds(pending.reportAcknowledgedPrivateFindingIds)
 
         // Saving comes first so a previously edited draft is never published by accident.
         // If the publish response was lost, saving returns report_already_published; the
@@ -54,10 +57,10 @@ class ReportRepository(
                 recommendations = pending.reportRecommendations.orEmpty(),
                 nextVisitAtEpochMs = pending.reportNextVisitAtEpochMs,
             )
-            api.publishReport(pending.id, operationId, token)
+            api.publishReport(pending.id, operationId, token, acknowledged)
         } catch (error: ApiException) {
             if (error.statusCode != 409 || error.message != "report_already_published") throw error
-            api.publishReport(pending.id, operationId, token)
+            api.publishReport(pending.id, operationId, token, acknowledged)
         }
         visitDao.upsert(pending.copy(
             status = VisitStatus.COMPLETED,
@@ -85,8 +88,17 @@ class ReportRepository(
             reportExpiresAtEpochMs = null,
             reportPreparationState = null,
             reportPreparationError = null,
+            reportAcknowledgedPrivateFindingIds = null,
         ))
     }
+
+    private fun encodePrivateIds(ids: List<String>): String {
+        ids.forEach { require(UUID.fromString(it).toString().equals(it, ignoreCase = true)) { "Некорректный идентификатор находки" } }
+        return ids.joinToString(",")
+    }
+
+    private fun decodePrivateIds(value: String?): List<String> =
+        if (value.isNullOrEmpty()) emptyList() else value.split(",").also { encodePrivateIds(it) }
 
     private fun newReportToken(): String {
         val bytes = ByteArray(32)

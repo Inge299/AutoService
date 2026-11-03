@@ -49,11 +49,13 @@ fun ReportComposerDialog(
     completedFindingTitles: List<String> = emptyList(),
     futureFindingTitles: List<String> = emptyList(),
     hasIndividualPlans: Boolean = false,
+    privateFindingIds: List<String> = emptyList(),
 ) {
     var completedWork by rememberSaveable(initialCompletedWork) { mutableStateOf(initialCompletedWork) }
     var recommendations by rememberSaveable(initialRecommendations) { mutableStateOf(initialRecommendations) }
     var nextVisitAt by rememberSaveable(initialNextVisitAtEpochMs) { mutableStateOf(initialNextVisitAtEpochMs) }
     var showValidation by rememberSaveable { mutableStateOf(false) }
+    val acknowledgedPrivateIds = rememberSaveable { ArrayList(privateFindingIds) }
     val context = LocalContext.current
     val zone = ZoneId.systemDefault()
     val today = LocalDate.now(zone)
@@ -75,6 +77,10 @@ fun ReportComposerDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Итоговый отчёт", style = MaterialTheme.typography.headlineSmall)
                     Text("После публикации визит завершится. Клиент получит неизменяемую версию отчёта.", style = MaterialTheme.typography.bodySmall)
+                    if (acknowledgedPrivateIds.isNotEmpty()) {
+                        Text("Черновики и их материалы не войдут в отчёт: ${acknowledgedPrivateIds.size}. Чтобы рекомендовать работу клиенту, опишите её в рекомендациях.", style = MaterialTheme.typography.bodySmall)
+                        Text("Для черновиков отдельные сроки и напоминания не создаются.", style = MaterialTheme.typography.bodySmall)
+                    }
                     OutlinedTextField(value = completedWork, onValueChange = { completedWork = it },
                         label = { Text("Что выполнено") }, minLines = 3,
                         supportingText = { Text("Перечислите фактически выполненные работы") },
@@ -120,7 +126,7 @@ fun ReportComposerDialog(
                     Button(onClick = {
                         showValidation = true
                         if (completedWork.isNotBlank()) onPublish(ReportDraft(completedWork.trim(),
-                            futureWorkRecommendations(recommendations, futureFindingTitles, nextVisitAt), nextVisitAt))
+                            futureWorkRecommendations(recommendations, futureFindingTitles, nextVisitAt), nextVisitAt, acknowledgedPrivateIds))
                     }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Опубликовать отчёт") }
                     OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Отмена") }
                 }

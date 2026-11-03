@@ -414,6 +414,7 @@ model ReportVersion {
   nextVisitAt     DateTime?    @map("next_visit_at")
   findings        Json
   mediaIds        String[]     @map("media_ids") @db.Uuid
+  mediaManifest   Json?        @map("media_manifest")
   createdAt       DateTime     @default(now()) @map("created_at")
   report          Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
   workshop        Workshop     @relation(fields: [workshopId], references: [id], onDelete: Cascade)

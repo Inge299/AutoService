@@ -73,6 +73,7 @@ data class VisitEntity(
     val reportRecommendations: String? = null,
     val reportNextVisitAtEpochMs: Long? = null,
     val reportPreparationError: String? = null,
+    val reportAcknowledgedPrivateFindingIds: String? = null,
 )
 
 @Entity(

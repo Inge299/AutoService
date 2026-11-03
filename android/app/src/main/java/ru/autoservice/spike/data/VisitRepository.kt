@@ -66,6 +66,7 @@ class VisitRepository(
                     reportNextVisitAtEpochMs = if (local?.reportPreparationState in setOf("PENDING", "FAILED"))
                         local?.reportNextVisitAtEpochMs else server.reportNextVisitAtEpochMs,
                     reportPreparationError = local?.reportPreparationError,
+                    reportAcknowledgedPrivateFindingIds = local?.reportAcknowledgedPrivateFindingIds,
                 ))
             }
         }

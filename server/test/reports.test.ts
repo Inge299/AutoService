@@ -60,8 +60,9 @@ describe("visit reports", () => {
       finding: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([
         { id: "77777777-7777-4777-8777-777777777777", title: "Колодки", description: "Износ", priceRub: 12_800, priority: "IMPORTANT", status: "COMPLETED" },
         { id: "deferred", title: "Ремень", description: "Износ", priceRub: 1000, priority: "IMPORTANT", status: "DEFERRED" },
+        { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", title: "Неопубликованный черновик", description: "Внутреннее", priceRub: 900, priority: "PLANNED", status: "DRAFT" },
       ]) },
-      mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: "88888888-8888-4888-8888-888888888888" }]) },
+      mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: "88888888-8888-4888-8888-888888888888", findingId: null }, { id: "hidden-photo", findingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }]) },
       reportLink: { create: linkCreate },
       reminder: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999999" }) },
       backgroundJob: { create: vi.fn().mockResolvedValue({}) },
@@ -74,17 +75,27 @@ describe("visit reports", () => {
     } as unknown as PrismaClient;
     const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
 
-    const response = await app.inject({
+    const unacknowledged = await app.inject({
       method: "POST", url: `/v1/visits/${visitId}/report/publish`, headers,
       payload: { operationId, token, expiresInDays: 14 },
+    });
+    expect(unacknowledged.statusCode).toBe(409);
+    expect(unacknowledged.json().error).toBe("private_findings_changed");
+    expect(versionCreate).not.toHaveBeenCalled();
+    const response = await app.inject({
+      method: "POST", url: `/v1/visits/${visitId}/report/publish`, headers,
+      payload: { operationId, token, expiresInDays: 14, acknowledgedPrivateFindingIds: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] },
     });
 
     expect(response.statusCode).toBe(201);
     expect(response.json()).toMatchObject({ reportVersionId, token, publicPath: `/r/${token}`, reused: false });
-    expect(versionCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ operationId, reportId, visitId, mediaIds: ["88888888-8888-4888-8888-888888888888"] }) }));
+    expect(versionCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ operationId, reportId, visitId, mediaIds: ["88888888-8888-4888-8888-888888888888", "hidden-photo"] }) }));
     expect(linkCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reportVersionId, tokenHash: createHash("sha256").update(token).digest("hex") }) }));
     expect(transaction.visit.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "COMPLETED" }) }));
+    expect(versionCreate.mock.calls[0]![0].data.findings.map((finding: { id: string }) => finding.id)).toContain("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    expect(versionCreate.mock.calls[0]![0].data.mediaManifest).toEqual([{ id: "88888888-8888-4888-8888-888888888888", findingId: null }, { id: "hidden-photo", findingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }]);
     const recommendations = versionCreate.mock.calls[0]![0].data.recommendations;
+    expect(recommendations).not.toContain("Неопубликованный черновик");
     expect(recommendations).toContain("Не выполнено в этот визит: Ремень. Необходимо выполнить в дальнейшем.");
     if (dated) {
       expect(recommendations).toContain("Рекомендуемый срок: до 20.11.2099.");

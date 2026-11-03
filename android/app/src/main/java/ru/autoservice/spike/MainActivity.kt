@@ -1501,8 +1501,9 @@ private fun VisitScreen(
                 initialRecommendations = visit.reportRecommendations.orEmpty(),
                 initialNextVisitAtEpochMs = visit.reportNextVisitAtEpochMs,
                 completedFindingTitles = findings.filter { it.status == FindingStatus.COMPLETED }.map { it.title },
-                hasIndividualPlans = findings.any { it.followUpState == "OPEN" && it.followUpConfigured && it.followUpDueAtEpochMs != null },
-                futureFindingTitles = findings.filter { it.followUpState == "OPEN" && it.status != FindingStatus.COMPLETED && it.status != FindingStatus.DECLINED &&
+                hasIndividualPlans = findings.any { it.status !in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL) && it.followUpState == "OPEN" && it.followUpConfigured && it.followUpDueAtEpochMs != null },
+                privateFindingIds = findings.filter { it.status in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL) }.map { it.id },
+                futureFindingTitles = findings.filter { it.followUpState == "OPEN" && it.status !in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL, FindingStatus.COMPLETED, FindingStatus.DECLINED) &&
                     (it.status == FindingStatus.DEFERRED || it.priority == FindingPriority.PLANNED) }.map { it.title },
                 onDismiss = { showReportComposer = false },
                 onPublish = { draft ->
@@ -2192,6 +2193,7 @@ private fun FindingStatus.decisionLabel(): String = when (this) {
 }
 
 private fun Throwable.reportPublicationMessage(): String = when ((this as? ApiException)?.message) {
+    "private_findings_changed" -> "Список черновиков изменился. Обновите визит и заново проверьте отчёт"
     "pending_approvals" -> "Сначала дождитесь решения клиента по всем согласованиям"
     "completed_work_required" -> "Опишите выполненные работы"
     "report_already_published" -> "Отчёт уже опубликован. Нажмите «Поделиться отчётом»"

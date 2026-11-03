@@ -64,7 +64,7 @@ class ReportRepositoryTest {
         val firstProcess = ReportRepository(dao, RecordingRemote())
         val pending = firstProcess.queuePublication(
             sampleVisit(),
-            ReportDraft("Заменили тормозные колодки", "Пройти осмотр через месяц", null),
+            ReportDraft("Заменили тормозные колодки", "Пройти осмотр через месяц", null, listOf("11111111-1111-4111-8111-111111111111")),
         )
 
         val remoteAfterRestart = RecordingRemote()
@@ -76,6 +76,7 @@ class ReportRepositoryTest {
         assertEquals("READY", restored.reportPreparationState)
         assertEquals(pending.reportOperationId, remoteAfterRestart.publishedOperationId)
         assertEquals(pending.reportToken, remoteAfterRestart.publishedToken)
+        assertEquals(listOf("11111111-1111-4111-8111-111111111111"), remoteAfterRestart.acknowledgedPrivateIds)
         assertEquals("Заменили тормозные колодки", remoteAfterRestart.savedCompletedWork)
     }
 
@@ -99,6 +100,7 @@ class ReportRepositoryTest {
         var savedCompletedWork: String? = null
         var publishedOperationId: String? = null
         var publishedToken: String? = null
+        var acknowledgedPrivateIds: List<String> = emptyList()
         var revokedReports = 0
 
         override suspend fun saveReport(visitId: String, completedWork: String, recommendations: String, nextVisitAtEpochMs: Long?) {
@@ -107,9 +109,10 @@ class ReportRepositoryTest {
             savedNextVisitAtEpochMs = nextVisitAtEpochMs
         }
 
-        override suspend fun publishReport(visitId: String, operationId: String, token: String): ReportLink {
+        override suspend fun publishReport(visitId: String, operationId: String, token: String, acknowledgedPrivateFindingIds: List<String>): ReportLink {
             publishedOperationId = operationId
             publishedToken = token
+            acknowledgedPrivateIds = acknowledgedPrivateFindingIds
             return ReportLink("https://example.test/r/$token", 1_800_000L)
         }
 

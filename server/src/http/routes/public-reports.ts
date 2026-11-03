@@ -1,3 +1,4 @@
+import { customerVisibleMediaIds, projectReportFindings, withoutPrivateGeneratedRecommendations } from "../../domain/customer-visibility.js";
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
@@ -33,18 +34,20 @@ export function publicReportRoutes(prisma: PrismaClient, storage: ObjectStorage)
       }
 
       const version = link.reportVersion;
+      const projection = projectReportFindings(version.findings);
       const assets = version.mediaIds.length
         ? await prisma.mediaAsset.findMany({
           where: {
             id: { in: version.mediaIds }, workshopId: version.workshopId, visitId: version.visitId,
             state: { in: ["VERIFIED", "READY"] },
           },
-          select: { id: true, kind: true, mimeType: true, objectKey: true, sha256: true, byteCount: true },
+          select: { id: true, findingId: true, kind: true, mimeType: true, objectKey: true, sha256: true, byteCount: true },
         })
         : [];
       if (assets.length !== version.mediaIds.length) return reply.code(410).send({ error: "report_media_unavailable" });
+      const safeIds = customerVisibleMediaIds(version.mediaIds, version.mediaManifest, projection.visibleIds, projection.hasHidden, assets);
       const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
-      const media = await Promise.all(version.mediaIds.map(async (mediaId) => {
+      const media = await Promise.all(safeIds.map(async (mediaId) => {
         const asset = assetsById.get(mediaId);
         if (!asset) throw new Error("Report media snapshot is incomplete");
         const objectKey = await storage.seal(asset);
@@ -65,9 +68,9 @@ export function publicReportRoutes(prisma: PrismaClient, storage: ObjectStorage)
         },
         report: {
           completedWork: version.completedWork,
-          recommendations: version.recommendations,
+          recommendations: projection.canSanitize ? withoutPrivateGeneratedRecommendations(version.recommendations, projection.hiddenTitles) : "",
           nextVisitAt: version.nextVisitAt,
-          findings: version.findings,
+          findings: projection.visible,
           media,
         },
       });

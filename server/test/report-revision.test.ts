@@ -6,6 +6,7 @@ import { registerErrorHandler } from "../src/http/errors.js";
 import { reportRoutes } from "../src/http/routes/reports.js";
 import { findingRoutes } from "../src/http/routes/findings.js";
 import { visitRoutes } from "../src/http/routes/visits.js";
+import { customerVisibleMediaIds, projectReportFindings } from "../src/domain/customer-visibility.js";
 import { deliverReminder } from "../src/infrastructure/send-reminder.js";
 
 // Never fall back to the production DATABASE_URL.
@@ -75,6 +76,34 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL report revision inte
     expect(await prisma.backgroundJob.count({ where: { reminderId: old.id, state: { not: "DEAD" } } })).toBe(0);
   });
 
+  it("requires acknowledgement of private drafts and preserves immutable media associations", async () => {
+    const v = await visit(); await draft(v.id, null);
+    const hiddenId = randomUUID(), visibleId = randomUUID();
+    for (const [id, status, title] of [[hiddenId, "DRAFT", "Private draft"], [visibleId, "COMPLETED", "Visible work"]] as const) {
+      await prisma.finding.create({ data: { id, workshopId, visitId: v.id, title, description: "QA", priceRub: 100,
+        priority: "PLANNED", status, createdAt: new Date(), updatedAt: new Date() } });
+    }
+    const generalMedia = randomUUID(), privateMedia = randomUUID(), visibleMedia = randomUUID();
+    for (const [id, findingId] of [[generalMedia, null], [privateMedia, hiddenId], [visibleMedia, visibleId]] as const) {
+      await prisma.mediaAsset.create({ data: { id, operationId: randomUUID(), workshopId, visitId: v.id, findingId,
+        kind: "PHOTO", mimeType: "image/jpeg", byteCount: 1n, sha256: "a".repeat(64), objectKey: `qa/${id}/verified`, state: "READY" } });
+    }
+    expect((await publish(v.id)).json().error).toBe("private_findings_changed");
+    const response = await app.inject({ method: "POST", url: `/v1/visits/${v.id}/report/publish`, payload: {
+      operationId: randomUUID(), token: randomUUID().replaceAll("-", ""), acknowledgedPrivateFindingIds: [hiddenId],
+    } });
+    expect(response.statusCode).toBe(201);
+    const version = await prisma.reportVersion.findFirstOrThrow({ where: { visitId: v.id } });
+    expect(version.recommendations).not.toContain("Private draft");
+    const projection = projectReportFindings(version.findings);
+    const ids = customerVisibleMediaIds(version.mediaIds, version.mediaManifest, projection.visibleIds, projection.hasHidden, []);
+    expect(ids.sort()).toEqual([generalMedia, visibleMedia].sort());
+    const portalCount = await prisma.visit.findUniqueOrThrow({ where: { id: v.id }, select: { _count: { select: { media: { where: {
+      state: { in: ["VERIFIED", "READY"] }, OR: [{ findingId: null }, { finding: { is: { status: { in: ["SENT_TO_CUSTOMER", "APPROVED", "COMPLETED", "DECLINED", "DEFERRED", "CALL_REQUESTED"] } } } }],
+    } } } } } });
+    expect(portalCount._count.media).toBe(2);
+  });
+
   it("cannot create two versions or two reminders in concurrent publication", async () => {
     const v = await visit(); await draft(v.id, "2099-01-10T09:00:00Z");
     const responses = await Promise.all([publish(v.id), publish(v.id)]);
@@ -89,10 +118,16 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL report revision inte
       const [published, saved] = await Promise.all([publish(v.id), app.inject({ method: "PUT", url: `/v1/findings/${findingId}`,
         payload: { visitId: v.id, title: "Concurrent work", description: "Test", priceRub: 100, priority: "PLANNED", status: "DRAFT",
           createdAtEpochMs: Date.now(), updatedAtEpochMs: Date.now(), baseServerVersion: null } })]);
-      expect(published.statusCode).toBe(201); expect([200, 409]).toContain(saved.statusCode);
-      const version = await prisma.reportVersion.findFirstOrThrow({ where: { visitId: v.id } });
-      const containsFinding = (version.findings as Array<{ id: string }>).some(f => f.id === findingId);
-      expect(containsFinding).toBe(saved.statusCode === 200);
+      expect([201, 409]).toContain(published.statusCode);
+      expect([200, 409]).toContain(saved.statusCode);
+      if (saved.statusCode === 200) {
+        expect(published.statusCode).toBe(409);
+        expect(published.json().error).toBe("private_findings_changed");
+        expect(await prisma.reportVersion.count({ where: { visitId: v.id } })).toBe(0);
+      } else {
+        expect(published.statusCode).toBe(201);
+        expect(await prisma.reportVersion.count({ where: { visitId: v.id } })).toBe(1);
+      }
     }
   });
 

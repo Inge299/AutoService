@@ -1,3 +1,4 @@
+import { customerVisibleStatus, customerVisibleStatuses, projectReportFindings, withoutPrivateGeneratedRecommendations } from "../../domain/customer-visibility.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
@@ -302,19 +303,34 @@ export function customerAccountRoutes(
               recommendations: true,
               nextVisitAt: true,
               publishedAt: true,
+              versions: { orderBy: { version: "desc" }, take: 1, select: { findings: true } },
             },
           },
-          _count: { select: { media: true } },
+          _count: { select: { media: { where: {
+            state: { in: ["VERIFIED", "READY"] },
+            OR: [{ findingId: null }, { finding: { is: { status: { in: [...customerVisibleStatuses] } } } }],
+          } } } },
         },
       });
       return {
         customer: { id: customer.id, name: customer.name, phone: customer.phone, email: customer.email },
         workshop: customer.workshop,
         vehicles: customer.vehicles,
-        visits: visits.map(({ report, ...visit }) => ({
-          ...visit,
-          report: report?.status === "PUBLISHED" ? report : null,
-        })),
+        visits: visits.map(({ report, findings, ...visit }) => {
+          const hiddenTitles = findings.filter(finding => !customerVisibleStatus(finding.status)).map(finding => finding.title);
+          const snapshot = report?.versions?.[0];
+          const snapshotProjection = snapshot ? projectReportFindings(snapshot.findings) : null;
+          const { versions: _versions, ...publishedReport } = report ?? {};
+          return {
+            ...visit,
+            findings: findings.filter(finding => customerVisibleStatus(finding.status)),
+            report: report?.status === "PUBLISHED"
+              ? { ...publishedReport, recommendations: snapshotProjection?.canSanitize && hiddenTitles.every(title => title.length > 0 && !/[\r\n\u2028\u2029]/.test(title))
+                  ? withoutPrivateGeneratedRecommendations(report.recommendations, [...hiddenTitles, ...snapshotProjection.hiddenTitles])
+                  : "" }
+              : null,
+          };
+        }),
       };
     });
   };

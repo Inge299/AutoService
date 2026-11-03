@@ -24,6 +24,43 @@ describe("public report routes", () => {
       }
     } finally { await app.close(); }
   });
+  it("does not expose private findings, generated text or their media from old snapshots", async () => {
+    const visibleId = "visible-finding";
+    const prisma = {
+      reportLink: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "link", expiresAt: new Date(Date.now() + 60_000), revokedAt: null, openedAt: new Date(),
+          reportVersion: {
+            workshopId: "workshop", visitId: "visit", customerName: "QA", vehicleLabel: "Car", licensePlate: "", mileageKm: null, complaint: "",
+            completedWork: "Диагностика", nextVisitAt: null,
+            recommendations: "Проверить уровень\nНе выполнено в этот визит: Секретный черновик. Необходимо выполнить в дальнейшем. Срок необходимо согласовать с мастерской.",
+            findings: [{ id: "private-finding", title: "Секретный черновик", status: "DRAFT" }, { id: visibleId, title: "Видимая работа", status: "COMPLETED" }],
+            mediaIds: ["private-media", "visible-media", "general-media"], workshop: { name: "QA", phone: null },
+          },
+        }),
+      },
+      mediaAsset: { findMany: vi.fn().mockResolvedValue([
+        { id: "private-media", findingId: "private-finding", kind: "PHOTO", mimeType: "image/jpeg", objectKey: "private/verified" },
+        { id: "visible-media", findingId: visibleId, kind: "PHOTO", mimeType: "image/jpeg", objectKey: "visible/verified" },
+        { id: "general-media", findingId: null, kind: "PHOTO", mimeType: "image/jpeg", objectKey: "general/verified" },
+      ]) },
+    } as unknown as PrismaClient;
+    const seal = vi.fn(async (asset: { objectKey: string }) => asset.objectKey);
+    const createDownloadTarget = vi.fn(async (key: string) => ({ url: `https://media.example/${key}`, expiresInSeconds: 900 }));
+    const app = await buildApp(config, { prisma, storage: { seal, createDownloadTarget } as unknown as ObjectStorage });
+    try {
+      const response = await app.inject({ method: "GET", url: `/public/v1/reports/${token}` });
+      expect(response.statusCode).toBe(200);
+      expect(response.body).not.toContain("Секретный черновик");
+      expect(response.body).not.toContain("private-media");
+      expect(response.body).not.toContain("general-media");
+      expect(response.json().report.findings).toEqual([{ id: visibleId, title: "Видимая работа", status: "COMPLETED" }]);
+      expect(response.json().report.recommendations).toBe("Проверить уровень");
+      expect(response.json().report.media).toHaveLength(1);
+      expect(createDownloadTarget).toHaveBeenCalledTimes(1);
+      expect(createDownloadTarget).toHaveBeenCalledWith("visible/verified");
+    } finally { await app.close(); }
+  });
   it("returns a frozen report and signed media URLs without authentication", async () => {
     const update = vi.fn().mockResolvedValue({});
     const prisma = {

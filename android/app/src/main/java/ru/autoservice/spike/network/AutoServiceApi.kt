@@ -65,7 +65,7 @@ interface WorkshopRemote {
         recommendations: String,
         nextVisitAtEpochMs: Long?,
     )
-    suspend fun publishReport(visitId: String, operationId: String, token: String): ReportLink
+    suspend fun publishReport(visitId: String, operationId: String, token: String, acknowledgedPrivateFindingIds: List<String>): ReportLink
     suspend fun revokeReportLink(visitId: String)
     suspend fun uploadMedia(asset: MediaAssetEntity)
     suspend fun deleteMedia(assetId: String)
@@ -269,13 +269,14 @@ class AutoServiceApi(
         )
     }
 
-    override suspend fun publishReport(visitId: String, operationId: String, token: String): ReportLink = withContext(Dispatchers.IO) {
+    override suspend fun publishReport(visitId: String, operationId: String, token: String, acknowledgedPrivateFindingIds: List<String>): ReportLink = withContext(Dispatchers.IO) {
         val json = request(
             "POST",
             "/v1/visits/$visitId/report/publish",
             JSONObject()
                 .put("operationId", operationId)
-                .put("token", token),
+                .put("token", token)
+                .put("acknowledgedPrivateFindingIds", org.json.JSONArray(acknowledgedPrivateFindingIds)),
         )
         ReportLink(
             publicUrl = "$baseUrl${json.getString("publicPath")}",

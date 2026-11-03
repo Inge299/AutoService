@@ -1,3 +1,4 @@
+import { customerVisibleStatus } from "../../domain/customer-visibility.js";
 import { serializable } from "../../infrastructure/transaction.js";
 import { createHash } from "node:crypto";
 import type { PrismaClient, ReportStatus } from "@prisma/client";
@@ -18,6 +19,7 @@ const publishSchema = z.object({
   operationId: z.string().uuid(),
   token: z.string().min(32).max(200).regex(/^[A-Za-z0-9_-]+$/),
   expiresInDays: z.number().int().min(1).max(90).default(30),
+  acknowledgedPrivateFindingIds: z.array(z.string().uuid()).max(500).default([]),
 });
 
 function tokenHash(token: string): string {
@@ -129,11 +131,17 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
           tx.mediaAsset.findMany({
             where: { workshopId, visitId: id, state: { in: ["VERIFIED", "READY"] } },
             orderBy: { createdAt: "asc" },
-            select: { id: true },
+            select: { id: true, findingId: true },
           }),
         ]);
-        const recommendations = reportRecommendations(report.recommendations, findings, report.nextVisitAt);
-        const planned = futureWork(findings);
+        const visibleFindings = findings.filter(finding => customerVisibleStatus(finding.status));
+        const privateIds = findings.filter(finding => !customerVisibleStatus(finding.status)).map(finding => finding.id).sort();
+        const acknowledgedIds = [...new Set(body.acknowledgedPrivateFindingIds)].sort();
+        if (privateIds.length !== acknowledgedIds.length || privateIds.some((id, index) => id !== acknowledgedIds[index])) {
+          return { kind: "private_findings_changed" as const };
+        }
+        const recommendations = reportRecommendations(report.recommendations, visibleFindings, report.nextVisitAt);
+        const planned = futureWork(visibleFindings);
         if (planned.some(work => isPastVisitDate(work.followUpConfigured ? work.followUpDueAt ?? null : report.nextVisitAt))) {
           return { kind: "past_date" as const };
         }
@@ -155,6 +163,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
             nextVisitAt: report.nextVisitAt,
             findings: findings.map(finding => ({ ...finding, followUpDueAt: finding.followUpDueAt?.toISOString() ?? null })),
             mediaIds: media.map((asset) => asset.id),
+            mediaManifest: media.map(asset => ({ id: asset.id, findingId: asset.findingId ?? null })),
           },
         });
         const link = await tx.reportLink.create({
@@ -190,6 +199,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
         return { kind: "created" as const, version, link };
       });
 
+      if (result.kind === "private_findings_changed") return reply.code(409).send({ error: "private_findings_changed" });
       if (result.kind === "pending_approvals") return reply.code(409).send({ error: "pending_approvals" });
       if (result.kind === "report_unavailable") return reply.code(409).send({ error: "report_not_draft" });
       if (result.kind === "completed_work_required") return reply.code(409).send({ error: "completed_work_required" });
