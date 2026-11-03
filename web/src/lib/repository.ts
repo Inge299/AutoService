@@ -1,3 +1,4 @@
+import { reminderDueState } from "@/lib/reminder-due-state";
 import "server-only";
 
 import { customers, reminders, visits } from "@/lib/demo-data";
@@ -218,9 +219,7 @@ function mapCustomer(customer: ApiCustomer): Customer {
 }
 
 function mapReminder(reminder: Awaited<ReturnType<typeof listApiReminders>>[number]): Reminder {
-  const sendAt = new Date(reminder.sendAt).getTime();
-  const now = Date.now();
-  const state = sendAt < now - 24 * 60 * 60_000 ? "OVERDUE" : sendAt < now + 24 * 60 * 60_000 ? "TODAY" : "UPCOMING";
+  const state = reminderDueState(reminder.dueAt);
   return {
     id: reminder.id,
     customer: reminder.customerName,
