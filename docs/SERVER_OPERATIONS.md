@@ -62,8 +62,7 @@ S3_PUBLIC_ENDPOINT=https://storage.example.com
 INTERNAL_API_KEY=<random-32+-character-service-key>
 ACCESS_TOKEN_SECRET=<different-random-32+-character-signing-key>
 OTP_HASH_SECRET=<third-random-32+-character-hmac-key>
-# Необязательно: если обе переменные не заданы, создаётся одноразовый admin
-# с обязательной сменой пароля при первом входе.
+# Обязательно при первой инициализации пустой базы
 # BOOTSTRAP_ADMIN_LOGIN=<уникальный-логин-первого-администратора>
 # BOOTSTRAP_ADMIN_PASSWORD_HASH=<scrypt-хеш-длинного-уникального-пароля>
 BOOTSTRAP_ADMIN_NAME=Администратор
@@ -85,14 +84,13 @@ SMS_RU_VERIFICATION_MODE=callcheck
 # https://<api-домен>/public/v1/auth/phone/smsc-wait-call?token=<тот же секрет>
 ```
 
-Первый администратор создаётся только при initial seed. Если не заданы обе переменные
-`BOOTSTRAP_ADMIN_LOGIN` и `BOOTSTRAP_ADMIN_PASSWORD_HASH`, используются временные
-учётные данные: логин `admin`, пароль `AutoService!Change2026`. При таком входе система
-не откроет рабочие разделы, пока администратор не установит собственный пароль (минимум
-12 символов). Для production до initial seed предпочтительно задать оба своих значения:
-сгенерируйте scrypt-хеш командой `node web/scripts/hash-password.mjs "длинный-уникальный-пароль"`
-и поместите только хеш в `.env`. После первого входа администратор создаёт сотрудников
-по имени и рабочему номеру; им не нужен временный пароль для входа через WaitCall.
+Первый администратор создаётся только при initial seed. Для пустой базы обязательно
+задайте `BOOTSTRAP_ADMIN_LOGIN` и `BOOTSTRAP_ADMIN_PASSWORD_HASH`; без них seed завершится
+ошибкой до записи данных. Существующие администраторы и пароли seed не изменяет;
+отключённого администратора повторно не создаёт. Восстановление доступа при отсутствии
+активного администратора требует отдельной административной процедуры.
+Сгенерируйте scrypt-хеш командой `node web/scripts/hash-password.mjs "<уникальный-пароль>"` и сохраните только
+хеш в защищённом `.env`. После первого входа администратор создаёт сотрудников.
 
 ```bash
 chmod 600 .env

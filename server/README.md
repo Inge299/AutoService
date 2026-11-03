@@ -19,6 +19,7 @@ cp .env.example .env
 npm ci
 npm run db:generate
 npm run db:migrate
+# Перед первым seed задайте BOOTSTRAP_ADMIN_LOGIN и BOOTSTRAP_ADMIN_PASSWORD_HASH в .env.
 npm run db:seed
 npm run dev
 ```
