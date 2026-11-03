@@ -96,6 +96,17 @@ class ReportRepositoryTest {
     }
 
     @Test
+    fun `report waits for unsynchronized finding and preserves its draft`() = runTest {
+        val dao = FakeVisitDao(sampleVisit())
+        val remote = RecordingRemote()
+        val repository = ReportRepository(dao, remote, hasUnsyncedFindings = { true }) { emptyList() }
+        val failure = runCatching { repository.queuePublication(sampleVisit(), ReportDraft("Сохранённая работа", "", null)) }.exceptionOrNull()
+        assertTrue(failure is ReportMediaReadinessException)
+        assertEquals("Сохранённая работа", dao.find("visit-1")?.reportCompletedWork)
+        assertEquals(0, remote.savedReports)
+    }
+
+    @Test
     fun `lost publication response can be recovered even when local media changed`() = runTest {
         val dao = FakeVisitDao(sampleVisit())
         val remote = RecordingRemote()

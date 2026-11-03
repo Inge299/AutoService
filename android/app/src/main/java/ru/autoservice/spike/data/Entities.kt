@@ -75,6 +75,9 @@ data class VisitEntity(
     val reportPreparationError: String? = null,
     val reportAcknowledgedPrivateFindingIds: String? = null,
     val reportExpectedMediaIds: String? = null,
+    val pendingCustomerId: String? = null,
+    val pendingVehicleId: String? = null,
+    val syncError: String? = null,
 )
 
 @Entity(
@@ -144,4 +147,5 @@ data class FindingEntity(
     @ColumnInfo(defaultValue = "0") val followUpConfigured: Boolean = false,
     @ColumnInfo(defaultValue = "'OPEN'") val followUpState: String = "OPEN",
     val followUpCompletedAtEpochMs: Long? = null,
+    val syncError: String? = null,
 )

@@ -23,6 +23,20 @@ class MediaUploadWorker(
 
         if (asset.syncState == SyncState.SYNCED) return Result.success()
 
+        // Never register evidence before its visit and finding exist on the server.
+        val visit = container.database.visitDao().find(asset.visitId)
+        val finding = asset.findingId?.let { id -> container.database.findingDao().all().firstOrNull { it.id == id } }
+        if (visit?.syncState == SyncState.BLOCKED || finding?.syncError != null) {
+            block(dao, asset, "Сначала устраните проблему синхронизации визита или находки")
+            return Result.failure()
+        }
+        if (visit == null || visit.serverVersion == 0 || visit.syncState != SyncState.SYNCED ||
+            (asset.findingId != null && (finding == null || finding.serverVersion == 0))) {
+            container.uploadScheduler.enqueueIntake()
+            retry(dao, asset, "Ожидает синхронизации визита и находки")
+            return Result.retry()
+        }
+
         if (!container.fileStore.verify(asset.localPath, asset.byteCount, asset.sha256)) {
             dao.updateProgress(
                 id = asset.id,

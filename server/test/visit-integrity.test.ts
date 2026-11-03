@@ -63,6 +63,18 @@ describe("visit integrity", () => {
     } finally { await app.close(); }
   });
 
+  it("recovers an identical ready-for-approval creation without reopening it", async () => {
+    const existing = { ...findingBody, status: "READY_FOR_APPROVAL", workshopId, serverVersion: 1, createdAt: new Date(1), updatedAt: new Date(1) };
+    const update = vi.fn();
+    const app = await appFor({ visit: { findFirst: async () => ({ id, status: "IN_REPAIR" }) }, finding: { findUnique: async () => existing, update } });
+    try {
+      const send = (title: string) => app.inject({ method: "PUT", url: `/v1/findings/${other}`, payload: { ...findingBody, title, status: "READY_FOR_APPROVAL", baseServerVersion: null } });
+      expect((await send("Test")).statusCode).toBe(200);
+      expect((await send("Changed")).statusCode).toBe(403);
+      expect(update).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
   it("cannot manufacture a completed visit without report publication", async () => {
     const app = await appFor({ visit: { findUnique: async () => null } });
     try {

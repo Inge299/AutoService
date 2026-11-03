@@ -22,7 +22,7 @@ class AppDatabaseMigrationTest {
     )
 
     @Test
-    fun migratesVisitAndFindingFromVersion5ToVersion11() {
+    fun migratesVisitAndFindingFromVersion5ToVersion12() {
         helper.createDatabase(DATABASE_NAME, 5).apply {
             execSQL(
                 """INSERT INTO visits
@@ -48,7 +48,7 @@ class AppDatabaseMigrationTest {
 
         helper.runMigrationsAndValidate(
             DATABASE_NAME,
-            11,
+            12,
             true,
             AppDatabase.MIGRATION_5_6,
             AppDatabase.MIGRATION_6_7,
@@ -56,6 +56,7 @@ class AppDatabaseMigrationTest {
             AppDatabase.MIGRATION_8_9,
             AppDatabase.MIGRATION_9_10,
             AppDatabase.MIGRATION_10_11,
+            AppDatabase.MIGRATION_11_12,
         ).use { database ->
             database.query("SELECT vehicleLabel, reportOperationId, reportPreparationState, reportAcknowledgedPrivateFindingIds, reportExpectedMediaIds FROM visits WHERE id = 'visit-1'").use { cursor ->
                 assertTrue(cursor.moveToFirst())
@@ -82,7 +83,7 @@ class AppDatabaseMigrationTest {
 
 
     @Test
-    fun migratesVersion9PendingReportWithoutLosingItsDataToVersion11() {
+    fun migratesVersion9PendingReportWithoutLosingItsDataToVersion12() {
         val name = "qa-migration-v9-v10"
         helper.createDatabase(name, 9).apply {
             execSQL("""INSERT INTO visits
@@ -94,7 +95,7 @@ class AppDatabaseMigrationTest {
                         'operation-9', 'token-9', 'PENDING', 'Работа сохранена')""")
             close()
         }
-        helper.runMigrationsAndValidate(name, 11, true, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11).use { database ->
+        helper.runMigrationsAndValidate(name, 12, true, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12).use { database ->
             database.query("SELECT reportOperationId, reportToken, reportPreparationState, reportCompletedWork, reportAcknowledgedPrivateFindingIds, reportExpectedMediaIds FROM visits WHERE id = 'visit-9'").use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("operation-9", cursor.getString(0))

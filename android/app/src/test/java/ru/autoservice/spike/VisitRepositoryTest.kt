@@ -26,6 +26,8 @@ class VisitRepositoryTest {
         val visit = repository.createVisit(VisitDraft("Test", "9991234567", "Toyota renamed", "А123АА77", 123456, "Test",
             customerId = "selected-client", vehicleId = "selected-car"))
         assertEquals("+79991234567", visit.customerPhone)
+        assertEquals(null, selected)
+        repository.synchronizeLocal()
         assertEquals("selected-client" to "selected-car", selected)
     }
     @Test
@@ -48,9 +50,64 @@ class VisitRepositoryTest {
         assertEquals("Иван", visit.customerName)
         assertEquals("Lada Vesta", visit.vehicleLabel)
         assertEquals(visit, dao.saved)
-        assertEquals(1, visit.serverVersion)
-        assertEquals(ru.autoservice.spike.data.SyncState.SYNCED, visit.syncState)
+        assertEquals(0, visit.serverVersion)
+        assertEquals(ru.autoservice.spike.data.SyncState.LOCAL, visit.syncState)
         assertEquals(123L, visit.createdAtEpochMs)
+    }
+
+    @Test
+    fun `offline visit survives restart and selected identities reach server once`() = runTest {
+        val dao = FakeVisitDao()
+        val remote = FakeWorkshopRemote()
+        var scheduled = 0
+        val first = VisitRepository(dao, remote, clock = { 100L }, scheduleSync = { scheduled++ })
+        val visit = first.createVisit(VisitDraft("Test", "9991234567", "Car", "А123АА77", null, "Complaint", "client-id", "car-id"))
+        first.startRepair(visit)
+        assertEquals(2, scheduled)
+        assertEquals(ru.autoservice.spike.data.VisitStatus.IN_REPAIR, dao.find(visit.id)?.status)
+        var selected: Pair<String?, String?>? = null
+        val tracking = object : ru.autoservice.spike.network.WorkshopRemote by remote {
+            override suspend fun saveIntake(visit: VisitEntity, customerId: String?, vehicleId: String?): VisitEntity {
+                selected = customerId to vehicleId
+                return remote.saveVisit(visit)
+            }
+        }
+        VisitRepository(dao, tracking).synchronizeLocal()
+        assertEquals("client-id" to "car-id", selected)
+        assertEquals(ru.autoservice.spike.data.SyncState.SYNCED, dao.find(visit.id)?.syncState)
+        assertEquals(1, remote.visits.count { it.id == visit.id })
+    }
+
+    @Test
+    fun `network error leaves local visit intact for retry`() = runTest {
+        val dao = FakeVisitDao()
+        val delegate = FakeWorkshopRemote()
+        val offline = object : ru.autoservice.spike.network.WorkshopRemote by delegate {
+            override suspend fun saveIntake(visit: VisitEntity, customerId: String?, vehicleId: String?): VisitEntity = throw java.io.IOException("offline")
+        }
+        val visit = VisitRepository(dao, offline).createVisit(VisitDraft("Test", "9991234567", "Car", "", null, ""))
+        try { VisitRepository(dao, offline).synchronizeLocal(); throw AssertionError("expected network error") } catch (_: java.io.IOException) { }
+        assertEquals(visit, dao.find(visit.id))
+        VisitRepository(dao, delegate).synchronizeLocal()
+        assertEquals(1, delegate.visits.count { it.id == visit.id })
+    }
+
+    @Test
+    fun `conflict preserves local intake and selected customer instead of overwriting it`() = runTest {
+        val dao = FakeVisitDao()
+        val delegate = FakeWorkshopRemote()
+        val conflicting = object : ru.autoservice.spike.network.WorkshopRemote by delegate {
+            override suspend fun saveIntake(visit: VisitEntity, customerId: String?, vehicleId: String?): VisitEntity =
+                throw ru.autoservice.spike.network.ApiException(409, "customer_identity_ambiguous")
+        }
+        val local = VisitRepository(dao, conflicting).createVisit(VisitDraft("Test", "9991234567", "Car", "", null, "Local", "chosen", null))
+        delegate.visits += local.copy(complaint = "Server", serverVersion = 1, syncState = ru.autoservice.spike.data.SyncState.SYNCED)
+        VisitRepository(dao, conflicting).synchronizeLocal()
+        val saved = requireNotNull(dao.find(local.id))
+        assertEquals("Local", saved.complaint)
+        assertEquals("chosen", saved.pendingCustomerId)
+        assertEquals(ru.autoservice.spike.data.SyncState.BLOCKED, saved.syncState)
+        assertTrue(!saved.syncError.isNullOrBlank())
     }
 
     @Test
@@ -118,7 +175,7 @@ class VisitRepositoryTest {
 
         override suspend fun upsert(visit: VisitEntity) {
             saved = visit
-            visits.value = listOf(visit)
+            visits.value = visits.value.filterNot { it.id == visit.id } + visit
         }
 
         override fun observeAll(): Flow<List<VisitEntity>> = visits

@@ -1,5 +1,8 @@
 package ru.autoservice.spike.data
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import ru.autoservice.spike.network.ApiException
 import ru.autoservice.spike.network.WorkshopSnapshot
 import ru.autoservice.spike.network.WorkshopRemote
 import java.util.UUID
@@ -8,10 +11,12 @@ class VisitRepository(
     private val visitDao: VisitDao,
     private val api: WorkshopRemote,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val syncMutex: Mutex = Mutex(),
+    private val scheduleSync: () -> Unit = {},
 ) {
     val activeVisits = visitDao.observeActive()
 
-    suspend fun createVisit(draft: VisitDraft): VisitEntity {
+    suspend fun createVisit(draft: VisitDraft): VisitEntity = syncMutex.withLock {
         require(draft.customerPhone.count(Char::isDigit) >= 10) {
             "Укажите корректный телефон клиента"
         }
@@ -32,46 +37,59 @@ class VisitRepository(
             createdAtEpochMs = now,
             updatedAtEpochMs = now,
             syncState = SyncState.LOCAL,
+            pendingCustomerId = draft.customerId,
+            pendingVehicleId = draft.vehicleId,
         )
-        val saved = api.saveIntake(visit, draft.customerId, draft.vehicleId)
-        visitDao.upsert(saved)
-        return saved
+        visitDao.upsert(visit)
+        scheduleSync()
+        visit
     }
 
-    suspend fun startRepair(visit: VisitEntity) {
-        require(visit.status == VisitStatus.DRAFT) { "Ремонт уже начат" }
-        val saved = api.saveVisit(
-            visit.copy(status = VisitStatus.IN_REPAIR, updatedAtEpochMs = clock()),
-        )
-        visitDao.upsert(saved)
+    suspend fun startRepair(visit: VisitEntity) = syncMutex.withLock {
+        val current = visitDao.find(visit.id) ?: visit
+        require(current.status == VisitStatus.DRAFT) { "Ремонт уже начат" }
+        require(current.syncState != SyncState.BLOCKED) { "Сначала устраните проблему синхронизации визита" }
+        visitDao.upsert(current.copy(status = VisitStatus.IN_REPAIR, updatedAtEpochMs = clock(), syncState = SyncState.LOCAL))
+        scheduleSync()
     }
 
-    suspend fun synchronizeLocal(): WorkshopSnapshot {
-        visitDao.all()
-            .filter { it.syncState != SyncState.SYNCED || it.serverVersion == 0 }
-            .forEach { visitDao.upsert(api.saveVisit(it)) }
-        return api.loadWorkshop().also { snapshot ->
+    suspend fun synchronizeLocal(): WorkshopSnapshot = syncMutex.withLock {
+        visitDao.all().filter { it.syncState != SyncState.SYNCED && it.syncState != SyncState.BLOCKED || it.serverVersion == 0 && it.syncState != SyncState.BLOCKED }
+            .forEach { local ->
+                try {
+                    val server = if (local.serverVersion == 0) api.saveIntake(local, local.pendingCustomerId, local.pendingVehicleId) else api.saveVisit(local)
+                    visitDao.upsert(preserveDraft(server, local).copy(syncState = SyncState.SYNCED, syncError = null))
+                } catch (error: ApiException) {
+                    if (error.statusCode !in 400..499 || error.statusCode in setOf(401, 408, 429)) throw error
+                    val message = if (error.statusCode == 401) "Войдите в мастерскую заново" else "Визит не синхронизирован: проверьте данные или конфликт на сервере"
+                    visitDao.upsert(local.copy(syncState = SyncState.BLOCKED, syncError = message))
+                }
+            }
+        api.loadWorkshop().also { snapshot ->
             snapshot.visits.forEach { server ->
                 val local = visitDao.find(server.id)
-                visitDao.upsert(server.copy(
-                    reportOperationId = local?.reportOperationId,
-                    reportToken = local?.reportToken,
-                    reportPublicUrl = local?.reportPublicUrl,
-                    reportExpiresAtEpochMs = local?.reportExpiresAtEpochMs,
-                    reportPreparationState = local?.reportPreparationState,
-                    reportCompletedWork = local?.reportCompletedWork,
-                    reportRecommendations = local?.reportRecommendations,
-                    // A pending publication owns its draft; otherwise use the latest server date,
-                    // including an explicitly removed date.
-                    reportNextVisitAtEpochMs = if (local?.reportPreparationState in setOf("PENDING", "FAILED"))
-                        local?.reportNextVisitAtEpochMs else server.reportNextVisitAtEpochMs,
-                    reportPreparationError = local?.reportPreparationError,
-                    reportAcknowledgedPrivateFindingIds = local?.reportAcknowledgedPrivateFindingIds,
-                    reportExpectedMediaIds = local?.reportExpectedMediaIds,
-                ))
+                if (local == null) visitDao.upsert(server)
+                else if (local.syncState == SyncState.SYNCED) visitDao.upsert(preserveDraft(server, local))
             }
         }
     }
+
+    private fun preserveDraft(server: VisitEntity, local: VisitEntity): VisitEntity = server.copy(
+        reportOperationId = local.reportOperationId,
+        reportToken = local.reportToken,
+        reportPublicUrl = local.reportPublicUrl,
+        reportExpiresAtEpochMs = local.reportExpiresAtEpochMs,
+        reportPreparationState = local.reportPreparationState,
+        reportCompletedWork = local.reportCompletedWork,
+        reportRecommendations = local.reportRecommendations,
+        reportNextVisitAtEpochMs = if (local.reportPreparationState in setOf("PENDING", "FAILED")) local.reportNextVisitAtEpochMs else server.reportNextVisitAtEpochMs,
+        reportPreparationError = local.reportPreparationError,
+        reportAcknowledgedPrivateFindingIds = local.reportAcknowledgedPrivateFindingIds,
+        reportExpectedMediaIds = local.reportExpectedMediaIds,
+        pendingCustomerId = local.pendingCustomerId,
+        pendingVehicleId = local.pendingVehicleId,
+        syncError = local.syncError,
+    )
 
     private fun normalizePhone(value: String): String {
         val digits = value.filter(Char::isDigit)

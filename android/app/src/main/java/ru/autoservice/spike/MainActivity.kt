@@ -323,7 +323,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                         onSuccess = { visit ->
                             creatingVisit = false
                             selectedVisitId = visit.id
-                            message("Визит сохранён на сервере")
+                            message("Визит сохранён на телефоне. Синхронизация начнётся при наличии сети")
                         },
                         onFailure = { message(it.message ?: "Не удалось создать визит") },
                     )
@@ -340,7 +340,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                         draft = draft,
                         onSuccess = {
                             creatingFindingForVisitId = null
-                            message("Находка сохранена на сервере")
+                            message("Находка сохранена на телефоне. Синхронизация начнётся при наличии сети")
                         },
                         onFailure = { message(it.message ?: "Не удалось сохранить находку") },
                     )
@@ -905,6 +905,10 @@ private fun VisitQueueRow(visit: VisitEntity, archived: Boolean, onOpen: () -> U
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (visit.syncState != SyncState.SYNCED) {
+                    Text(visit.syncError ?: "Сохранено на телефоне · ожидает синхронизации", style = MaterialTheme.typography.bodySmall,
+                        color = if (visit.syncError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Text(
                     listOf(visit.licensePlate, visit.customerName.ifBlank { "Клиент" })
                         .filter(String::isNotBlank)
@@ -1701,6 +1705,9 @@ private fun FindingCard(
                 Text(finding.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 StatusPill(finding.status.label(), finding.status.color())
             }
+            if (finding.serverVersion == 0) Text(finding.syncError ?: "Сохранено на телефоне · ожидает синхронизации",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (finding.syncError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             finding.description.takeIf(String::isNotBlank)?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

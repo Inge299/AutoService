@@ -56,13 +56,16 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
         const existing = await tx.finding.findUnique({ where: { id } });
         if (existing && existing.workshopId !== workshopId) return null;
         if (existing && existing.visitId !== body.visitId) return { visitMismatch: true as const };
+        // An identical initial create can be retried after the response was lost,
+        // including a finding initially created ready for approval.
+        if (existing && body.baseServerVersion === null && existing.serverVersion === 1 &&
+          existing.title === body.title && existing.description === body.description && existing.priceRub === body.priceRub &&
+          existing.priority === body.priority && existing.status === body.status &&
+          existing.createdAt.getTime() === body.createdAtEpochMs && existing.updatedAt.getTime() === body.updatedAtEpochMs) {
+          return { conflict: false as const, finding: existing };
+        }
         if (existing && existing.status !== "DRAFT") return { statusProtected: true as const };
         if (existing && body.baseServerVersion !== existing.serverVersion) {
-          const sameCreate = body.baseServerVersion === null && existing.serverVersion === 1 &&
-            existing.title === body.title && existing.description === body.description && existing.priceRub === body.priceRub &&
-            existing.priority === body.priority && existing.status === body.status &&
-            existing.createdAt.getTime() === body.createdAtEpochMs && existing.updatedAt.getTime() === body.updatedAtEpochMs;
-          if (sameCreate) return { conflict: false as const, finding: existing };
           return { conflict: true as const, finding: existing };
         }
 

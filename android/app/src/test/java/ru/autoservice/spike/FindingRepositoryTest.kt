@@ -38,8 +38,25 @@ class FindingRepositoryTest {
         assertEquals(3_490, finding.priceRub)
         assertEquals(FindingPriority.IMPORTANT, finding.priority)
         assertEquals(456L, finding.createdAtEpochMs)
-        assertEquals(1, finding.serverVersion)
+        assertEquals(0, finding.serverVersion)
         assertEquals(finding, dao.saved)
+    }
+
+    @Test
+    fun `offline finding waits for parent then syncs once after restart`() = runTest {
+        val dao = FakeFindingDao()
+        val remote = FakeWorkshopRemote()
+        var parentReady = false
+        var scheduled = 0
+        val first = FindingRepository(dao, FakeMediaDao(), remote, parentReady = { parentReady }, scheduleSync = { scheduled++ })
+        val finding = first.createFinding(FindingDraft("visit-1", "Offline", "Evidence", null, FindingPriority.PLANNED))
+        first.synchronizeLocal(emptyList())
+        assertTrue(remote.findings.isEmpty())
+        assertEquals(1, scheduled)
+        parentReady = true
+        FindingRepository(dao, FakeMediaDao(), remote, parentReady = { parentReady }).synchronizeLocal(emptyList())
+        assertEquals(1, remote.findings.count { it.id == finding.id })
+        assertEquals(1, dao.saved?.serverVersion)
     }
 
     @Test

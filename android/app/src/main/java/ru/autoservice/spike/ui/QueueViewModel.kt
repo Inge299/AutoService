@@ -166,12 +166,12 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         onFailure: (Throwable) -> Unit,
     ) {
         viewModelScope.launch {
-            runCatching {
-                container.visitRepository.createVisit(draft).also {
-                    container.localDictionaryRepository.recordVisitValues(draft)
+            runCatching { container.visitRepository.createVisit(draft) }
+                .onSuccess { visit ->
+                    onSuccess(visit)
+                    // Suggestions are secondary; failure here must not report a saved visit as unsaved.
+                    runCatching { container.localDictionaryRepository.recordVisitValues(draft) }
                 }
-            }
-                .onSuccess(onSuccess)
                 .onFailure(onFailure)
         }
     }

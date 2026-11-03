@@ -1,5 +1,7 @@
 package ru.autoservice.spike.data
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import ru.autoservice.spike.network.ApiException
 import ru.autoservice.spike.network.ReportLink
 import ru.autoservice.spike.network.WorkshopRemote
@@ -20,9 +22,11 @@ class ReportMediaReadinessException(message: String) : IllegalStateException(mes
 class ReportRepository(
     private val visitDao: VisitDao,
     private val api: WorkshopRemote,
+    private val hasUnsyncedFindings: suspend (String) -> Boolean = { false },
+    private val syncMutex: Mutex = Mutex(),
     private val loadMedia: suspend (String) -> List<MediaAssetEntity>,
 ) {
-    suspend fun queuePublication(visit: VisitEntity, draft: ReportDraft): VisitEntity {
+    suspend fun queuePublication(visit: VisitEntity, draft: ReportDraft): VisitEntity = syncMutex.withLock {
         require(visit.status == VisitStatus.IN_REPAIR || visit.status == VisitStatus.WAITING_APPROVAL) {
             "Завершить можно только ремонт в работе"
         }
@@ -43,16 +47,16 @@ class ReportRepository(
         )
         visitDao.upsert(pending)
         if (!retry) checkMedia(pending)
-        return pending
+        pending
     }
 
-    suspend fun publishPending(visitId: String): ReportLink {
+    suspend fun publishPending(visitId: String): ReportLink = syncMutex.withLock {
         val pending = visitDao.find(visitId) ?: throw IllegalArgumentException("Визит не найден")
         require(pending.reportPreparationState == "PENDING") { "Нет отчёта для публикации" }
         val operationId = requireNotNull(pending.reportOperationId)
         val token = requireNotNull(pending.reportToken)
         val existing = api.recoverReport(pending.id, operationId, token)
-        if (existing != null) return completePublication(pending, existing)
+        if (existing != null) return@withLock completePublication(pending, existing)
         val acknowledged = decodeIds(pending.reportAcknowledgedPrivateFindingIds)
         val expectedMedia = pending.reportExpectedMediaIds?.let(::decodeIds)
             ?: throw ReportMediaReadinessException("Откройте отчёт заново и проверьте материалы")
@@ -73,7 +77,7 @@ class ReportRepository(
             if (error.statusCode != 409 || error.message != "report_already_published") throw error
             api.publishReport(pending.id, operationId, token, acknowledged, expectedMedia)
         }
-        return completePublication(pending, link)
+        completePublication(pending, link)
     }
 
     private suspend fun completePublication(pending: VisitEntity, link: ReportLink): ReportLink {
@@ -87,12 +91,12 @@ class ReportRepository(
         return link
     }
 
-    suspend fun markFailed(visitId: String, message: String) {
-        val visit = visitDao.find(visitId) ?: return
+    suspend fun markFailed(visitId: String, message: String) = syncMutex.withLock {
+        val visit = visitDao.find(visitId) ?: return@withLock
         visitDao.upsert(visit.copy(reportPreparationState = "FAILED", reportPreparationError = message))
     }
 
-    suspend fun revokePublished(visit: VisitEntity) {
+    suspend fun revokePublished(visit: VisitEntity) = syncMutex.withLock {
         require(visit.status == VisitStatus.COMPLETED && visit.reportPublicUrl != null) { "Нет опубликованного отчёта" }
         api.revokeReportLink(visit.id)
         visitDao.upsert(visit.copy(
@@ -109,6 +113,9 @@ class ReportRepository(
     }
 
     private suspend fun checkMedia(visit: VisitEntity) {
+        if (visit.syncState != SyncState.SYNCED || hasUnsyncedFindings(visit.id)) {
+            throw ReportMediaReadinessException("Дождитесь синхронизации визита и всех находок перед публикацией")
+        }
         val privateIds = decodeIds(visit.reportAcknowledgedPrivateFindingIds).toSet()
         val expected = visit.reportExpectedMediaIds?.let(::decodeIds)?.toSet()
             ?: throw ReportMediaReadinessException("Откройте отчёт заново и проверьте материалы")
