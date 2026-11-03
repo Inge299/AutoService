@@ -2,6 +2,7 @@
 import { Button } from "@/components/action";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Icon, type IconName } from "@/components/icons";
 import type { ApprovalDecisionValue } from "@/lib/api/autoservice-api";
 import { formatRub } from "@/lib/domain";
@@ -27,6 +28,7 @@ export function ApprovalDecision({
   priceRub: number;
   initialDecision: SavedDecision | null;
 }) {
+  const router = useRouter();
   const [decision, setDecision] = useState<SavedDecision | null>(initialDecision);
   const [pending, setPending] = useState<ApprovalDecisionValue | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +44,7 @@ export function ApprovalDecision({
       });
       if (!response.ok) throw new Error(response.status === 409 ? "Решение по этой ссылке уже сохранено." : "Не удалось сохранить решение.");
       setDecision(await response.json() as SavedDecision);
+      router.refresh();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Не удалось сохранить решение.");
     } finally {

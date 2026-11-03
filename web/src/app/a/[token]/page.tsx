@@ -35,7 +35,7 @@ export default async function ApprovalPage({ params }: { params: Promise<{ token
     <main className="customer-page">
       <CustomerHeader phone={approval.workshop.phone} />
       <div className="customer-shell">
-        <section className="customer-intro"><p className="customer-context">{approval.workshop.name}</p><h1>{approval.decision ? "Решение получено" : "Нужно ваше решение"}</h1><p>Мастер нашёл дополнительную работу и просит подтвердить её до продолжения ремонта.</p><div className="customer-car"><span><Icon name="car" /></span><div><strong>{approval.visit.vehicleLabel}</strong><small>{approval.visit.licensePlate} · {approval.visit.customerName}</small></div><StatusPill label={approvalStatus.label} tone={approvalStatus.tone} /></div></section>
+        <section className="customer-intro"><p className="customer-context">{approval.workshop.name}</p><h1>{approval.decision ? "Решение получено" : "Нужно ваше решение"}</h1><p>{approval.decision ? "Ваш ответ сохранён. Если нужно изменить решение, свяжитесь с мастерской." : "Мастер нашёл дополнительную работу и просит подтвердить её до продолжения ремонта."}</p><div className="customer-car"><span><Icon name="car" /></span><div><strong>{approval.visit.vehicleLabel}</strong><small>{approval.visit.licensePlate} · {approval.visit.customerName}</small></div><StatusPill label={approvalStatus.label} tone={approvalStatus.tone} /></div></section>
 
         <div className="customer-layout">
           <section className="approval-detail">
@@ -43,7 +43,7 @@ export default async function ApprovalPage({ params }: { params: Promise<{ token
             <h2>{approval.finding.title}</h2>
             <p className="approval-lead">{approval.finding.description}</p>
             {approval.media.length > 0 && <div className="evidence-media" aria-label="Материалы мастера">{approval.media.map((media) => media.kind === "PHOTO" ? <figure key={media.id}><img src={media.url} alt="Материал мастера" /><figcaption><Icon name="camera" /> Фото мастера</figcaption></figure> : media.kind === "VIDEO" ? <figure key={media.id}><video controls preload="metadata" src={media.url} /><figcaption><Icon name="camera" /> Видео мастера</figcaption></figure> : <figure key={media.id}><audio controls preload="metadata" src={media.url} /><figcaption><Icon name="phone" /> Голосовая заметка</figcaption></figure>)}</div>}
-            <div className="price-box"><div><small>Стоимость работы</small><strong>{formatRub(approval.finding.priceRub)}</strong></div><p>Работа и материалы включены. Изменение стоимости потребует нового согласования.</p></div>
+            <div className="price-box"><div><small>Стоимость работы</small><strong>{formatRub(approval.finding.priceRub)}</strong></div><p>Уточните в мастерской, что входит в указанную стоимость.</p></div>
           </section>
           <aside className="customer-decision"><ApprovalDecision token={token} priceRub={approval.finding.priceRub} initialDecision={approval.decision} /><CustomerContact phone={approval.workshop.phone} /><ActionLink variant="secondary"  href={`/customer/login?approval=${encodeURIComponent(token)}`}>Личный кабинет</ActionLink><ActionLink variant="secondary"  href={`/customer/register?approval=${encodeURIComponent(token)}`}>Создать кабинет</ActionLink></aside>
         </div>
