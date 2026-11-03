@@ -38,6 +38,31 @@ describe("visit integrity", () => {
     } finally { await app.close(); }
   });
 
+  it("accepts an identical lost-response intake retry without another write, but rejects changed identity or content", async () => {
+    const existing = { ...visitBody, workshopId, serverVersion: 1, createdAt: new Date(1), updatedAt: new Date(1), customerId: id, vehicleId: other };
+    const update = vi.fn();
+    const app = await appFor({ visit: { findUnique: async () => existing, update } });
+    try {
+      const send = (overrides: object) => app.inject({ method: "PUT", url: `/v1/visits/${id}`, payload: { ...visitBody, baseServerVersion: null, ...overrides } });
+      expect((await send({ customerId: id, vehicleId: other })).statusCode).toBe(200);
+      expect((await send({ customerId: other })).json().error).toBe("version_conflict");
+      expect((await send({ complaint: "Changed" })).json().error).toBe("version_conflict");
+      expect(update).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
+  it("accepts only identical lost-response finding creation without overwriting changes", async () => {
+    const existing = { ...findingBody, workshopId, serverVersion: 1, createdAt: new Date(1), updatedAt: new Date(1) };
+    const update = vi.fn();
+    const app = await appFor({ visit: { findFirst: async () => ({ id, status: "IN_REPAIR" }) }, finding: { findUnique: async () => existing, update } });
+    try {
+      const send = (overrides: object) => app.inject({ method: "PUT", url: `/v1/findings/${other}`, payload: { ...findingBody, baseServerVersion: null, ...overrides } });
+      expect((await send({})).statusCode).toBe(200);
+      expect((await send({ title: "Changed" })).json().error).toBe("version_conflict");
+      expect(update).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
   it("cannot manufacture a completed visit without report publication", async () => {
     const app = await appFor({ visit: { findUnique: async () => null } });
     try {

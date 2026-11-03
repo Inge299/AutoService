@@ -114,6 +114,15 @@ export function visitRoutes(prisma: PrismaClient): FastifyPluginAsync {
         }
         if (body.status === "COMPLETED") return { reportRequired: true as const };
         if (existing && body.baseServerVersion !== existing.serverVersion) {
+          // A create may have committed while its response was lost. Accept only
+          // the identical initial request, including explicitly chosen identities.
+          const sameCreate = body.baseServerVersion === null && existing.serverVersion === 1 &&
+            existing.customerName === body.customerName && existing.customerPhone === body.customerPhone &&
+            existing.vehicleLabel === body.vehicleLabel && existing.licensePlate === body.licensePlate &&
+            existing.mileageKm === body.mileageKm && existing.complaint === body.complaint && existing.status === body.status &&
+            existing.createdAt.getTime() === body.createdAtEpochMs && existing.updatedAt.getTime() === body.updatedAtEpochMs &&
+            (!body.customerId || body.customerId === existing.customerId) && (!body.vehicleId || body.vehicleId === existing.vehicleId);
+          if (sameCreate) return { conflict: false as const, visit: existing };
           return { conflict: true as const, visit: existing };
         }
 

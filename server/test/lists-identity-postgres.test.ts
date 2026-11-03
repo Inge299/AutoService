@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../src/http/errors.js";
 import { visitRoutes } from "../src/http/routes/visits.js";
+import { findingRoutes } from "../src/http/routes/findings.js";
 import { customerRoutes } from "../src/http/routes/customers.js";
 import { workshopRoutes } from "../src/http/routes/workshops.js";
 
@@ -16,7 +17,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL list coverage and st
     await prisma.workshop.createMany({ data: [{ id: workshopId, name: "Synthetic pagination" }, { id: otherWorkshopId, name: "Synthetic isolation" }] });
     registerErrorHandler(app);
     app.addHook("preHandler", async request => { request.actor = { workshopId, userId: randomUUID(), role: "EMPLOYEE" }; });
-    await app.register(visitRoutes(prisma)); await app.register(customerRoutes(prisma)); await app.register(workshopRoutes(prisma));
+    await app.register(visitRoutes(prisma)); await app.register(findingRoutes(prisma)); await app.register(customerRoutes(prisma)); await app.register(workshopRoutes(prisma));
   });
   afterAll(async () => { await app.close(); await prisma.workshop.deleteMany({ where: { id: { in: [workshopId, otherWorkshopId] } } }); await prisma.$disconnect(); });
 
@@ -26,6 +27,24 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL list coverage and st
   async function save(id = randomUUID(), overrides = {}) {
     return app.inject({ method: "PUT", url: `/v1/visits/${id}`, payload: body(overrides) });
   }
+
+  it("recovers identical visit and finding creates after a lost response without duplication", async () => {
+    const visitId = randomUUID(), findingId = randomUUID(), payload = body({ customerPhone: "+79990001122", licensePlate: "Т111ТТ77" });
+    const intake = () => app.inject({ method: "PUT", url: `/v1/visits/${visitId}`, payload });
+    const first = await intake(); expect(first.statusCode).toBe(200);
+    const retry = await intake(); expect(retry.statusCode).toBe(200);
+    expect(retry.json().serverVersion).toBe(1);
+    expect(retry.json().customerId).toBe(first.json().customerId);
+    expect(retry.json().vehicleId).toBe(first.json().vehicleId);
+    expect(await prisma.visit.count({ where: { id: visitId } })).toBe(1);
+    const finding = { visitId, title: "Synthetic offline finding", description: "Test", priceRub: null,
+      priority: "PLANNED", status: "DRAFT", createdAtEpochMs: payload.createdAtEpochMs, updatedAtEpochMs: payload.updatedAtEpochMs, baseServerVersion: null };
+    const put = (request = finding) => app.inject({ method: "PUT", url: `/v1/findings/${findingId}`, payload: request });
+    expect((await put()).statusCode).toBe(200);
+    expect((await put()).json().serverVersion).toBe(1);
+    expect((await put({ ...finding, title: "Changed elsewhere" })).json().error).toBe("version_conflict");
+    expect(await prisma.finding.count({ where: { id: findingId } })).toBe(1);
+  });
 
   it("includes the inherited report date in legacy, numbered and cursor lists and visit details", async () => {
     const id = randomUUID();

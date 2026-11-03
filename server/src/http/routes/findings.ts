@@ -58,6 +58,11 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
         if (existing && existing.visitId !== body.visitId) return { visitMismatch: true as const };
         if (existing && existing.status !== "DRAFT") return { statusProtected: true as const };
         if (existing && body.baseServerVersion !== existing.serverVersion) {
+          const sameCreate = body.baseServerVersion === null && existing.serverVersion === 1 &&
+            existing.title === body.title && existing.description === body.description && existing.priceRub === body.priceRub &&
+            existing.priority === body.priority && existing.status === body.status &&
+            existing.createdAt.getTime() === body.createdAtEpochMs && existing.updatedAt.getTime() === body.updatedAtEpochMs;
+          if (sameCreate) return { conflict: false as const, finding: existing };
           return { conflict: true as const, finding: existing };
         }
 
