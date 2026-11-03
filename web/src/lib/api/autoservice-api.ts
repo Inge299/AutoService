@@ -210,6 +210,9 @@ export interface PublicReport {
       priceRub: number | null;
       priority: FindingPriority;
       status: FindingStatus;
+      followUpConfigured?: boolean;
+      followUpDueAt?: string | null;
+      followUpState?: "OPEN" | "DONE" | "CANCELLED";
     }>;
     media: Array<{
       id: string;

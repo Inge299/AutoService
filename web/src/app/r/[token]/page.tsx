@@ -6,6 +6,7 @@ import { ActionLink } from "@/components/action";
 import { Icon } from "@/components/icons";
 import { StatusPill } from "@/components/status-pill";
 import { formatRub, priorityMeta, findingStatusMeta } from "@/lib/domain";
+import { reportFollowUp } from "@/lib/report-follow-up";
 import { getPublicReport } from "@/lib/api/autoservice-api";
 
 export const metadata: Metadata = { title: "Отчёт по визиту" };
@@ -17,7 +18,6 @@ export default async function PublicReportPage({ params }: { params: Promise<{ t
   catch { return <PublicUnavailable technical title="Отчёт по визиту" />; }
   if (!report) return <PublicUnavailable title="Отчёт по визиту" />;
   const phoneLink = report.workshop.phone?.replace(/[^+\d]/g, "");
-  const futureDeadline = report.report.nextVisitAt ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Moscow" }).format(new Date(report.report.nextVisitAt)) : null;
 
   return (
     <main className="customer-page">
@@ -32,7 +32,8 @@ export default async function PublicReportPage({ params }: { params: Promise<{ t
             <div className="report-section"><small>Находки и решения</small>{report.report.findings.length ? <div className="report-findings">{report.report.findings.map((finding) => {
               const priority = priorityMeta[finding.priority];
               const status = findingStatusMeta[finding.status];
-              const future = finding.status !== "COMPLETED" && finding.status !== "DECLINED" && (finding.status === "DEFERRED" || finding.priority === "PLANNED");
+              const { future, dueAt } = reportFollowUp(finding, report.report.nextVisitAt);
+              const futureDeadline = dueAt ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Moscow" }).format(new Date(dueAt)) : null;
               return <article key={finding.id}><div><div className="report-finding-labels"><StatusPill label={priority.label} tone={priority.tone} /><StatusPill label={status.label} tone={status.tone} /></div><strong>{finding.title}</strong><p>{finding.description}</p>{future && <p className="report-future-work">Не выполнено в этот визит. Необходимо выполнить в дальнейшем. {futureDeadline ? `Рекомендуемый срок: до ${futureDeadline}.` : "Срок необходимо согласовать с мастерской."}</p>}</div><b>{finding.priceRub === null ? "Цена не указана" : formatRub(finding.priceRub)}</b></article>;
             })}</div> : <p>Дополнительных работ не зафиксировано.</p>}</div>
             {report.report.media.length > 0 && <div className="report-section"><small>Материалы визита</small><div className="evidence-media">{report.report.media.map((media) => media.kind === "PHOTO" ? <figure key={media.id}><img src={media.url} alt="Материал визита" /><figcaption><Icon name="camera" /> Фото мастера</figcaption></figure> : media.kind === "VIDEO" ? <figure key={media.id}><video controls preload="metadata" src={media.url} /><figcaption><Icon name="camera" /> Видео мастера</figcaption></figure> : <figure key={media.id}><audio controls preload="metadata" src={media.url} /><figcaption><Icon name="phone" /> Голосовая заметка</figcaption></figure>)}</div></div>}
