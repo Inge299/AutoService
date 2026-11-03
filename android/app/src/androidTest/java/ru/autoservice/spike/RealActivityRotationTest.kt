@@ -37,7 +37,7 @@ class RealActivityRotationTest {
             if (InstrumentationRegistry.getArguments().getString("manualRotation") == "true") {
                 val initial = compose.activity.resources.configuration.orientation
                 InstrumentationRegistry.getInstrumentation().sendStatus(0, Bundle().apply { putString("stream", "REAL_SCREEN_ROTATION_READY initial=$initial\n") })
-                compose.waitUntil(120_000) { compose.activity.resources.configuration.orientation != initial }
+                compose.waitUntil(300_000) { compose.activity.resources.configuration.orientation != initial }
             } else compose.activityRule.scenario.recreate()
             compose.waitForIdle()
             compose.onNodeWithTag("intake-form").assertExists()
