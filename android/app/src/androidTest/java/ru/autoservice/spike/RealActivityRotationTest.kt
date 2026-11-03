@@ -1,6 +1,15 @@
 package ru.autoservice.spike
 
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.runBlocking
+import ru.autoservice.spike.data.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import java.io.File
+import java.util.UUID
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -48,4 +57,30 @@ class RealActivityRotationTest {
             field("Жалобы клиента").assertTextContains("Тестовая жалоба")
         } finally { root.authStore.clear() }
     }
+    @Test fun voiceRecordingIsSavedWhenLeavingVisit() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        assumeTrue("Runs only with disposable isolated package", context.packageName.endsWith(".migrationqa20261103"))
+        assumeTrue("Runs only with isolated API endpoint", BuildConfig.API_BASE_URL == "http://127.0.0.1:18779")
+        assumeTrue("Manual test requires isolated microphone permission", ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+        val root = (context.applicationContext as AutoServiceApplication).container
+        val workshopId = "81111111-1111-4111-8111-111111111111"
+        val visitId = UUID.randomUUID().toString()
+        val workshop = root.forWorkshop(workshopId)
+        runBlocking { workshop.database.visitDao().upsert(VisitEntity(visitId, "QA", "+79990000000", "SyntheticVoiceCar", "", null, "", VisitStatus.IN_REPAIR, 1, 1, SyncState.LOCAL)) }
+        compose.runOnIdle { root.authStore.save(AuthSession("synthetic", Long.MAX_VALUE, "synthetic", Long.MAX_VALUE,
+            "test-user", workshopId, "Synthetic", "ADMIN", false)) }
+        try {
+            compose.waitUntil(20_000) { compose.onAllNodes(hasText("SyntheticVoiceCar")).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("SyntheticVoiceCar").performClick()
+            compose.onNodeWithText("Голос").performClick()
+            compose.waitUntil(5_000) { compose.onAllNodes(hasText("Стоп")).fetchSemanticsNodes().isNotEmpty() }
+            Thread.sleep(1800)
+            compose.onNodeWithText("Визиты").performClick()
+            compose.waitUntil(20_000) { runBlocking { workshop.database.mediaDao().forVisit(visitId).any { it.kind == MediaKind.VOICE } } }
+            val asset = runBlocking { workshop.database.mediaDao().forVisit(visitId).single { it.kind == MediaKind.VOICE } }
+            assertEquals(visitId, asset.visitId)
+            assertTrue(File(asset.localPath).length() > 100)
+        } finally { root.authStore.clear() }
+    }
+
 }
