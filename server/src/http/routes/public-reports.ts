@@ -23,7 +23,7 @@ export function publicReportRoutes(prisma: PrismaClient, storage: ObjectStorage)
         where: { tokenHash: tokenHash(token) },
         include: {
           reportVersion: {
-            include: { workshop: { select: { name: true, phone: true } } },
+            include: { workshop: { select: { name: true, phone: true } }, visit: { select: { createdAt: true } } },
           },
         },
       });
@@ -60,6 +60,8 @@ export function publicReportRoutes(prisma: PrismaClient, storage: ObjectStorage)
         openedAt: link.openedAt ?? new Date(),
         workshop: version.workshop,
         visit: {
+          id: version.visitId,
+          createdAt: version.visit.createdAt,
           customerName: version.customerName,
           vehicleLabel: version.vehicleLabel,
           licensePlate: version.licensePlate,
@@ -67,6 +69,8 @@ export function publicReportRoutes(prisma: PrismaClient, storage: ObjectStorage)
           complaint: version.complaint,
         },
         report: {
+          version: version.version,
+          publishedAt: version.createdAt,
           completedWork: version.completedWork,
           recommendations: projection.canSanitize ? withoutPrivateGeneratedRecommendations(version.recommendations, projection.hiddenTitles) : "",
           nextVisitAt: version.nextVisitAt,

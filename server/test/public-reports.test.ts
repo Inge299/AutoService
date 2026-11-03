@@ -31,7 +31,7 @@ describe("public report routes", () => {
         findUnique: vi.fn().mockResolvedValue({
           id: "link", expiresAt: new Date(Date.now() + 60_000), revokedAt: null, openedAt: new Date(),
           reportVersion: {
-            workshopId: "workshop", visitId: "visit", customerName: "QA", vehicleLabel: "Car", licensePlate: "", mileageKm: null, complaint: "",
+            workshopId: "workshop", visitId: "visit", visit: { createdAt: new Date("2026-10-01T09:00:00Z") }, version: 1, createdAt: new Date("2026-10-02T09:00:00Z"), customerName: "QA", vehicleLabel: "Car", licensePlate: "", mileageKm: null, complaint: "",
             completedWork: "Диагностика", nextVisitAt: null,
             recommendations: "Проверить уровень\nНе выполнено в этот визит: Секретный черновик. Необходимо выполнить в дальнейшем. Срок необходимо согласовать с мастерской.",
             findings: [{ id: "private-finding", title: "Секретный черновик", status: "DRAFT" }, { id: visibleId, title: "Видимая работа", status: "COMPLETED" }],
@@ -69,7 +69,7 @@ describe("public report routes", () => {
           id: "11111111-1111-4111-8111-111111111111", expiresAt: new Date(Date.now() + 60_000), revokedAt: null, openedAt: null,
           reportVersion: {
             workshopId: "22222222-2222-4222-8222-222222222222", visitId: "33333333-3333-4333-8333-333333333333",
-            customerName: "Иван", vehicleLabel: "Toyota", licensePlate: "А123АА", mileageKm: 80_000, complaint: "Скрип",
+            visit: { createdAt: new Date("2026-10-01T09:00:00Z") }, version: 2, createdAt: new Date("2026-10-02T09:00:00Z"), customerName: "Иван", vehicleLabel: "Toyota", licensePlate: "А123АА", mileageKm: 80_000, complaint: "Скрип",
             completedWork: "Заменили колодки", recommendations: "Контроль", nextVisitAt: null,
             findings: [{ title: "Колодки", status: "APPROVED" }], mediaIds: ["44444444-4444-4444-8444-444444444444"],
             workshop: { name: "АвтоСфера", phone: "+79990000000" },
@@ -87,7 +87,7 @@ describe("public report routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers["cache-control"]).toBe("no-store");
     expect(response.headers["referrer-policy"]).toBe("no-referrer");
-    expect(response.json()).toMatchObject({ workshop: { name: "АвтоСфера" }, visit: { complaint: "Скрип" }, report: { completedWork: "Заменили колодки", media: [expect.objectContaining({ url: "https://media.example/signed" })] } });
+    expect(response.json()).toMatchObject({ workshop: { name: "АвтоСфера" }, visit: { complaint: "Скрип", createdAt: "2026-10-01T09:00:00.000Z", mileageKm: 80_000 }, report: { version: 2, publishedAt: "2026-10-02T09:00:00.000Z", completedWork: "Заменили колодки", media: [expect.objectContaining({ url: "https://media.example/signed" })] } });
     expect(response.body).not.toContain("private/report-photo");
     expect(update).toHaveBeenCalledOnce();
     await app.close();

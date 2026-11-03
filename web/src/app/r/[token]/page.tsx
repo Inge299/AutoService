@@ -17,16 +17,19 @@ export default async function PublicReportPage({ params }: { params: Promise<{ t
   try { report = await getPublicReport(token); }
   catch { return <PublicUnavailable technical title="Отчёт по визиту" />; }
   if (!report) return <PublicUnavailable title="Отчёт по визиту" />;
+  const formatDate = (value: string) => new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Moscow" }).format(new Date(value));
   const phoneLink = report.workshop.phone?.replace(/[^+\d]/g, "");
 
   return (
     <main className="customer-page">
       <CustomerHeader phone={report.workshop.phone} />
       <div className="customer-shell">
-        <section className="customer-intro"><p className="customer-context">{report.workshop.name}</p><h1>Отчёт по визиту</h1><p>Здесь собраны результаты диагностики и выполненные работы по вашему автомобилю.</p><div className="customer-car"><span><Icon name="car" /></span><div><strong>{report.visit.vehicleLabel}</strong><small>{report.visit.licensePlate} · {report.visit.customerName}</small></div><StatusPill label="Работы завершены" tone="success" /></div></section>
+        <section className="customer-intro"><p className="customer-context">{report.workshop.name}</p><h1>Отчёт по визиту</h1><p>Здесь собраны результаты диагностики и выполненные работы по вашему автомобилю.</p><div className="customer-car"><span><Icon name="car" /></span><div><strong>{report.visit.vehicleLabel}</strong><small>{report.visit.licensePlate} · {report.visit.customerName}</small></div><StatusPill label="Визит завершён" tone="success" /></div></section>
         <div className="customer-layout">
           <section className="approval-detail report-detail">
             <div className="approval-heading"><StatusPill label="Итог визита" tone="success" /></div>
+            <p>Дата визита: {report.visit.createdAt ? formatDate(report.visit.createdAt) : "не указана"} · Пробег: {report.visit.mileageKm === null ? "не указан" : `${new Intl.NumberFormat("ru-RU").format(report.visit.mileageKm)} км`}</p>
+            {(report.report.version || report.report.publishedAt || report.visit.id) && <p>Отчёт{report.report.version ? ` №${report.report.version}` : ""}{report.report.publishedAt ? ` от ${formatDate(report.report.publishedAt)}` : ""}{report.visit.id ? ` · Визит ${report.visit.id}` : ""}</p>}
             <h2>Что было сделано</h2><p className="approval-lead">{report.report.completedWork}</p>
             <div className="report-section"><small>Жалоба при приёмке</small><p>{report.visit.complaint || "Не указана"}</p></div>
             <div className="report-section"><small>Находки и решения</small>{report.report.findings.length ? <div className="report-findings">{report.report.findings.map((finding) => {
@@ -38,7 +41,7 @@ export default async function PublicReportPage({ params }: { params: Promise<{ t
             })}</div> : <p>Дополнительных работ не зафиксировано.</p>}</div>
             {report.report.media.length > 0 && <div className="report-section"><small>Материалы визита</small><div className="evidence-media">{report.report.media.map((media) => media.kind === "PHOTO" ? <figure key={media.id}><img src={media.url} alt="Материал визита" /><figcaption><Icon name="camera" /> Фото мастера</figcaption></figure> : media.kind === "VIDEO" ? <figure key={media.id}><video controls preload="metadata" src={media.url} /><figcaption><Icon name="camera" /> Видео мастера</figcaption></figure> : <figure key={media.id}><audio controls preload="metadata" src={media.url} /><figcaption><Icon name="phone" /> Голосовая заметка</figcaption></figure>)}</div></div>}
           </section>
-          <aside className="customer-decision"><section className="decision-panel"><h2>Рекомендации</h2><p>{report.report.recommendations || "Дополнительные рекомендации не требуются."}</p>{report.report.nextVisitAt && <div className="report-next-visit"><Icon name="clock" /><div><small>Следующий визит</small><strong>{new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Moscow" }).format(new Date(report.report.nextVisitAt))}</strong></div></div>}</section><div className="customer-help"><Icon name="phone" /><p><strong>Есть вопросы по отчёту?</strong><small>{report.workshop.phone ? <>Позвоните в мастерскую: <a href={`tel:${phoneLink}`}>{report.workshop.phone}</a>.</> : "Свяжитесь с вашей мастерской удобным способом."}</small></p></div><ActionLink href="/cabinet">Личный кабинет</ActionLink></aside>
+          <aside className="customer-decision"><section className="decision-panel"><h2>Рекомендации</h2><p>{report.report.recommendations || "Рекомендации не указаны."}</p>{report.report.nextVisitAt && <div className="report-next-visit"><Icon name="clock" /><div><small>Следующий визит</small><strong>{new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Moscow" }).format(new Date(report.report.nextVisitAt))}</strong></div></div>}</section><div className="customer-help"><Icon name="phone" /><p><strong>Есть вопросы по отчёту?</strong><small>{report.workshop.phone ? <>Позвоните в мастерскую: <a href={`tel:${phoneLink}`}>{report.workshop.phone}</a>.</> : "Свяжитесь с вашей мастерской удобным способом."}</small></p></div><ActionLink href="/cabinet">Личный кабинет</ActionLink></aside>
         </div>
       </div>
       <footer className="customer-footer"><span>AutoService</span></footer>

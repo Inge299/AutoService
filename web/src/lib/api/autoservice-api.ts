@@ -193,6 +193,8 @@ export interface PublicReport {
   openedAt: string;
   workshop: { name: string; phone: string | null };
   visit: {
+    id?: string;
+    createdAt?: string;
     customerName: string;
     vehicleLabel: string;
     licensePlate: string;
@@ -200,6 +202,8 @@ export interface PublicReport {
     complaint: string;
   };
   report: {
+    version?: number;
+    publishedAt?: string;
     completedWork: string;
     recommendations: string;
     nextVisitAt: string | null;
