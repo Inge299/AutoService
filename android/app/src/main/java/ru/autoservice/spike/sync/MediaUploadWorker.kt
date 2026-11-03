@@ -27,8 +27,8 @@ class MediaUploadWorker(
         val visit = container.database.visitDao().find(asset.visitId)
         val finding = asset.findingId?.let { id -> container.database.findingDao().all().firstOrNull { it.id == id } }
         if (visit?.syncState == SyncState.BLOCKED || finding?.syncError != null) {
-            block(dao, asset, "Сначала устраните проблему синхронизации визита или находки")
-            return Result.failure()
+            retry(dao, asset, "Ожидает исправления визита или находки")
+            return Result.retry()
         }
         if (visit == null || visit.serverVersion == 0 || visit.syncState != SyncState.SYNCED ||
             (asset.findingId != null && (finding == null || finding.serverVersion == 0))) {

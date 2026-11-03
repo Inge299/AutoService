@@ -176,6 +176,15 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun correctUnsyncedVisit(visit: VisitEntity, draft: VisitDraft, onSuccess: () -> Unit, onFailure: (Throwable) -> Unit) {
+        viewModelScope.launch {
+            runCatching {
+                container.visitRepository.correctUnsyncedVisit(visit.id, draft)
+                container.mediaRepository.resumeAfterVisitCorrection(visit.id)
+            }.onSuccess { onSuccess() }.onFailure(onFailure)
+        }
+    }
+
     fun startRepair(visit: VisitEntity, onSuccess: () -> Unit, onFailure: (Throwable) -> Unit) {
         viewModelScope.launch {
             runCatching { container.visitRepository.startRepair(visit) }

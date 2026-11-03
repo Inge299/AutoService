@@ -111,6 +111,42 @@ class VisitRepositoryTest {
     }
 
     @Test
+    fun `correcting blocked offline visit preserves id and report while sending chosen identities`() = runTest {
+        val dao = FakeVisitDao()
+        val remote = FakeWorkshopRemote()
+        val initial = VisitRepository(dao, remote).createVisit(VisitDraft("Original", "9991234567", "Car", "А123АА77", 100, "Complaint"))
+        dao.upsert(initial.copy(syncState = ru.autoservice.spike.data.SyncState.BLOCKED, syncError = "Conflict", reportCompletedWork = "Draft"))
+        var selection: Pair<String?, String?>? = null
+        val tracking = object : ru.autoservice.spike.network.WorkshopRemote by remote {
+            override suspend fun saveIntake(visit: VisitEntity, customerId: String?, vehicleId: String?): VisitEntity {
+                selection = customerId to vehicleId
+                return remote.saveVisit(visit)
+            }
+        }
+        var scheduled = 0
+        val repository = VisitRepository(dao, tracking, scheduleSync = { scheduled++ })
+        val corrected = repository.correctUnsyncedVisit(initial.id, VisitDraft("Selected", "9991234567", "Car", "А123АА77", 100, "Complaint", "selected-customer", "selected-vehicle"))
+        assertEquals(initial.id, corrected.id)
+        assertEquals("Draft", corrected.reportCompletedWork)
+        assertEquals(1, scheduled)
+        repository.synchronizeLocal()
+        assertEquals("selected-customer" to "selected-vehicle", selection)
+        assertEquals(1, remote.visits.count { it.id == initial.id })
+        assertEquals("Draft", dao.find(initial.id)?.reportCompletedWork)
+    }
+
+    @Test
+    fun `cannot overwrite already synchronized visit via offline correction`() = runTest {
+        val dao = FakeVisitDao()
+        val remote = FakeWorkshopRemote()
+        val repository = VisitRepository(dao, remote)
+        val initial = repository.createVisit(VisitDraft("Test", "9991234567", "Car", "", null, ""))
+        dao.upsert(initial.copy(serverVersion = 3, syncState = ru.autoservice.spike.data.SyncState.BLOCKED))
+        assertTrue(runCatching { repository.correctUnsyncedVisit(initial.id, VisitDraft("Changed", "9991234567", "Car", "", null, "")) }.isFailure)
+        assertEquals("Test", dao.find(initial.id)?.customerName)
+    }
+
+    @Test
     fun `rejects visit without vehicle identifier`() = runTest {
         val repository = VisitRepository(FakeVisitDao(), FakeWorkshopRemote())
 

@@ -153,6 +153,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     val session by viewModel.session.collectAsState()
     var selectedVisitId by rememberSaveable { mutableStateOf<String?>(null) }
     var creatingVisit by rememberSaveable { mutableStateOf(false) }
+    var correctingVisitId by rememberSaveable { mutableStateOf<String?>(null) }
     var creatingFindingForVisitId by rememberSaveable { mutableStateOf<String?>(null) }
     var showCamera by remember { mutableStateOf(false) }
     var captureFindingId by remember { mutableStateOf<String?>(null) }
@@ -163,6 +164,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
         if (screenWorkshopId != null && screenWorkshopId != current) {
             selectedVisitId = null
             creatingVisit = false
+            correctingVisitId = null
             creatingFindingForVisitId = null
             showCamera = false
             captureFindingId = null
@@ -302,6 +304,16 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                 )
             }
 
+            correctingVisitId != null && selectedVisit != null -> IntakeScreen(
+                onSearchCustomers = { viewModel.searchCustomers(it) }, vehicleBrands = vehicleBrandSuggestions,
+                commonComplaints = complaintSuggestions, initialVisit = selectedVisit,
+                onCancel = { correctingVisitId = null },
+                onSave = { draft -> viewModel.correctUnsyncedVisit(selectedVisit, draft,
+                    onSuccess = { correctingVisitId = null; message("Исправления сохранены. Синхронизация будет повторена") },
+                    onFailure = { message(it.message ?: "Не удалось сохранить исправления") }) },
+                modifier = Modifier.padding(padding),
+            )
+
             creatingVisit -> IntakeScreen(
                 onSearchCustomers = { viewModel.searchCustomers(it) },
                 vehicleBrands = vehicleBrandSuggestions,
@@ -359,6 +371,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
             selectedVisit != null -> VisitScreen(
                 visit = selectedVisit,
                 viewModel = viewModel,
+                onCorrectVisit = { correctingVisitId = selectedVisit.id },
                 onOpenCamera = { if (cameraGranted) showCamera = true else cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
                 onOpenFindingCamera = { findingId ->
                     if (cameraGranted) { captureFindingId = findingId; showCamera = true }
@@ -920,20 +933,21 @@ internal fun IntakeScreen(
     onCancel: () -> Unit,
     onSave: (VisitDraft) -> Unit,
     modifier: Modifier = Modifier,
+    initialVisit: VisitEntity? = null,
 ) {
-    var customerName by rememberSaveable { mutableStateOf("") }
-    var phone by rememberSaveable { mutableStateOf("") }
-    var vehicle by rememberSaveable { mutableStateOf("") }
-    var plate by rememberSaveable { mutableStateOf("") }
-    var mileage by rememberSaveable { mutableStateOf("") }
-    var complaint by rememberSaveable { mutableStateOf("") }
+    var customerName by rememberSaveable { mutableStateOf(initialVisit?.customerName.orEmpty()) }
+    var phone by rememberSaveable { mutableStateOf(initialVisit?.customerPhone.orEmpty()) }
+    var vehicle by rememberSaveable { mutableStateOf(initialVisit?.vehicleLabel.orEmpty()) }
+    var plate by rememberSaveable { mutableStateOf(initialVisit?.licensePlate.orEmpty()) }
+    var mileage by rememberSaveable { mutableStateOf(initialVisit?.mileageKm?.toString().orEmpty()) }
+    var complaint by rememberSaveable { mutableStateOf(initialVisit?.complaint.orEmpty()) }
     var search by rememberSaveable { mutableStateOf("") }
     var matches by remember { mutableStateOf<List<CustomerMatch>>(emptyList()) }
     var searchMessage by remember { mutableStateOf<String?>(null) }
     var searching by remember { mutableStateOf(false) }
     var selectedVehicle by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedCustomerId by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedVehicleId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCustomerId by rememberSaveable { mutableStateOf(initialVisit?.pendingCustomerId) }
+    var selectedVehicleId by rememberSaveable { mutableStateOf(initialVisit?.pendingVehicleId) }
     val scope = rememberCoroutineScope()
 
     LazyColumn(
@@ -941,7 +955,8 @@ internal fun IntakeScreen(
         contentPadding = PaddingValues(bottom = 24.dp),
         modifier = modifier.fillMaxSize().imePadding().padding(16.dp).testTag("intake-form"),
     ) {
-        item { Text("Новый визит", style = MaterialTheme.typography.headlineSmall) }
+        item { Text(if (initialVisit == null) "Новый визит" else "Проверка данных визита", style = MaterialTheme.typography.headlineSmall) }
+        if (initialVisit != null) item { Text("Проверьте данные и при необходимости выберите клиента и автомобиль. Находки и материалы останутся в этом визите.") }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Клиент уже был у нас?", style = MaterialTheme.typography.titleMedium)
@@ -980,7 +995,7 @@ internal fun IntakeScreen(
                             phone = customer.phone
                             vehicle = existing.label
                             plate = existing.licensePlate
-                            mileage = ""
+                            if (initialVisit == null) mileage = ""
                             selectedVehicle = "${existing.label} · ${existing.licensePlate}"
                             selectedCustomerId = customer.id
                             selectedVehicleId = existing.id
@@ -992,7 +1007,7 @@ internal fun IntakeScreen(
                     }
                     TextButton(onClick = {
                         customerName = customer.name; phone = customer.phone
-                        vehicle = ""; plate = ""; mileage = ""; selectedVehicle = null
+                        vehicle = ""; plate = ""; if (initialVisit == null) mileage = ""; selectedVehicle = null
                         selectedCustomerId = customer.id; selectedVehicleId = null
                         matches = emptyList(); searchMessage = "Клиент выбран. Укажите новый автомобиль ниже."
                     }) { Text("Другой автомобиль этого клиента") }
@@ -1126,6 +1141,7 @@ private fun String.addQuickValue(value: String): String = when {
 private fun VisitScreen(
     visit: VisitEntity,
     viewModel: QueueViewModel,
+    onCorrectVisit: () -> Unit,
     onOpenCamera: () -> Unit,
     onOpenFindingCamera: (String) -> Unit,
     onPrepareFinding: (FindingEntity) -> Unit,
@@ -1247,6 +1263,12 @@ private fun VisitScreen(
                 Text("Визиты")
             }
             StatusPill(visit.status.label(), visit.status.color())
+        }
+        if (visit.syncState == SyncState.BLOCKED) {
+            Text(visit.syncError ?: "Не удалось синхронизировать визит", color = MaterialTheme.colorScheme.error)
+            if (visit.serverVersion == 0) {
+                TextButton(onClick = onCorrectVisit) { Text("Проверить клиента и автомобиль") }
+            }
         }
         Surface(
             color = MaterialTheme.colorScheme.surface,

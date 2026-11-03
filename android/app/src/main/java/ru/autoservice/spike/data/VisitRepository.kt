@@ -53,6 +53,20 @@ class VisitRepository(
         scheduleSync()
     }
 
+    suspend fun correctUnsyncedVisit(id: String, draft: VisitDraft): VisitEntity = syncMutex.withLock {
+        val current = requireNotNull(visitDao.find(id)) { "Визит не найден" }
+        require(current.serverVersion == 0 && current.syncState == SyncState.BLOCKED) { "Исправить можно только несинхронизированный визит с ошибкой" }
+        require(draft.customerPhone.count(Char::isDigit) >= 10) { "Укажите корректный телефон клиента" }
+        require(draft.vehicleLabel.isNotBlank() || draft.licensePlate.isNotBlank()) { "Укажите автомобиль или госномер" }
+        val corrected = current.copy(customerName = draft.customerName.trim(), customerPhone = normalizePhone(draft.customerPhone),
+            vehicleLabel = draft.vehicleLabel.trim(), licensePlate = draft.licensePlate.trim().uppercase(), mileageKm = draft.mileageKm,
+            complaint = draft.complaint.trim(), pendingCustomerId = draft.customerId, pendingVehicleId = draft.vehicleId,
+            syncState = SyncState.LOCAL, syncError = null, updatedAtEpochMs = clock())
+        visitDao.upsert(corrected)
+        scheduleSync()
+        corrected
+    }
+
     suspend fun synchronizeLocal(): WorkshopSnapshot = syncMutex.withLock {
         visitDao.all().filter { it.syncState != SyncState.SYNCED && it.syncState != SyncState.BLOCKED || it.serverVersion == 0 && it.syncState != SyncState.BLOCKED }
             .forEach { local ->
@@ -61,7 +75,14 @@ class VisitRepository(
                     visitDao.upsert(preserveDraft(server, local).copy(syncState = SyncState.SYNCED, syncError = null))
                 } catch (error: ApiException) {
                     if (error.statusCode !in 400..499 || error.statusCode in setOf(401, 408, 429)) throw error
-                    val message = if (error.statusCode == 401) "Войдите в мастерскую заново" else "Визит не синхронизирован: проверьте данные или конфликт на сервере"
+                    val message = when (error.message) {
+                        "customer_identity_ambiguous" -> "Найдено несколько клиентов с этим телефоном. Выберите клиента."
+                        "vehicle_identity_ambiguous" -> "Найдено несколько автомобилей. Выберите автомобиль или исправьте номер."
+                        "customer_identity_mismatch" -> "Клиент и телефон не совпадают. Выберите клиента заново."
+                        "vehicle_identity_mismatch" -> "Автомобиль не принадлежит выбранному клиенту. Выберите его заново."
+                        "version_conflict" -> "Визит изменён на сервере. Обратитесь к администратору для сверки."
+                        else -> "Визит не синхронизирован: проверьте данные или конфликт на сервере"
+                    }
                     visitDao.upsert(local.copy(syncState = SyncState.BLOCKED, syncError = message))
                 }
             }
