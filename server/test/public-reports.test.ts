@@ -12,6 +12,18 @@ const config: Config = {
 const token = "report_token_abcdefghijklmnopqrstuvwxyz0123456789";
 
 describe("public report routes", () => {
+  it("protects error responses from caching and referrer leakage", async () => {
+    const prisma = { reportLink: { findUnique: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce({ expiresAt: new Date(0), revokedAt: null }) } } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+    try {
+      for (const [url, status] of [[`/public/v1/reports/${token}`, 404], [`/public/v1/reports/${token}`, 410], ["/public/v1/reports/short", 400]] as const) {
+        const response = await app.inject({ method: "GET", url });
+        expect(response.statusCode).toBe(status);
+        expect(response.headers["cache-control"]).toBe("no-store");
+        expect(response.headers["referrer-policy"]).toBe("no-referrer");
+      }
+    } finally { await app.close(); }
+  });
   it("returns a frozen report and signed media URLs without authentication", async () => {
     const update = vi.fn().mockResolvedValue({});
     const prisma = {
@@ -36,6 +48,8 @@ describe("public report routes", () => {
     const response = await app.inject({ method: "GET", url: `/public/v1/reports/${token}` });
 
     expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.headers["referrer-policy"]).toBe("no-referrer");
     expect(response.json()).toMatchObject({ workshop: { name: "АвтоСфера" }, visit: { complaint: "Скрип" }, report: { completedWork: "Заменили колодки", media: [expect.objectContaining({ url: "https://media.example/signed" })] } });
     expect(response.body).not.toContain("private/report-photo");
     expect(update).toHaveBeenCalledOnce();

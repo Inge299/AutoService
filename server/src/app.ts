@@ -79,6 +79,8 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
     requestStartedAt.set(request, Date.now());
     reply.header("x-request-id", request.id);
     if (request.url.startsWith("/public/v1/")) {
+      reply.header("Cache-Control", "no-store");
+      reply.header("Referrer-Policy", "no-referrer");
       const isMutation = !["GET", "HEAD", "OPTIONS"].includes(request.method);
       const limit = isMutation ? 20 : 120;
       const scope = isMutation ? "public-mutation" : "public-read";

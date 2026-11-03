@@ -70,6 +70,8 @@ describe("public approval routes", () => {
     const response = await app.inject({ method: "GET", url: `/public/v1/approvals/${token}` });
 
     expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.headers["referrer-policy"]).toBe("no-referrer");
     expect(response.json()).toMatchObject({
       workshop: { name: "АвтоСфера" },
       visit: { vehicleLabel: "Toyota Camry" },
