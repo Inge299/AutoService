@@ -198,6 +198,7 @@ export function adminUserRoutes(prisma: PrismaClient): FastifyPluginAsync {
       if (!requireAdmin(request, reply)) return;
       const { userId } = paramsSchema.parse(request.params);
       const body = passwordSchema.parse(request.body);
+      if (userId === request.actor.userId) return reply.code(409).send({ error: "use_change_password" });
       const membership = await prisma.membership.findUnique({
         where: { workshopId_userId: { workshopId: request.actor.workshopId, userId } },
         select: { userId: true },

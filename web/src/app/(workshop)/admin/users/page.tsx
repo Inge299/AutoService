@@ -68,11 +68,11 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
             <select name="role" defaultValue={user.role} disabled={user.isCurrent}><option value="EMPLOYEE">Сотрудник</option><option value="ADMIN">Администратор</option></select>
             {!user.isCurrent && <Button type="submit" variant="secondary" className=" button-small">Сохранить</Button>}
           </form>
-          <form action={resetUserPasswordAction} className="admin-inline-form admin-password-form">
+          {user.isCurrent ? <a href="/staff/change-password">Сменить свой пароль</a> : <form action={resetUserPasswordAction} className="admin-inline-form admin-password-form">
             <input type="hidden" name="userId" value={user.id} />
             <input name="password" type="password" minLength={MIN_PASSWORD_LENGTH} maxLength={256} required autoComplete="new-password" placeholder="Новый пароль" />
             <Button type="submit" variant="secondary" className=" button-small">Сменить</Button>
-          </form>
+          </form>}
           <form action={setUserStateAction}>
             <input type="hidden" name="userId" value={user.id} /><input type="hidden" name="isActive" value={String(!user.isActive)} />
             <Button type="submit" disabled={user.isCurrent} className={`button button-small ${user.isActive ? "button-danger" : "button-primary"}`}>{user.isActive ? "Отключить" : "Включить"}</Button>

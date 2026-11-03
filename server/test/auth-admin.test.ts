@@ -51,9 +51,19 @@ describe("database authentication and administration", () => {
       auditEvent: { create: vi.fn().mockResolvedValue({}) }, $transaction: vi.fn(async values => Promise.all(values)) } as unknown as PrismaClient;
     const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
     try {
-      expect((await app.inject({ method: "POST", url: `/v1/admin/users/${userId}/password`, headers, payload: { password: "Qa1234" } })).statusCode).toBe(200);
+      const otherUserId = "33333333-3333-4333-8333-333333333333";
+      expect((await app.inject({ method: "POST", url: `/v1/admin/users/${otherUserId}/password`, headers, payload: { password: "Qa1234" } })).statusCode).toBe(200);
       expect(await verifyPassword("Qa1234", update.mock.calls[0]![0].data.passwordHash)).toBe(true);
       expect(update.mock.calls[0]![0].data.mustChangePassword).toBe(true); expect(revoke).toHaveBeenCalledOnce();
+    } finally { await app.close(); }
+  });
+
+  it("does not allow an administrator to reset their own password without the current password", async () => {
+    const app = await buildApp(config, { prisma: basePrisma() as unknown as PrismaClient, storage: {} as ObjectStorage });
+    try {
+      const response = await app.inject({ method: "POST", url: `/v1/admin/users/${userId}/password`, headers, payload: { password: "Qa1234" } });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({ error: "use_change_password" });
     } finally { await app.close(); }
   });
 
