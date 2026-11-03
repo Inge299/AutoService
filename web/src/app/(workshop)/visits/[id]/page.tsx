@@ -8,6 +8,7 @@ import { VisitMediaSection } from "@/components/visit-media-section";
 import { findingStatusMeta, formatRub, priorityMeta, visitStatusMeta } from "@/lib/domain";
 import { workshopRepository } from "@/lib/repository";
 import { createApprovalLinkAction } from "./actions";
+import { safeApprovalPath } from "@/lib/approval-path";
 import { FollowUpPlan } from "@/components/follow-up-plan";
 
 export const metadata: Metadata = { title: "Карточка визита" };
@@ -15,6 +16,7 @@ export const metadata: Metadata = { title: "Карточка визита" };
 export default async function VisitPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ approval?: string; error?: string }> }) {
   const { id } = await params;
   const { approval, error } = await searchParams;
+  const approvalPath = safeApprovalPath(approval);
   const [visit, report] = await Promise.all([workshopRepository.getVisit(id), workshopRepository.getVisitReport(id)]);
   if (!visit) notFound();
   const status = visitStatusMeta[visit.status];
@@ -48,7 +50,7 @@ export default async function VisitPage({ params, searchParams }: { params: Prom
           <section className="section-block" id="findings">
             <div className="section-heading"><div><h2>Находки и рекомендации</h2><p>То, что обнаружено во время диагностики</p></div></div>
             <div className="findings-list">
-              {approval && <div className="admin-notice admin-notice-success">Ссылка готова: <ActionLink href={approval} target="_blank" rel="noreferrer">Открыть согласование</ActionLink></div>}{error && <div className="form-error">Не удалось создать ссылку: проверьте цену и подтверждённые материалы.</div>}
+              {approvalPath && <div className="admin-notice admin-notice-success">Ссылка готова: <ActionLink href={approvalPath} target="_blank" rel="noreferrer">Открыть согласование</ActionLink></div>}{error && <div className="form-error">Не удалось создать ссылку: проверьте цену и подтверждённые материалы.</div>}
               {visit.findings.length ? visit.findings.map((finding) => { const findingState = findingStatusMeta[finding.status]; const priority = priorityMeta[finding.priority]; return <article className="finding-card" key={finding.id}>
                 <div className={`finding-stripe stripe-${priority.tone}`} />
                 <div className="finding-body"><div className="finding-top"><div><StatusPill label={priority.label} tone={priority.tone} /><h3>{finding.title}</h3></div><strong className="finding-price">{finding.priceRub == null ? "Цена уточняется" : formatRub(finding.priceRub)}</strong></div><p>{finding.description}</p><div className="finding-footer"><span><Icon name="camera" /> {finding.mediaCount} материала</span><StatusPill label={findingState.label} tone={findingState.tone} />{finding.status === "READY_FOR_APPROVAL" && <form action={createApprovalLinkAction}><input type="hidden" name="visitId" value={visit.id} /><input type="hidden" name="findingId" value={finding.id} /><Button variant="primary" className="" type="submit">Подготовить ссылку</Button></form>}</div></div>
