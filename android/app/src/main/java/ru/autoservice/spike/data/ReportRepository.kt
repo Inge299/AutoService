@@ -12,11 +12,15 @@ data class ReportDraft(
     val recommendations: String,
     val nextVisitAtEpochMs: Long?,
     val acknowledgedPrivateFindingIds: List<String> = emptyList(),
+    val expectedMediaIds: List<String> = emptyList(),
 )
+
+class ReportMediaReadinessException(message: String) : IllegalStateException(message)
 
 class ReportRepository(
     private val visitDao: VisitDao,
     private val api: WorkshopRemote,
+    private val loadMedia: suspend (String) -> List<MediaAssetEntity>,
 ) {
     suspend fun queuePublication(visit: VisitEntity, draft: ReportDraft): VisitEntity {
         require(visit.status == VisitStatus.IN_REPAIR || visit.status == VisitStatus.WAITING_APPROVAL) {
@@ -34,9 +38,11 @@ class ReportRepository(
             reportRecommendations = draft.recommendations.trim(),
             reportNextVisitAtEpochMs = draft.nextVisitAtEpochMs,
             reportPreparationError = null,
-            reportAcknowledgedPrivateFindingIds = encodePrivateIds(draft.acknowledgedPrivateFindingIds),
+            reportAcknowledgedPrivateFindingIds = encodeIds(draft.acknowledgedPrivateFindingIds),
+            reportExpectedMediaIds = encodeIds(draft.expectedMediaIds),
         )
         visitDao.upsert(pending)
+        if (!retry) checkMedia(pending)
         return pending
     }
 
@@ -45,7 +51,12 @@ class ReportRepository(
         require(pending.reportPreparationState == "PENDING") { "Нет отчёта для публикации" }
         val operationId = requireNotNull(pending.reportOperationId)
         val token = requireNotNull(pending.reportToken)
-        val acknowledged = decodePrivateIds(pending.reportAcknowledgedPrivateFindingIds)
+        val existing = api.recoverReport(pending.id, operationId, token)
+        if (existing != null) return completePublication(pending, existing)
+        val acknowledged = decodeIds(pending.reportAcknowledgedPrivateFindingIds)
+        val expectedMedia = pending.reportExpectedMediaIds?.let(::decodeIds)
+            ?: throw ReportMediaReadinessException("Откройте отчёт заново и проверьте материалы")
+        checkMedia(pending)
 
         // Saving comes first so a previously edited draft is never published by accident.
         // If the publish response was lost, saving returns report_already_published; the
@@ -57,11 +68,15 @@ class ReportRepository(
                 recommendations = pending.reportRecommendations.orEmpty(),
                 nextVisitAtEpochMs = pending.reportNextVisitAtEpochMs,
             )
-            api.publishReport(pending.id, operationId, token, acknowledged)
+            api.publishReport(pending.id, operationId, token, acknowledged, expectedMedia)
         } catch (error: ApiException) {
             if (error.statusCode != 409 || error.message != "report_already_published") throw error
-            api.publishReport(pending.id, operationId, token, acknowledged)
+            api.publishReport(pending.id, operationId, token, acknowledged, expectedMedia)
         }
+        return completePublication(pending, link)
+    }
+
+    private suspend fun completePublication(pending: VisitEntity, link: ReportLink): ReportLink {
         visitDao.upsert(pending.copy(
             status = VisitStatus.COMPLETED,
             reportPublicUrl = link.publicUrl,
@@ -89,16 +104,30 @@ class ReportRepository(
             reportPreparationState = null,
             reportPreparationError = null,
             reportAcknowledgedPrivateFindingIds = null,
+            reportExpectedMediaIds = null,
         ))
     }
 
-    private fun encodePrivateIds(ids: List<String>): String {
+    private suspend fun checkMedia(visit: VisitEntity) {
+        val privateIds = decodeIds(visit.reportAcknowledgedPrivateFindingIds).toSet()
+        val expected = visit.reportExpectedMediaIds?.let(::decodeIds)?.toSet()
+            ?: throw ReportMediaReadinessException("Откройте отчёт заново и проверьте материалы")
+        val relevant = loadMedia(visit.id).filter { it.findingId == null || it.findingId !in privateIds }
+        if (relevant.any { it.syncState != SyncState.SYNCED }) {
+            throw ReportMediaReadinessException("Дождитесь загрузки всех материалов для отчёта")
+        }
+        if (relevant.map { it.id }.toSet() != expected) {
+            throw ReportMediaReadinessException("Список материалов изменился. Откройте отчёт заново")
+        }
+    }
+
+    private fun encodeIds(ids: List<String>): String {
         ids.forEach { require(UUID.fromString(it).toString().equals(it, ignoreCase = true)) { "Некорректный идентификатор находки" } }
         return ids.joinToString(",")
     }
 
-    private fun decodePrivateIds(value: String?): List<String> =
-        if (value.isNullOrEmpty()) emptyList() else value.split(",").also { encodePrivateIds(it) }
+    private fun decodeIds(value: String?): List<String> =
+        if (value.isNullOrEmpty()) emptyList() else value.split(",").also { encodeIds(it) }
 
     private fun newReportToken(): String {
         val bytes = ByteArray(32)

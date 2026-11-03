@@ -1496,13 +1496,17 @@ private fun VisitScreen(
             )
         }
         if (showReportComposer) {
+            val privateIds = findings.filter { it.status in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL) }.map { it.id }.toSet()
+            val reportAssets = assets.filter { it.findingId == null || it.findingId !in privateIds }
             ReportComposerDialog(
                 initialCompletedWork = visit.reportCompletedWork.orEmpty(),
                 initialRecommendations = visit.reportRecommendations.orEmpty(),
                 initialNextVisitAtEpochMs = visit.reportNextVisitAtEpochMs,
                 completedFindingTitles = findings.filter { it.status == FindingStatus.COMPLETED }.map { it.title },
                 hasIndividualPlans = findings.any { it.status !in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL) && it.followUpState == "OPEN" && it.followUpConfigured && it.followUpDueAtEpochMs != null },
-                privateFindingIds = findings.filter { it.status in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL) }.map { it.id },
+                privateFindingIds = privateIds.toList(),
+                expectedMediaIds = reportAssets.map { it.id },
+                pendingMediaCount = reportAssets.count { it.syncState != SyncState.SYNCED },
                 futureFindingTitles = findings.filter { it.followUpState == "OPEN" && it.status !in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL, FindingStatus.COMPLETED, FindingStatus.DECLINED) &&
                     (it.status == FindingStatus.DEFERRED || it.priority == FindingPriority.PLANNED) }.map { it.title },
                 onDismiss = { showReportComposer = false },
@@ -2193,6 +2197,9 @@ private fun FindingStatus.decisionLabel(): String = when (this) {
 }
 
 private fun Throwable.reportPublicationMessage(): String = when ((this as? ApiException)?.message) {
+    "report_client_update_required" -> "Обновите приложение перед публикацией отчёта"
+    "report_media_pending" -> "Дождитесь загрузки и проверки всех материалов отчёта"
+    "report_media_changed" -> "Список материалов изменился. Обновите визит и заново проверьте отчёт"
     "private_findings_changed" -> "Список черновиков изменился. Обновите визит и заново проверьте отчёт"
     "pending_approvals" -> "Сначала дождитесь решения клиента по всем согласованиям"
     "completed_work_required" -> "Опишите выполненные работы"

@@ -20,6 +20,7 @@ const publishSchema = z.object({
   token: z.string().min(32).max(200).regex(/^[A-Za-z0-9_-]+$/),
   expiresInDays: z.number().int().min(1).max(90).default(30),
   acknowledgedPrivateFindingIds: z.array(z.string().uuid()).max(500).default([]),
+  expectedMediaIds: z.array(z.string().uuid()).max(5000).optional(),
 });
 
 function tokenHash(token: string): string {
@@ -73,6 +74,18 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
       if (result.kind === "closed") return reply.code(409).send({ error: "visit_closed" });
       if (result.kind === "past_date") return reply.code(400).send({ error: "next_visit_date_in_past" });
       return reply.send(result.report);
+    });
+
+    // Recovery is read-only and cannot accidentally start a publication.
+    app.post("/v1/visits/:id/report/recover", async (request, reply) => {
+      const { id } = paramsSchema.parse(request.params);
+      const body = z.object({ operationId: z.string().uuid(), token: z.string().min(32).max(200).regex(/^[A-Za-z0-9_-]+$/) }).parse(request.body);
+      const version = await prisma.reportVersion.findUnique({ where: { operationId: body.operationId }, include: { link: true } });
+      if (!version || version.workshopId !== request.actor.workshopId || version.visitId !== id || !version.link || version.link.tokenHash !== tokenHash(body.token)) {
+        return reply.code(404).send({ error: "report_operation_not_found" });
+      }
+      if (version.link.revokedAt) return reply.code(409).send({ error: "report_link_revoked" });
+      return { reportVersionId: version.id, token: body.token, publicPath: `/r/${body.token}`, expiresAt: version.link.expiresAt, reused: true };
     });
 
     app.post("/v1/visits/:id/report/publish", async (request, reply) => {
@@ -129,9 +142,9 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
               followUpDueAt: true, followUpConfigured: true, followUpState: true },
           }),
           tx.mediaAsset.findMany({
-            where: { workshopId, visitId: id, state: { in: ["VERIFIED", "READY"] } },
+            where: { workshopId, visitId: id },
             orderBy: { createdAt: "asc" },
-            select: { id: true, findingId: true },
+            select: { id: true, findingId: true, state: true },
           }),
         ]);
         const visibleFindings = findings.filter(finding => customerVisibleStatus(finding.status));
@@ -140,6 +153,18 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
         if (privateIds.length !== acknowledgedIds.length || privateIds.some((id, index) => id !== acknowledgedIds[index])) {
           return { kind: "private_findings_changed" as const };
         }
+        if (!body.expectedMediaIds) return { kind: "report_client_update_required" as const };
+        const visibleIds = new Set(visibleFindings.map(finding => finding.id));
+        const relevantMedia = media.filter(asset => asset.findingId === null || visibleIds.has(asset.findingId));
+        if (relevantMedia.some(asset => asset.state !== "VERIFIED" && asset.state !== "READY")) {
+          return { kind: "report_media_pending" as const };
+        }
+        const serverMediaIds = relevantMedia.map(asset => asset.id).sort();
+        const expectedMediaIds = [...new Set(body.expectedMediaIds)].sort();
+        if (serverMediaIds.length !== expectedMediaIds.length || serverMediaIds.some((id, index) => id !== expectedMediaIds[index])) {
+          return { kind: "report_media_changed" as const };
+        }
+        const readyMedia = media.filter(asset => asset.state === "VERIFIED" || asset.state === "READY");
         const recommendations = reportRecommendations(report.recommendations, visibleFindings, report.nextVisitAt);
         const planned = futureWork(visibleFindings);
         if (planned.some(work => isPastVisitDate(work.followUpConfigured ? work.followUpDueAt ?? null : report.nextVisitAt))) {
@@ -162,8 +187,8 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
             recommendations,
             nextVisitAt: report.nextVisitAt,
             findings: findings.map(finding => ({ ...finding, followUpDueAt: finding.followUpDueAt?.toISOString() ?? null })),
-            mediaIds: media.map((asset) => asset.id),
-            mediaManifest: media.map(asset => ({ id: asset.id, findingId: asset.findingId ?? null })),
+            mediaIds: readyMedia.map((asset) => asset.id),
+            mediaManifest: readyMedia.map(asset => ({ id: asset.id, findingId: asset.findingId ?? null })),
           },
         });
         const link = await tx.reportLink.create({
@@ -193,12 +218,15 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
             action: "REPORT_PUBLISHED",
             entityType: "visit",
             entityId: id,
-            metadata: { reportId: report.id, reportVersionId: version.id, mediaCount: media.length },
+            metadata: { reportId: report.id, reportVersionId: version.id, mediaCount: readyMedia.length },
           },
         });
         return { kind: "created" as const, version, link };
       });
 
+      if (result.kind === "report_client_update_required") return reply.code(409).send({ error: "report_client_update_required" });
+      if (result.kind === "report_media_pending") return reply.code(409).send({ error: "report_media_pending" });
+      if (result.kind === "report_media_changed") return reply.code(409).send({ error: "report_media_changed" });
       if (result.kind === "private_findings_changed") return reply.code(409).send({ error: "private_findings_changed" });
       if (result.kind === "pending_approvals") return reply.code(409).send({ error: "pending_approvals" });
       if (result.kind === "report_unavailable") return reply.code(409).send({ error: "report_not_draft" });

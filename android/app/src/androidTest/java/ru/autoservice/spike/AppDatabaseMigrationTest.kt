@@ -22,7 +22,7 @@ class AppDatabaseMigrationTest {
     )
 
     @Test
-    fun migratesVisitAndFindingFromVersion5ToVersion10() {
+    fun migratesVisitAndFindingFromVersion5ToVersion11() {
         helper.createDatabase(DATABASE_NAME, 5).apply {
             execSQL(
                 """INSERT INTO visits
@@ -48,20 +48,22 @@ class AppDatabaseMigrationTest {
 
         helper.runMigrationsAndValidate(
             DATABASE_NAME,
-            10,
+            11,
             true,
             AppDatabase.MIGRATION_5_6,
             AppDatabase.MIGRATION_6_7,
             AppDatabase.MIGRATION_7_8,
             AppDatabase.MIGRATION_8_9,
             AppDatabase.MIGRATION_9_10,
+            AppDatabase.MIGRATION_10_11,
         ).use { database ->
-            database.query("SELECT vehicleLabel, reportOperationId, reportPreparationState, reportAcknowledgedPrivateFindingIds FROM visits WHERE id = 'visit-1'").use { cursor ->
+            database.query("SELECT vehicleLabel, reportOperationId, reportPreparationState, reportAcknowledgedPrivateFindingIds, reportExpectedMediaIds FROM visits WHERE id = 'visit-1'").use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("Lada Vesta", cursor.getString(0))
                 assertTrue(cursor.isNull(1))
                 assertTrue(cursor.isNull(2))
                 assertTrue(cursor.isNull(3))
+                assertTrue(cursor.isNull(4))
             }
             database.query("SELECT status, approvalPreparationState FROM findings WHERE id = 'finding-1'").use { cursor ->
                 assertTrue(cursor.moveToFirst())
@@ -80,7 +82,7 @@ class AppDatabaseMigrationTest {
 
 
     @Test
-    fun migratesVersion9PendingReportWithoutLosingItsData() {
+    fun migratesVersion9PendingReportWithoutLosingItsDataToVersion11() {
         val name = "qa-migration-v9-v10"
         helper.createDatabase(name, 9).apply {
             execSQL("""INSERT INTO visits
@@ -92,14 +94,15 @@ class AppDatabaseMigrationTest {
                         'operation-9', 'token-9', 'PENDING', 'Работа сохранена')""")
             close()
         }
-        helper.runMigrationsAndValidate(name, 10, true, AppDatabase.MIGRATION_9_10).use { database ->
-            database.query("SELECT reportOperationId, reportToken, reportPreparationState, reportCompletedWork, reportAcknowledgedPrivateFindingIds FROM visits WHERE id = 'visit-9'").use { cursor ->
+        helper.runMigrationsAndValidate(name, 11, true, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11).use { database ->
+            database.query("SELECT reportOperationId, reportToken, reportPreparationState, reportCompletedWork, reportAcknowledgedPrivateFindingIds, reportExpectedMediaIds FROM visits WHERE id = 'visit-9'").use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("operation-9", cursor.getString(0))
                 assertEquals("token-9", cursor.getString(1))
                 assertEquals("PENDING", cursor.getString(2))
                 assertEquals("Работа сохранена", cursor.getString(3))
                 assertTrue(cursor.isNull(4))
+                assertTrue(cursor.isNull(5))
             }
         }
     }

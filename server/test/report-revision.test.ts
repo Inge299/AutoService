@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../src/http/errors.js";
 import { reportRoutes } from "../src/http/routes/reports.js";
+import { mediaRoutes } from "../src/http/routes/media.js";
+import type { ObjectStorage } from "../src/infrastructure/object-storage.js";
 import { findingRoutes } from "../src/http/routes/findings.js";
 import { visitRoutes } from "../src/http/routes/visits.js";
 import { customerVisibleMediaIds, projectReportFindings } from "../src/domain/customer-visibility.js";
@@ -20,7 +22,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL report revision inte
     await prisma.user.create({ data: { id: userId, displayName: "Synthetic test actor" } });
     registerErrorHandler(app);
     app.addHook("preHandler", async request => { request.actor = { workshopId, userId, role: "EMPLOYEE" }; });
-    await app.register(reportRoutes(prisma)); await app.register(findingRoutes(prisma)); await app.register(visitRoutes(prisma));
+    await app.register(reportRoutes(prisma)); await app.register(mediaRoutes(prisma, { createUploadTarget: async () => ({ url: "https://example.test/upload" }) } as unknown as ObjectStorage)); await app.register(findingRoutes(prisma)); await app.register(visitRoutes(prisma));
   });
   afterAll(async () => {
     await app.close();
@@ -37,8 +39,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL report revision inte
   }
   const draft = (id: string, nextVisitAt: string | null) => app.inject({ method: "PUT", url: `/v1/visits/${id}/report`,
     payload: { completedWork: "Synthetic completed work", recommendations: "Synthetic future work", nextVisitAt } });
-  const publish = (id: string, payload = { operationId: randomUUID(), token: randomUUID().replaceAll("-", "") }) =>
-    app.inject({ method: "POST", url: `/v1/visits/${id}/report/publish`, payload });
+  const publish = (id: string, payload: { operationId: string; token: string; expectedMediaIds?: string[] } = { operationId: randomUUID(), token: randomUUID().replaceAll("-", "") }) =>
+    app.inject({ method: "POST", url: `/v1/visits/${id}/report/publish`, payload: { expectedMediaIds: [], ...payload } });
 
   it("revokes inside the transaction, kills queued work, and schedules only the replacement", async () => {
     const v = await visit();
@@ -90,7 +92,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL report revision inte
     }
     expect((await publish(v.id)).json().error).toBe("private_findings_changed");
     const response = await app.inject({ method: "POST", url: `/v1/visits/${v.id}/report/publish`, payload: {
-      operationId: randomUUID(), token: randomUUID().replaceAll("-", ""), acknowledgedPrivateFindingIds: [hiddenId],
+      operationId: randomUUID(), token: randomUUID().replaceAll("-", ""), acknowledgedPrivateFindingIds: [hiddenId], expectedMediaIds: [generalMedia, visibleMedia],
     } });
     expect(response.statusCode).toBe(201);
     const version = await prisma.reportVersion.findFirstOrThrow({ where: { visitId: v.id } });
@@ -102,6 +104,43 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL report revision inte
       state: { in: ["VERIFIED", "READY"] }, OR: [{ findingId: null }, { finding: { is: { status: { in: ["SENT_TO_CUSTOMER", "APPROVED", "COMPLETED", "DECLINED", "DEFERRED", "CALL_REQUESTED"] } } } }],
     } } } } } });
     expect(portalCount._count.media).toBe(2);
+  });
+
+  it("does not publish until the expected server media is complete and ready", async () => {
+    const v = await visit(); await draft(v.id, null);
+    const mediaId = randomUUID();
+    await prisma.mediaAsset.create({ data: { id: mediaId, operationId: randomUUID(), workshopId, visitId: v.id,
+      kind: "PHOTO", mimeType: "image/jpeg", byteCount: 1n, sha256: "a".repeat(64), objectKey: `qa/${mediaId}/verified`, state: "RETRY" } });
+    const payload = { operationId: randomUUID(), token: randomUUID().replaceAll("-", ""), expectedMediaIds: [mediaId] };
+    expect((await publish(v.id, payload)).json().error).toBe("report_media_pending");
+    await prisma.mediaAsset.update({ where: { id: mediaId }, data: { state: "READY" } });
+    expect((await publish(v.id, { ...payload, expectedMediaIds: [] })).json().error).toBe("report_media_changed");
+    expect((await publish(v.id, payload)).statusCode).toBe(201);
+    expect((await prisma.reportVersion.findFirstOrThrow({ where: { visitId: v.id } })).mediaIds).toEqual([mediaId]);
+  });
+
+  it("serializes report publication against new media registration", async () => {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const v = await visit(); await draft(v.id, null);
+      const mediaId = randomUUID();
+      const [report, upload] = await Promise.all([
+        publish(v.id),
+        app.inject({ method: "POST", url: `/v1/media/${mediaId}/upload-session`, payload: {
+          operationId: randomUUID(), visitId: v.id, findingId: null, kind: "PHOTO", mimeType: "image/jpeg",
+          byteCount: 1, sha256: "a".repeat(64),
+        } }),
+      ]);
+      if (report.statusCode === 201) {
+        expect(upload.statusCode).toBe(409);
+        expect(upload.json().error).toBe("visit_closed");
+        expect(await prisma.mediaAsset.count({ where: { id: mediaId } })).toBe(0);
+      } else {
+        expect(report.statusCode).toBe(409);
+        expect(report.json().error).toBe("report_media_pending");
+        expect(upload.statusCode).toBe(200);
+        expect(await prisma.reportVersion.count({ where: { visitId: v.id } })).toBe(0);
+      }
+    }
   });
 
   it("cannot create two versions or two reminders in concurrent publication", async () => {

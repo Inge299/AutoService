@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
@@ -29,6 +30,21 @@ class ReportComposerDialogTest {
     @Before fun deviceMustBeUnlocked() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         assumeFalse("Unlock the device before running the UI test", context.getSystemService(KeyguardManager::class.java).isKeyguardLocked)
+    }
+
+    @Test fun pendingMediaBlocksPublicationAndExpectedSetIsFrozen() {
+        var published: ReportDraft? = null
+        var pending by mutableStateOf(1)
+        var ids by mutableStateOf(listOf("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"))
+        compose.setContent {
+            AutoServiceTheme {
+                ReportComposerDialog("Диагностика", "", null, onDismiss = {}, onPublish = { published = it }, expectedMediaIds = ids, pendingMediaCount = pending)
+            }
+        }
+        compose.onNodeWithText("Опубликовать отчёт").assertIsNotEnabled()
+        compose.runOnIdle { pending = 0; ids = ids + "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }
+        compose.onNodeWithText("Опубликовать отчёт").performClick()
+        compose.runOnIdle { assertTrue(published?.expectedMediaIds == listOf("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")) }
     }
 
     @Test fun privateFindingAcknowledgementIsFrozenWhenComposerOpens() {

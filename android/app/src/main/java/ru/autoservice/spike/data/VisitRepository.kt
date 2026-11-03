@@ -67,6 +67,7 @@ class VisitRepository(
                         local?.reportNextVisitAtEpochMs else server.reportNextVisitAtEpochMs,
                     reportPreparationError = local?.reportPreparationError,
                     reportAcknowledgedPrivateFindingIds = local?.reportAcknowledgedPrivateFindingIds,
+                    reportExpectedMediaIds = local?.reportExpectedMediaIds,
                 ))
             }
         }

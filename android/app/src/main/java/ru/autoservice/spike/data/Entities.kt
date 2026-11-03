@@ -74,6 +74,7 @@ data class VisitEntity(
     val reportNextVisitAtEpochMs: Long? = null,
     val reportPreparationError: String? = null,
     val reportAcknowledgedPrivateFindingIds: String? = null,
+    val reportExpectedMediaIds: String? = null,
 )
 
 @Entity(

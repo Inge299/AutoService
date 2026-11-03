@@ -55,40 +55,38 @@ export function mediaRoutes(prisma: PrismaClient, storage: ObjectStorage): Fasti
       const body = uploadSchema.parse(request.body);
       const { workshopId } = request.actor;
 
-      const visit = await prisma.visit.findFirst({ where: { id: body.visitId, workshopId }, select: { id: true } });
-      if (!visit) return reply.code(404).send({ error: "visit_not_found" });
-      if (body.findingId) {
-        const finding = await prisma.finding.findFirst({
-          where: { id: body.findingId, visitId: body.visitId, workshopId },
-          select: { id: true },
-        });
-        if (!finding) return reply.code(404).send({ error: "finding_not_found" });
-      }
-
       const objectKey = `workshops/${workshopId}/visits/${body.visitId}/media/${id}/original`;
-      const existing = await prisma.mediaAsset.findUnique({ where: { operationId: body.operationId } });
-      if (existing && (
-        existing.workshopId !== workshopId || existing.id !== id || existing.sha256 !== body.sha256 ||
-        existing.byteCount !== BigInt(body.byteCount) || existing.visitId !== body.visitId ||
-        existing.findingId !== body.findingId || existing.kind !== body.kind || existing.mimeType !== body.mimeType
-      )) {
-        return reply.code(409).send({ error: "operation_conflict" });
-      }
-
-      const asset = existing ?? await prisma.mediaAsset.create({
-        data: {
-          id,
-          operationId: body.operationId,
-          workshopId,
-          visitId: body.visitId,
-          findingId: body.findingId,
-          kind: body.kind as MediaKind,
-          mimeType: body.mimeType,
-          byteCount: BigInt(body.byteCount),
-          sha256: body.sha256,
-          objectKey,
-        },
+      const result = await serializable(prisma, async (tx) => {
+        const visit = await tx.visit.findFirst({ where: { id: body.visitId, workshopId }, select: { id: true, status: true } });
+        if (!visit) return { kind: "visit_not_found" as const };
+        if (body.findingId) {
+          const finding = await tx.finding.findFirst({
+            where: { id: body.findingId, visitId: body.visitId, workshopId }, select: { id: true },
+          });
+          if (!finding) return { kind: "finding_not_found" as const };
+        }
+        const existing = await tx.mediaAsset.findUnique({ where: { operationId: body.operationId } });
+        if (existing && (
+          existing.workshopId !== workshopId || existing.id !== id || existing.sha256 !== body.sha256 ||
+          existing.byteCount !== BigInt(body.byteCount) || existing.visitId !== body.visitId ||
+          existing.findingId !== body.findingId || existing.kind !== body.kind || existing.mimeType !== body.mimeType
+        )) return { kind: "operation_conflict" as const };
+        // Existing uploads may be retried, but new evidence cannot be silently
+        // appended to a closed report. Serializable isolation also makes this
+        // decision conflict with concurrent report publication.
+        if (!existing && ["COMPLETED", "CANCELLED"].includes(visit.status)) return { kind: "visit_closed" as const };
+        const asset = existing ?? await tx.mediaAsset.create({
+          data: {
+            id, operationId: body.operationId, workshopId, visitId: body.visitId,
+            findingId: body.findingId, kind: body.kind as MediaKind, mimeType: body.mimeType,
+            byteCount: BigInt(body.byteCount), sha256: body.sha256, objectKey,
+          },
+        });
+        return { kind: "ok" as const, asset };
       });
+      if (result.kind === "visit_not_found" || result.kind === "finding_not_found") return reply.code(404).send({ error: result.kind });
+      if (result.kind !== "ok") return reply.code(409).send({ error: result.kind });
+      const { asset } = result;
       if (["VERIFIED", "PROCESSING", "READY"].includes(asset.state)) {
         return reply.send({ mediaId: asset.id, state: asset.state, alreadyUploaded: true });
       }

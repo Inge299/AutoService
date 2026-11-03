@@ -48,7 +48,8 @@ open class FakeWorkshopRemote : WorkshopRemote {
         nextVisitAtEpochMs: Long?,
     ) = Unit
 
-    override suspend fun publishReport(visitId: String, operationId: String, token: String, acknowledgedPrivateFindingIds: List<String>) =
+    override suspend fun recoverReport(visitId: String, operationId: String, token: String): ReportLink? = null
+    override suspend fun publishReport(visitId: String, operationId: String, token: String, acknowledgedPrivateFindingIds: List<String>, expectedMediaIds: List<String>) =
         ReportLink("https://example.test/r/$token", 1_800_000L)
 
     override suspend fun revokeReportLink(visitId: String) = Unit

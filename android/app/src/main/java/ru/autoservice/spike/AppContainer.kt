@@ -39,7 +39,7 @@ class WorkshopContainer(context: Context, val workshopId: String, authStore: Aut
     val uploadTransport = ServerUploadTransport(api)
     val mediaRepository = MediaRepository(database.mediaDao(), fileStore, uploadScheduler, api)
     val visitRepository = VisitRepository(database.visitDao(), api)
-    val reportRepository = ReportRepository(database.visitDao(), api)
+    val reportRepository = ReportRepository(database.visitDao(), api) { visitId -> database.mediaDao().forVisit(visitId) }
     val findingRepository = FindingRepository(database.findingDao(), database.mediaDao(), api)
     val localDictionaryRepository = LocalDictionaryRepository(database.dictionaryDao())
 
@@ -73,5 +73,5 @@ class WorkshopContainer(context: Context, val workshopId: String, authStore: Aut
     private fun database(context: Context, name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4,
             AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7,
-            AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10).build()
+            AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11).build()
 }

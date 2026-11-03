@@ -29,7 +29,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("individual work planning with P
   });
   afterAll(async()=>{await app.close();await prisma.workshop.delete({where:{id:workshopId}});await prisma.$disconnect()});
   const publish=async()=>{
-    const body={operationId:randomUUID(),token:randomUUID().replaceAll("-","")+"testtoken"};
+    const body={operationId:randomUUID(),token:randomUUID().replaceAll("-","")+"testtoken",expectedMediaIds:[]};
     const r=await app.inject({method:"POST",url:`/v1/visits/${visitId}/report/publish`,payload:body});expect(r.statusCode,r.body).toBe(201);
     return {versionId:r.json().reportVersionId as string,body};
   };
