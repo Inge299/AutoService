@@ -78,6 +78,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.material3.FilterChip
+import ru.autoservice.spike.ui.QueueFilter
+import ru.autoservice.spike.ui.filterVisitQueue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -121,6 +126,8 @@ import ru.autoservice.spike.network.ApiException
 import ru.autoservice.spike.network.CustomerMatch
 import ru.autoservice.spike.ui.CameraCaptureScreen
 import ru.autoservice.spike.ui.QueueViewModel
+import ru.autoservice.spike.ui.MIN_PASSWORD_LENGTH
+import ru.autoservice.spike.ui.isValidNewPassword
 import ru.autoservice.spike.ui.ReportComposerDialog
 import ru.autoservice.spike.ui.theme.AutoServiceTheme
 
@@ -138,6 +145,8 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     val snackbarHost = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val visits by viewModel.visits.collectAsState()
+    val callRequestedVisitIds by viewModel.callRequestedVisitIds.collectAsState()
+    val queueState = rememberSaveableStateHolder()
     val mediaQueue by viewModel.assets.collectAsState()
     val vehicleBrandSuggestions by viewModel.vehicleBrandSuggestions.collectAsState()
     val complaintSuggestions by viewModel.complaintSuggestions.collectAsState()
@@ -442,13 +451,14 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
                 modifier = Modifier.padding(padding),
             )
 
-            else -> VisitsScreen(
+            else -> queueState.SaveableStateProvider(session!!.workshopId) { VisitsScreen(
                 visits = visits,
                 mediaQueue = mediaQueue,
+                attentionVisitIds = callRequestedVisitIds.toSet(),
                 onCreate = { creatingVisit = true },
                 onOpen = { selectedVisitId = it.id },
                 modifier = Modifier.padding(padding),
-            )
+            ) }
         }
     }
 }
@@ -596,7 +606,7 @@ private fun LoginScreen(
 private enum class LoginMode { SMS, CODE, PASSWORD }
 
 @Composable
-private fun ChangePasswordScreen(
+internal fun ChangePasswordScreen(
     onSubmit: (String, String, () -> Unit) -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
@@ -606,7 +616,7 @@ private fun ChangePasswordScreen(
     var confirmation by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     Column(modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Перед началом работы задайте свой пароль: минимум 12 символов.")
+        Text("Перед началом работы задайте свой пароль: минимум $MIN_PASSWORD_LENGTH символов.")
         OutlinedTextField(current, { current = it }, label = { Text("Временный пароль") }, singleLine = true,
             visualTransformation = PasswordVisualTransformation(), enabled = !loading)
         OutlinedTextField(password, { password = it }, label = { Text("Новый пароль") }, singleLine = true,
@@ -614,7 +624,7 @@ private fun ChangePasswordScreen(
         OutlinedTextField(confirmation, { confirmation = it }, label = { Text("Повторите пароль") }, singleLine = true,
             visualTransformation = PasswordVisualTransformation(), enabled = !loading)
         Button(onClick = { loading = true; onSubmit(current, password) { loading = false } },
-            enabled = !loading && current.isNotEmpty() && password.length in 12..256 && password == confirmation) {
+            enabled = !loading && current.isNotEmpty() && isValidNewPassword(password) && password == confirmation) {
             Text(if (loading) "Сохранение…" else "Сохранить пароль")
         }
         TextButton(onClick = onLogout, enabled = !loading) { Text("Выйти") }
@@ -709,13 +719,19 @@ internal fun VisitsScreen(
     onCreate: () -> Unit,
     onOpen: (VisitEntity) -> Unit,
     modifier: Modifier = Modifier,
+    attentionVisitIds: Set<String> = emptySet(),
 ) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf(QueueFilter.ACTIVE) }
+    val uploadVisitIds = mediaQueue.filter { it.syncState != SyncState.SYNCED }.map { it.visitId }.toSet()
+    val filtered = remember(visits, query, filter, attentionVisitIds, uploadVisitIds) {
+        filterVisitQueue(visits, query, filter, attentionVisitIds, uploadVisitIds)
+    }
     val pendingCount = mediaQueue.count { it.syncState != SyncState.SYNCED }
     val attentionCount = mediaQueue.count { it.syncState == SyncState.RETRY || it.syncState == SyncState.BLOCKED }
-    val activeVisits = visits
+    val activeVisits = filtered
         .filter { it.status !in setOf(VisitStatus.COMPLETED, VisitStatus.CANCELLED) }
-        .sortedWith(compareBy<VisitEntity> { it.status.queueRank() }.thenByDescending { it.updatedAtEpochMs })
-    val archivedVisits = visits
+    val archivedVisits = filtered
         .filter { it.status in setOf(VisitStatus.COMPLETED, VisitStatus.CANCELLED) }
         .sortedByDescending { it.updatedAtEpochMs }
 
@@ -747,6 +763,8 @@ internal fun VisitsScreen(
                     Text("Принять автомобиль")
                 }
                 Surface(
+                    onClick = { query = ""; filter = if (pendingCount > 0) QueueFilter.UPLOADS else QueueFilter.ACTIVE },
+                    enabled = pendingCount > 0,
                     color = if (attentionCount > 0) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, if (attentionCount > 0) MaterialTheme.colorScheme.error.copy(alpha = 0.24f) else MaterialTheme.colorScheme.outlineVariant),
                     shape = MaterialTheme.shapes.small,
@@ -769,20 +787,33 @@ internal fun VisitsScreen(
                                 style = MaterialTheme.typography.labelLarge,
                             )
                             if (attentionCount > 0 || pendingCount > 0) Text(
-                                if (attentionCount > 0) "Откройте визит и повторите загрузку." else "Можно продолжать работу — загрузка идёт в фоне.",
+                                if (attentionCount > 0) "Нажмите, чтобы найти визит и повторить загрузку." else "Нажмите, чтобы увидеть загрузки. Можно продолжать работу.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
                 }
+                OutlinedTextField(query, { query = it }, label = { Text("Номер, телефон или имя") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("queue-search"), trailingIcon = {
+                        if (query.isNotEmpty()) TextButton(onClick = { query = "" }) { Text("Сбросить") }
+                    })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(QueueFilter.ACTIVE, QueueFilter.ARCHIVE).forEach { option -> FilterChip(selected = filter == option, onClick = { filter = option },
+                        label = { Text(option.label) }, modifier = Modifier.weight(1f).testTag("queue-filter-${option.name}")) }
+                }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    QueueFilter.entries.filter { it !in setOf(QueueFilter.ACTIVE, QueueFilter.ARCHIVE) }.forEach { option -> FilterChip(selected = filter == option, onClick = { filter = option },
+                        label = { Text(option.label) }, modifier = Modifier.testTag("queue-filter-${option.name}")) }
+                }
+                Text("Найдено: ${filtered.size} · всего визитов: ${visits.size}", style = MaterialTheme.typography.bodySmall)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                 ) {
-                    Text("В работе", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    Text(filter.label, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     Text(
-                        activeVisits.size.toString(),
+                        filtered.size.toString(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -792,16 +823,16 @@ internal fun VisitsScreen(
         if (visits.isEmpty()) {
             item {
                 Text(
-                    "Пока нет визитов. Первый можно создать без подключения к сети.",
+                    "Пока нет визитов. Примите первый автомобиль.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
             }
         } else {
-            if (activeVisits.isEmpty()) {
+            if (filtered.isEmpty()) {
                 item {
                     Text(
-                        "Сейчас нет активных визитов.",
+                        "Ничего не найдено. Измените запрос или фильтр.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 8.dp),
@@ -809,7 +840,9 @@ internal fun VisitsScreen(
                 }
             }
             items(activeVisits, key = { it.id }) { visit ->
-                Box(Modifier.padding(horizontal = 20.dp)) {
+                Column(Modifier.padding(horizontal = 20.dp)) {
+                    if (filter == QueueFilter.UPLOADS) Text("Материалов в очереди: ${mediaQueue.count { it.visitId == visit.id && it.syncState != SyncState.SYNCED }}", style = MaterialTheme.typography.labelLarge)
+                    if (visit.id in attentionVisitIds) Text("Клиент просит позвонить", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
                     VisitQueueRow(visit = visit, archived = false, onOpen = { onOpen(visit) })
                 }
             }
@@ -907,6 +940,8 @@ internal fun IntakeScreen(
     var searchMessage by remember { mutableStateOf<String?>(null) }
     var searching by remember { mutableStateOf(false) }
     var selectedVehicle by remember { mutableStateOf<String?>(null) }
+    var selectedCustomerId by remember { mutableStateOf<String?>(null) }
+    var selectedVehicleId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LazyColumn(
@@ -955,6 +990,8 @@ internal fun IntakeScreen(
                             plate = existing.licensePlate
                             mileage = ""
                             selectedVehicle = "${existing.label} · ${existing.licensePlate}"
+                            selectedCustomerId = customer.id
+                            selectedVehicleId = existing.id
                             matches = emptyList()
                             searchMessage = null
                         }, modifier = Modifier.fillMaxWidth()) {
@@ -964,6 +1001,7 @@ internal fun IntakeScreen(
                     TextButton(onClick = {
                         customerName = customer.name; phone = customer.phone
                         vehicle = ""; plate = ""; mileage = ""; selectedVehicle = null
+                        selectedCustomerId = customer.id; selectedVehicleId = null
                         matches = emptyList(); searchMessage = "Клиент выбран. Укажите новый автомобиль ниже."
                     }) { Text("Другой автомобиль этого клиента") }
                 }
@@ -973,7 +1011,7 @@ internal fun IntakeScreen(
         item {
             OutlinedTextField(
                 value = phone,
-                onValueChange = { phone = it },
+                onValueChange = { phone = it; selectedCustomerId = null; selectedVehicleId = null; selectedVehicle = null },
                 label = { Text("Телефон клиента *") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 singleLine = true,
@@ -1031,6 +1069,8 @@ internal fun IntakeScreen(
                                 licensePlate = plate,
                                 mileageKm = mileage.toIntOrNull(),
                                 complaint = complaint,
+                                customerId = selectedCustomerId,
+                                vehicleId = selectedVehicleId,
                             ),
                         )
                     },
@@ -1123,6 +1163,7 @@ private fun VisitScreen(
     var renewalFinding by remember { mutableStateOf<FindingEntity?>(null) }
     var deletionAsset by remember { mutableStateOf<MediaAssetEntity?>(null) }
     var completionFinding by remember { mutableStateOf<FindingEntity?>(null) }
+    var followUpFinding by remember { mutableStateOf<FindingEntity?>(null) }
     var showReportComposer by remember { mutableStateOf(false) }
     var showReportRevisionConfirmation by remember { mutableStateOf(false) }
     var observedFindingStatuses by remember(visit.id) {
@@ -1350,6 +1391,7 @@ private fun VisitScreen(
                     onRenewApprovalLink = { renewalFinding = finding },
                     onEdit = { onEditFinding(finding) },
                     onComplete = { completionFinding = finding },
+                    onPlan = { followUpFinding = finding },
                     onRetryUpload = { asset -> viewModel.retry(asset) },
                     onDelete = { asset -> deletionAsset = asset },
                 )
@@ -1373,6 +1415,7 @@ private fun VisitScreen(
                         onRenewApprovalLink = { renewalFinding = finding },
                         onEdit = { onEditFinding(finding) },
                         onComplete = { completionFinding = finding },
+                        onPlan = { followUpFinding = finding },
                         onRetryUpload = { asset -> viewModel.retry(asset) },
                         onDelete = { asset -> deletionAsset = asset },
                     )
@@ -1407,7 +1450,15 @@ private fun VisitScreen(
                 },
             )
         }
-        deletionAsset?.let { asset ->
+    followUpFinding?.let { finding ->
+        ru.autoservice.spike.ui.FollowUpPlanDialog(finding, visit.reportNextVisitAtEpochMs,
+            onDismiss = { followUpFinding = null }, onSubmit = { dueAt, state, finished ->
+                viewModel.updateFollowUp(finding, dueAt, state,
+                    onSuccess = { finished(null); followUpFinding = null; onMessage(if (state == "DONE") "Выполнение отмечено, напоминание отменено" else "План работы сохранён") },
+                    onFailure = { finished(it.message ?: "Не удалось сохранить план. Проверьте связь") })
+            })
+    }
+    deletionAsset?.let { asset ->
             AlertDialog(
                 onDismissRequest = { deletionAsset = null },
                 title = { Text("Удалить материал?") },
@@ -1450,7 +1501,8 @@ private fun VisitScreen(
                 initialRecommendations = visit.reportRecommendations.orEmpty(),
                 initialNextVisitAtEpochMs = visit.reportNextVisitAtEpochMs,
                 completedFindingTitles = findings.filter { it.status == FindingStatus.COMPLETED }.map { it.title },
-                futureFindingTitles = findings.filter { it.status != FindingStatus.COMPLETED && it.status != FindingStatus.DECLINED &&
+                hasIndividualPlans = findings.any { it.followUpState == "OPEN" && it.followUpConfigured && it.followUpDueAtEpochMs != null },
+                futureFindingTitles = findings.filter { it.followUpState == "OPEN" && it.status != FindingStatus.COMPLETED && it.status != FindingStatus.DECLINED &&
                     (it.status == FindingStatus.DEFERRED || it.priority == FindingPriority.PLANNED) }.map { it.title },
                 onDismiss = { showReportComposer = false },
                 onPublish = { draft ->
@@ -1629,6 +1681,7 @@ private fun FindingCard(
     onRenewApprovalLink: () -> Unit,
     onEdit: () -> Unit,
     onComplete: () -> Unit,
+    onPlan: () -> Unit,
     onRetryUpload: (MediaAssetEntity) -> Unit,
     onDelete: (MediaAssetEntity) -> Unit,
 ) {
@@ -1649,6 +1702,17 @@ private fun FindingCard(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 StatusPill(finding.priority.label(), finding.priority.color())
                 finding.priceRub?.let { StatusPill("${it} ₽", MaterialTheme.colorScheme.secondaryContainer) }
+            }
+            if (finding.status == FindingStatus.DEFERRED || (finding.priority == FindingPriority.PLANNED && finding.status !in setOf(FindingStatus.COMPLETED, FindingStatus.DECLINED))) {
+                val planLabel = when (finding.followUpState) {
+                    "DONE" -> "Выполнено позже"
+                    "CANCELLED" -> "Снято с плана"
+                    else -> finding.followUpDueAtEpochMs?.let { epoch ->
+                        "Выполнить до " + java.time.Instant.ofEpochMilli(epoch).atZone(java.time.ZoneId.of("Europe/Moscow")).format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+                    } ?: if (finding.followUpConfigured) "Срок не назначен" else "Срок следующего визита или индивидуальный"
+                }
+                Text(planLabel,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.primary)
+                OutlinedButton(onClick=onPlan,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text(if (finding.followUpState == "OPEN") "Срок и выполнение" else "Изменить план") }
             }
             val syncedAssets = findingAssets.filter { it.syncState == SyncState.SYNCED }
             val pendingAssets = findingAssets.filter { it.syncState != SyncState.SYNCED }
@@ -2040,14 +2104,6 @@ private fun VisitStatus.label(): String = when (this) {
     VisitStatus.WAITING_APPROVAL -> "На согласовании"
     VisitStatus.COMPLETED -> "Завершён"
     VisitStatus.CANCELLED -> "Отменён"
-}
-
-private fun VisitStatus.queueRank(): Int = when (this) {
-    VisitStatus.DRAFT -> 0
-    VisitStatus.IN_REPAIR -> 1
-    VisitStatus.WAITING_APPROVAL -> 2
-    VisitStatus.COMPLETED -> 3
-    VisitStatus.CANCELLED -> 4
 }
 
 private fun FindingStatus.actionRank(): Int = when (this) {

@@ -2,14 +2,15 @@ import "server-only";
 
 import { customers, reminders, visits } from "@/lib/demo-data";
 import { requireSession } from "@/lib/auth/session";
-import type { Customer, Reminder, Visit, VisitMedia, VisitReport, VisitStatus } from "@/lib/domain";
+import type { Customer, Reminder, Visit, VisitMedia, VisitReport, VisitStatus, ListPage, WorkshopSummary, CustomerHistory } from "@/lib/domain";
 import {
-  getApiVisit,
+  getApiVisit, getApiCustomerHistory,
   getApiVisitMedia,
   getApiVisitReport,
   listApiReminders,
   listApiCustomers,
   listApiVisits,
+  listApiVisitPage, listApiCustomerPage, listApiReminderPage, getApiWorkshopSummary,
   type ApiCustomer,
   type ApiVisit,
 } from "@/lib/api/autoservice-api";
@@ -17,9 +18,15 @@ import {
 export interface VisitFilters {
   query?: string;
   status?: VisitStatus;
+  attention?: boolean;
 }
 
 export interface WorkshopRepository {
+  getCustomerHistory(id: string, page: number, futurePage: number, vehicleId?: string): Promise<CustomerHistory | null>;
+  listVisitPage(filters?: VisitFilters, page?: number, limit?: number): Promise<ListPage<Visit>>;
+  listCustomerPage(query?: string, page?: number): Promise<ListPage<Customer>>;
+  listReminderPage(page?: number): Promise<ListPage<Reminder>>;
+  getSummary(): Promise<WorkshopSummary>;
   listVisits(filters?: VisitFilters): Promise<Visit[]>;
   getVisit(id: string): Promise<Visit | null>;
   getVisitMedia(id: string): Promise<VisitMedia[]>;
@@ -29,6 +36,34 @@ export interface WorkshopRepository {
 }
 
 class DemoWorkshopRepository implements WorkshopRepository {
+  async getCustomerHistory(id: string, page: number, futurePage: number): Promise<CustomerHistory | null> {
+    await requireSession();
+    const customer = customers.find(c => c.id === id);
+    if (!customer) return null;
+    return { customer, vehicles: [], visits: demoPage(visits.filter(v => v.phone === customer.phone).map(v => ({ ...v, recommendations: null, nextVisitAt: null })), page, 20),
+      futureWork: demoPage([], futurePage, 20) };
+  }
+  async listVisitPage(filters: VisitFilters = {}, page = 1, limit = 50) {
+    const rows = (await this.listVisits(filters)).filter(v => !filters.attention || Boolean(v.attention));
+    return demoPage(rows, page, limit);
+  }
+  async listCustomerPage(query?: string, page = 1) { return demoPage(await this.listCustomers(query), page, 50); }
+  async listReminderPage(page = 1) { return demoPage(await this.listReminders(), page, 50); }
+  async getSummary(): Promise<WorkshopSummary> {
+    await requireSession();
+    const findings = visits.flatMap(v => v.findings);
+    const answered = ["APPROVED", "COMPLETED", "DECLINED", "CALL_REQUESTED", "DEFERRED"];
+    const approved = findings.filter(f => ["APPROVED", "COMPLETED"].includes(f.status));
+    return { totalVisits: visits.length, activeVisits: visits.filter(v => !["COMPLETED", "CANCELLED"].includes(v.status)).length,
+      attentionVisits: visits.filter(v => v.attention && !["COMPLETED", "CANCELLED"].includes(v.status)).length,
+      visitCounts: Object.fromEntries(["DRAFT", "IN_REPAIR", "WAITING_APPROVAL", "COMPLETED", "CANCELLED"].map(status => [status, visits.filter(v => v.status === status).length])),
+      sent: findings.filter(f => answered.includes(f.status) || f.status === "SENT_TO_CUSTOMER").length,
+      decisions: findings.filter(f => answered.includes(f.status)).length,
+      approved: approved.length, approvedValue: approved.reduce((sum, f) => sum + (f.priceRub ?? 0), 0),
+      upcomingReminders: reminders.filter(r => r.deliveryState === "PENDING").slice(0, 2),
+      reminderCounts: Object.fromEntries(["PENDING", "SENT", "DELIVERED", "FAILED", "CANCELLED"].map(state => [state, reminders.filter(r => r.deliveryState === state).length])),
+      urgentReminders: reminders.filter(r => r.deliveryState === "PENDING" && r.state !== "UPCOMING").length };
+  }
   async getVisitMedia(): Promise<VisitMedia[]> {
     await requireSession();
     return [];
@@ -76,6 +111,11 @@ class DemoWorkshopRepository implements WorkshopRepository {
   }
 }
 
+function demoPage<T>(items: T[], page: number, pageSize: number): ListPage<T> {
+  return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize,
+    hasNext: page * pageSize < items.length, nextCursor: null };
+}
+
 const statusActions: Record<VisitStatus, string> = {
   DRAFT: "Начать диагностику",
   IN_REPAIR: "Продолжить ремонт",
@@ -116,6 +156,7 @@ function mapVisit(visit: ApiVisit): Visit {
   const callRequested = visit.findings.find((finding) => finding.status === "CALL_REQUESTED");
   return {
     id: visit.id,
+    customerId: visit.customerId,
     vehicle: visit.vehicleLabel,
     plate: visit.licensePlate,
     customer: visit.customerName,
@@ -136,6 +177,10 @@ function mapVisit(visit: ApiVisit): Visit {
       priceRub: finding.priceRub,
       priority: finding.priority,
       status: finding.status,
+      serverVersion: finding.serverVersion,
+      followUpDueAt: finding.followUpDueAt,
+      followUpConfigured: finding.followUpConfigured,
+      followUpState: finding.followUpState,
       mediaCount: finding._count.media,
       mediaIds: finding.media.map((media) => media.id),
     })),
@@ -226,6 +271,28 @@ function customersFromVisits(apiVisits: ApiVisit[]): Customer[] {
 }
 
 class ApiWorkshopRepository implements WorkshopRepository {
+  async getCustomerHistory(id: string, page: number, futurePage: number, vehicleId?: string): Promise<CustomerHistory | null> {
+    const result = await getApiCustomerHistory(await requireSession(), id, page, futurePage, vehicleId);
+    return result ? { ...result, visits: { ...result.visits, items: result.visits.items.map(v => ({ ...mapVisit(v),
+      recommendations: v.report?.status === "PUBLISHED" ? v.report.recommendations : null,
+      nextVisitAt: v.report?.status === "PUBLISHED" ? v.report.nextVisitAt : null })) } } : null;
+  }
+  async listVisitPage(filters: VisitFilters = {}, page = 1, limit = 50): Promise<ListPage<Visit>> {
+    const result = await listApiVisitPage(await requireSession(), filters, page, limit);
+    return { ...result, items: result.items.map(mapVisit) };
+  }
+  async listCustomerPage(query?: string, page = 1): Promise<ListPage<Customer>> {
+    const result = await listApiCustomerPage(await requireSession(), query, page);
+    return { ...result, items: result.items.map(mapCustomer) };
+  }
+  async listReminderPage(page = 1): Promise<ListPage<Reminder>> {
+    const result = await listApiReminderPage(await requireSession(), page);
+    return { ...result, items: result.items.map(mapReminder) };
+  }
+  async getSummary(): Promise<WorkshopSummary> {
+    const result = await getApiWorkshopSummary(await requireSession());
+    return { ...result, upcomingReminders: result.upcomingReminders.map(mapReminder) };
+  }
   async getVisitMedia(id: string): Promise<VisitMedia[]> {
     return getApiVisitMedia(id, await requireSession());
   }

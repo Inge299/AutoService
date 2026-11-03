@@ -3,6 +3,7 @@ package ru.autoservice.spike.data
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.room.ColumnInfo
 
 enum class MediaKind {
     PHOTO,
@@ -137,4 +138,8 @@ data class FindingEntity(
     val approvalPendingMediaIds: String? = null,
     val approvalPreparationError: String? = null,
     val approvalReplaceActive: Boolean = false,
+    val followUpDueAtEpochMs: Long? = null,
+    @ColumnInfo(defaultValue = "0") val followUpConfigured: Boolean = false,
+    @ColumnInfo(defaultValue = "'OPEN'") val followUpState: String = "OPEN",
+    val followUpCompletedAtEpochMs: Long? = null,
 )

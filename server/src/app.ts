@@ -8,6 +8,7 @@ import { registerErrorHandler } from "./http/errors.js";
 import { customerRoutes } from "./http/routes/customers.js";
 import { customerAccountRoutes } from "./http/routes/customer-accounts.js";
 import { findingRoutes } from "./http/routes/findings.js";
+import { followUpRoutes } from "./http/routes/follow-up.js";
 import { healthRoutes, type RuntimeMetrics } from "./http/routes/health.js";
 import { mediaRoutes } from "./http/routes/media.js";
 import { publicApprovalRoutes } from "./http/routes/public-approvals.js";
@@ -141,6 +142,7 @@ export async function buildApp(config: Config, dependencies: AppDependencies): P
   await app.register(reportRoutes(dependencies.prisma));
   await app.register(reminderRoutes(dependencies.prisma));
   await app.register(findingRoutes(dependencies.prisma));
+  await app.register(followUpRoutes(dependencies.prisma));
   await app.register(mediaRoutes(dependencies.prisma, dependencies.storage));
   return app;
 }

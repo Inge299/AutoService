@@ -54,18 +54,11 @@ class MediaUploadWorker(
             if (error.statusCode in 400..499 && error.statusCode !in setOf(408, 429)) {
                 block(dao, asset, if (error.statusCode == 401) "Войдите в мастерскую и повторите загрузку" else "Не удалось загрузить материал. Проверьте файл и повторите")
                 Result.failure()
-            } else if (runAttemptCount >= 4) {
-                block(dao, asset, "Загрузка не завершена. Нажмите «Повторить»")
-                Result.failure()
             } else {
                 retry(dao, asset, "Сервер временно недоступен. Повторим автоматически")
                 Result.retry()
             }
         } catch (error: IOException) {
-            if (runAttemptCount >= 4) {
-                block(dao, asset, "Загрузка не завершена. Нажмите «Повторить»")
-                return Result.failure()
-            }
             retry(dao = dao, asset = asset, message = "Нет связи с сервером. Повторим автоматически")
             Result.retry()
         } catch (error: Exception) {

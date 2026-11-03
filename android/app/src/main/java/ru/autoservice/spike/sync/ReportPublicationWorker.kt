@@ -24,7 +24,7 @@ class ReportPublicationWorker(context: Context, params: WorkerParameters) : Coro
         } catch (error: Exception) {
             val transient = error is IOException &&
                 (error !is ApiException || error.statusCode >= 500 || error.statusCode in setOf(408, 429))
-            if (transient && runAttemptCount < 9) {
+            if (transient) {
                 Result.retry()
             } else {
                 repository.markFailed(visitId, "Не удалось опубликовать отчёт. Проверьте сеть и повторите")

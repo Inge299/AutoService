@@ -291,12 +291,17 @@ model Finding {
   priority      FindingPriority
   status        FindingStatus     @default(DRAFT)
   serverVersion Int               @default(1) @map("server_version")
+  followUpDueAt DateTime?          @map("follow_up_due_at")
+  followUpConfigured Boolean      @default(false) @map("follow_up_configured")
+  followUpState String            @default("OPEN") @map("follow_up_state")
+  followUpCompletedAt DateTime?    @map("follow_up_completed_at")
   createdAt     DateTime          @map("created_at")
   updatedAt     DateTime          @map("updated_at")
   workshop      Workshop          @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   visit         Visit             @relation(fields: [visitId], references: [id], onDelete: Cascade)
   media         MediaAsset[]
   approvals     ApprovalVersion[]
+  reminders     Reminder[]
 
   @@index([workshopId, visitId])
   @@map("findings")
@@ -414,7 +419,7 @@ model ReportVersion {
   workshop        Workshop     @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   visit           Visit        @relation(fields: [visitId], references: [id], onDelete: Cascade)
   link            ReportLink?
-  reminder        Reminder?
+  reminders       Reminder[]
 
   @@unique([reportId, version])
   @@index([workshopId])
@@ -437,7 +442,8 @@ model ReportLink {
 model Reminder {
   id              String        @id @default(uuid()) @db.Uuid
   workshopId      String        @map("workshop_id") @db.Uuid
-  reportVersionId String        @unique @map("report_version_id") @db.Uuid
+  reportVersionId String        @map("report_version_id") @db.Uuid
+  findingId       String?       @map("finding_id") @db.Uuid
   visitId         String        @map("visit_id") @db.Uuid
   returnVisitId   String?       @map("return_visit_id") @db.Uuid
   customerName    String        @map("customer_name")
@@ -457,12 +463,15 @@ model Reminder {
   updatedAt       DateTime      @updatedAt @map("updated_at")
   workshop        Workshop      @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   reportVersion   ReportVersion @relation(fields: [reportVersionId], references: [id], onDelete: Cascade)
+  finding         Finding?      @relation(fields: [findingId], references: [id], onDelete: SetNull)
   visit           Visit         @relation("ReminderSourceVisit", fields: [visitId], references: [id], onDelete: Cascade)
   returnVisit     Visit?        @relation("ReminderReturnVisit", fields: [returnVisitId], references: [id], onDelete: SetNull)
   jobs            BackgroundJob[]
 
   @@index([workshopId, state, sendAt])
   @@index([workshopId, dueAt])
+  @@index([reportVersionId])
+  @@index([findingId])
   @@map("reminders")
 }
 

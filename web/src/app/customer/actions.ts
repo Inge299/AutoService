@@ -1,4 +1,5 @@
 "use server";
+import { isValidNewPassword } from "@/lib/password-policy";
 
 import { redirect } from "next/navigation";
 import {
@@ -90,7 +91,7 @@ export async function registerCustomerAction(formData: FormData): Promise<void> 
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const state = { approval, challenge, verified };
-  if (!approval || !challenge || (!/^\d{6}$/.test(code) && verified !== "call") || !email || password.length < 8) {
+  if (!approval || !challenge || (!/^\d{6}$/.test(code) && verified !== "call") || !email || !isValidNewPassword(password)) {
     errorPath("/customer/register", "invalid_data", state);
   }
   try {

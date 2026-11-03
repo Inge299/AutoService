@@ -3,7 +3,10 @@ import { createHash } from "node:crypto";
 import type { PrismaClient, ReportStatus } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { reportRecommendations } from "../../domain/report-recommendations.js";
+import { reportRecommendations, futureWork } from "../../domain/report-recommendations.js";
+import { scheduleWorkReminder } from "../../domain/follow-up-reminders.js";
+import { cancelVisitReminders } from "../../domain/cancel-visit-reminders.js";
+import { isPastVisitDate } from "../../domain/visit-date.js";
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 const draftSchema = z.object({
@@ -46,10 +49,12 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
       const nextVisitAt = body.nextVisitAt ? new Date(body.nextVisitAt) : null;
 
       const result = await serializable(prisma, async (tx) => {
-        const visit = await tx.visit.findFirst({ where: { id, workshopId }, select: { id: true } });
+        const visit = await tx.visit.findFirst({ where: { id, workshopId }, select: { id: true, status: true } });
         if (!visit) return { kind: "not_found" as const };
         const existing = await tx.report.findUnique({ where: { visitId: id } });
         if (existing?.status === "PUBLISHED") return { kind: "published" as const };
+        if (["COMPLETED", "CANCELLED"].includes(visit.status)) return { kind: "closed" as const };
+        if (isPastVisitDate(nextVisitAt)) return { kind: "past_date" as const };
         const data = {
           completedWork: body.completedWork,
           recommendations: body.recommendations,
@@ -63,6 +68,8 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
 
       if (result.kind === "not_found") return reply.code(404).send({ error: "not_found" });
       if (result.kind === "published") return reply.code(409).send({ error: "report_already_published" });
+      if (result.kind === "closed") return reply.code(409).send({ error: "visit_closed" });
+      if (result.kind === "past_date") return reply.code(400).send({ error: "next_visit_date_in_past" });
       return reply.send(result.report);
     });
 
@@ -83,6 +90,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
             existingVersion.workshopId !== workshopId || existingVersion.visitId !== id ||
             !existingVersion.link || existingVersion.link.tokenHash !== hashedToken
           ) return { kind: "operation_conflict" as const };
+          if (existingVersion.link.revokedAt) return { kind: "revoked" as const };
           return { kind: "existing" as const, version: existingVersion, link: existingVersion.link };
         }
 
@@ -105,6 +113,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
         });
         if (!report) return { kind: "report_unavailable" as const };
         if (["COMPLETED", "CANCELLED"].includes(report.visit.status)) return { kind: "report_unavailable" as const };
+        if (isPastVisitDate(report.nextVisitAt)) return { kind: "past_date" as const };
         const unanswered = await tx.finding.count({ where: { visitId: id, workshopId, status: "SENT_TO_CUSTOMER" } });
         if (unanswered > 0) return { kind: "pending_approvals" as const };
         if (!report.completedWork) return { kind: "completed_work_required" as const };
@@ -114,7 +123,8 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
           tx.finding.findMany({
             where: { workshopId, visitId: id },
             orderBy: { createdAt: "asc" },
-            select: { id: true, title: true, description: true, priceRub: true, priority: true, status: true },
+            select: { id: true, title: true, description: true, priceRub: true, priority: true, status: true,
+              followUpDueAt: true, followUpConfigured: true, followUpState: true },
           }),
           tx.mediaAsset.findMany({
             where: { workshopId, visitId: id, state: { in: ["VERIFIED", "READY"] } },
@@ -123,6 +133,10 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
           }),
         ]);
         const recommendations = reportRecommendations(report.recommendations, findings, report.nextVisitAt);
+        const planned = futureWork(findings);
+        if (planned.some(work => isPastVisitDate(work.followUpConfigured ? work.followUpDueAt ?? null : report.nextVisitAt))) {
+          return { kind: "past_date" as const };
+        }
         const version = await tx.reportVersion.create({
           data: {
             operationId: body.operationId,
@@ -139,38 +153,21 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
             completedWork: report.completedWork,
             recommendations,
             nextVisitAt: report.nextVisitAt,
-            findings,
+            findings: findings.map(finding => ({ ...finding, followUpDueAt: finding.followUpDueAt?.toISOString() ?? null })),
             mediaIds: media.map((asset) => asset.id),
           },
         });
         const link = await tx.reportLink.create({
           data: { reportVersionId: version.id, tokenHash: hashedToken, expiresAt },
         });
-        if (report.nextVisitAt) {
-          const sendAt = new Date(Math.max(Date.now(), report.nextVisitAt.getTime() - 7 * 24 * 60 * 60_000));
-          const reminder = await tx.reminder.create({
-            data: {
-              workshopId,
-              reportVersionId: version.id,
-              visitId: id,
-              customerName: report.visit.customerName,
-              customerPhone: report.visit.customerPhone,
-              vehicleLabel: report.visit.vehicleLabel,
-              reason: recommendations || "Плановое обслуживание",
-              dueAt: report.nextVisitAt,
-              sendAt,
-            },
-          });
-          await tx.backgroundJob.create({
-            data: {
-              workshopId,
-              reminderId: reminder.id,
-              type: "SEND_REMINDER_SMS",
-              payload: { reminderId: reminder.id },
-              idempotencyKey: `reminder:${reminder.id}:sms`,
-              runAfter: sendAt,
-            },
-          });
+        await cancelVisitReminders(tx, workshopId, id, "Superseded by a new report version");
+        const reminderVisit = { ...report.visit, id, workshopId };
+        for (const work of planned) {
+          const dueAt = work.followUpConfigured ? work.followUpDueAt ?? null : report.nextVisitAt;
+          if (dueAt) await scheduleWorkReminder(tx, reminderVisit, version.id, work.id, `Необходимо выполнить: ${work.title}`, dueAt);
+        }
+        if (!planned.length && report.nextVisitAt) {
+          await scheduleWorkReminder(tx, reminderVisit, version.id, null, recommendations || "Плановое обслуживание", report.nextVisitAt);
         }
         await tx.report.update({
           where: { id: report.id },
@@ -197,6 +194,8 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
       if (result.kind === "report_unavailable") return reply.code(409).send({ error: "report_not_draft" });
       if (result.kind === "completed_work_required") return reply.code(409).send({ error: "completed_work_required" });
       if (result.kind === "operation_conflict") return reply.code(409).send({ error: "operation_conflict" });
+      if (result.kind === "revoked") return reply.code(409).send({ error: "report_link_revoked" });
+      if (result.kind === "past_date") return reply.code(400).send({ error: "next_visit_date_in_past" });
       return reply.code(result.kind === "created" ? 201 : 200).send({
         reportVersionId: result.version.id,
         token: body.token,
@@ -209,14 +208,14 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
     app.delete("/v1/visits/:id/report-link", async (request, reply) => {
       const { id } = paramsSchema.parse(request.params);
       const { workshopId, userId } = request.actor;
-      const version = await prisma.reportVersion.findFirst({
-        where: { visitId: id, workshopId },
-        orderBy: { version: "desc" },
-        include: { link: true },
-      });
-      if (!version?.link || version.link.revokedAt) return reply.code(404).send({ error: "not_found" });
-
-      await serializable(prisma, async (tx) => {
+      const revoked = await serializable(prisma, async (tx) => {
+        const version = await tx.reportVersion.findFirst({
+          where: { visitId: id, workshopId },
+          orderBy: { version: "desc" },
+          include: { link: true },
+        });
+        if (!version?.link || version.link.revokedAt) return false;
+        await cancelVisitReminders(tx, workshopId, id, "Report link revoked");
         await tx.reportLink.update({ where: { id: version.link!.id }, data: { revokedAt: new Date() } });
         await tx.report.update({ where: { id: version.reportId }, data: { status: "DRAFT", publishedAt: null } });
         await tx.visit.updateMany({
@@ -233,7 +232,9 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
             metadata: { reportVersionId: version.id },
           },
         });
+        return true;
       });
+      if (!revoked) return reply.code(404).send({ error: "not_found" });
       return reply.code(204).send();
     });
   };

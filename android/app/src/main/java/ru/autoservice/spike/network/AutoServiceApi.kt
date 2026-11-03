@@ -49,6 +49,7 @@ data class CustomerMatch(val id: String, val name: String, val phone: String, va
 interface WorkshopRemote {
     suspend fun loadWorkshop(): WorkshopSnapshot
     suspend fun saveVisit(visit: VisitEntity): VisitEntity
+    suspend fun saveIntake(visit: VisitEntity, customerId: String?, vehicleId: String?): VisitEntity = saveVisit(visit)
     suspend fun saveFinding(finding: FindingEntity): FindingEntity
     suspend fun createApprovalLink(
         findingId: String,
@@ -74,6 +75,8 @@ class AutoServiceApi(
     baseUrl: String,
     private val authStore: AuthStore,
     private val expectedWorkshopId: String? = null,
+    private val connectionTimeoutMs: Int = 15_000,
+    private val requestTimeoutMs: Int = 60_000,
 ) : WorkshopRemote {
     private val baseUrl = baseUrl.trimEnd('/')
     private val refreshMutex get() = authStore.refreshMutex
@@ -162,11 +165,16 @@ class AutoServiceApi(
     }
 
     override suspend fun loadWorkshop(): WorkshopSnapshot = withContext(Dispatchers.IO) {
-        val response = requestArray("GET", "/v1/visits?limit=200")
+        val items = collectVisitPages { cursor ->
+            val suffix = cursor?.let { "&cursor=${URLEncoder.encode(it, "UTF-8")}" } ?: ""
+            val page = request("GET", "/v1/visits?pagination=cursor&limit=200$suffix")
+            val rows = page.getJSONArray("items")
+            VisitPage((0 until rows.length()).map { rows.getJSONObject(it) },
+                if (page.isNull("nextCursor")) null else page.getString("nextCursor"))
+        }
         val visits = mutableListOf<VisitEntity>()
         val findings = mutableListOf<FindingEntity>()
-        for (index in 0 until response.length()) {
-            val item = response.getJSONObject(index)
+        for (item in items) {
             visits += item.toVisit()
             val nested = item.optJSONArray("findings") ?: JSONArray()
             for (findingIndex in 0 until nested.length()) {
@@ -176,7 +184,12 @@ class AutoServiceApi(
         WorkshopSnapshot(visits, findings)
     }
 
-    override suspend fun saveVisit(visit: VisitEntity): VisitEntity = withContext(Dispatchers.IO) {
+    override suspend fun saveVisit(visit: VisitEntity): VisitEntity = saveVisitRequest(visit, null, null)
+
+    override suspend fun saveIntake(visit: VisitEntity, customerId: String?, vehicleId: String?): VisitEntity =
+        saveVisitRequest(visit, customerId, vehicleId)
+
+    private suspend fun saveVisitRequest(visit: VisitEntity, customerId: String?, vehicleId: String?): VisitEntity = withContext(Dispatchers.IO) {
         val body = JSONObject()
             .put("customerName", visit.customerName)
             .put("customerPhone", visit.customerPhone)
@@ -188,6 +201,8 @@ class AutoServiceApi(
             .put("createdAtEpochMs", visit.createdAtEpochMs)
             .put("updatedAtEpochMs", visit.updatedAtEpochMs)
             .put("baseServerVersion", visit.serverVersion.takeIf { it > 0 } ?: JSONObject.NULL)
+        customerId?.let { body.put("customerId", it) }
+        vehicleId?.let { body.put("vehicleId", it) }
         request("PUT", "/v1/visits/${visit.id}", body).toVisit()
     }
 
@@ -229,6 +244,13 @@ class AutoServiceApi(
 
     override suspend fun completeFinding(findingId: String): FindingEntity = withContext(Dispatchers.IO) {
         request("POST", "/v1/findings/$findingId/complete", JSONObject()).toFinding()
+    }
+
+    suspend fun updateFollowUp(finding: FindingEntity, dueAtEpochMs: Long?, state: String): FindingEntity = withContext(Dispatchers.IO) {
+        request("PUT", "/v1/findings/${finding.id}/follow-up", JSONObject()
+            .put("baseServerVersion", finding.serverVersion)
+            .put("dueAt", dueAtEpochMs?.let { Instant.ofEpochMilli(it).toString() } ?: JSONObject.NULL)
+            .put("state", state)).toFinding()
     }
 
     override suspend fun saveReport(
@@ -308,7 +330,7 @@ class AutoServiceApi(
         try {
             connection.requestMethod = "PUT"
             connection.doOutput = true
-            connection.connectTimeout = 15_000
+            connection.connectTimeout = connectionTimeoutMs
             connection.readTimeout = 60_000
             connection.setFixedLengthStreamingMode(file.length())
             headers.keys().forEach { name -> connection.setRequestProperty(name, headers.getString(name)) }
@@ -446,8 +468,8 @@ class AutoServiceApi(
         val connection = URL("$baseUrl$path").openConnection() as HttpURLConnection
         try {
             connection.requestMethod = method
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 60_000
+            connection.connectTimeout = connectionTimeoutMs
+            connection.readTimeout = requestTimeoutMs
             connection.setRequestProperty("accept", "application/json")
             if (accessToken != null) connection.setRequestProperty("authorization", "Bearer $accessToken")
             if (body != null) {
@@ -475,7 +497,15 @@ class AutoServiceApi(
             val code = runCatching { JSONObject(response.body).optString("error") }.getOrNull()
             throw ApiException(
                 response.status,
-                code?.takeIf(String::isNotBlank) ?: "Ошибка сервера (${response.status})",
+                when (code) {
+                    "customer_identity_ambiguous" -> "Найдено несколько клиентов с этим телефоном. Найдите клиента и выберите его автомобиль."
+                    "vehicle_identity_ambiguous" -> "Найдено несколько автомобилей с этим номером. Выберите нужный автомобиль через поиск клиента."
+                    "customer_identity_mismatch", "vehicle_identity_mismatch" -> "Данные выбранного клиента или автомобиля изменились. Выполните поиск ещё раз."
+                    "work_date_in_past" -> "Выберите сегодняшний или будущий день"
+                    "work_not_deferred" -> "Для этой работы нельзя изменить дальнейший план"
+                    "version_conflict" -> "Данные уже изменились. Обновите экран и повторите действие"
+                    else -> code?.takeIf(String::isNotBlank) ?: "Ошибка сервера (${response.status})"
+                },
             )
         }
         return response.body.ifBlank { "{}" }
@@ -499,6 +529,8 @@ private fun JSONObject.toVisit(): VisitEntity = VisitEntity(
     updatedAtEpochMs = Instant.parse(getString("updatedAt")).toEpochMilli(),
     syncState = SyncState.SYNCED,
     serverVersion = getInt("serverVersion"),
+    reportNextVisitAtEpochMs = optJSONObject("report")?.optString("nextVisitAt")
+        ?.takeIf { it.isNotBlank() && it != "null" }?.let { Instant.parse(it).toEpochMilli() },
 )
 
 private fun JSONObject.toFinding(): FindingEntity = FindingEntity(
@@ -512,4 +544,8 @@ private fun JSONObject.toFinding(): FindingEntity = FindingEntity(
     createdAtEpochMs = Instant.parse(getString("createdAt")).toEpochMilli(),
     updatedAtEpochMs = Instant.parse(getString("updatedAt")).toEpochMilli(),
     serverVersion = getInt("serverVersion"),
+    followUpDueAtEpochMs = optString("followUpDueAt").takeIf { it.isNotBlank() && it != "null" }?.let { Instant.parse(it).toEpochMilli() },
+    followUpConfigured = optBoolean("followUpConfigured", false),
+    followUpState = optString("followUpState", "OPEN"),
+    followUpCompletedAtEpochMs = optString("followUpCompletedAt").takeIf { it.isNotBlank() && it != "null" }?.let { Instant.parse(it).toEpochMilli() },
 )

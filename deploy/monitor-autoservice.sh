@@ -37,11 +37,13 @@ metrics_header_file="$(mktemp "${TMPDIR:-/tmp}/autoservice-monitor-header.XXXXXX
 trap 'rm -f "$metrics_header_file"' EXIT
 printf 'header = "x-internal-api-key: %s"\n' "$INTERNAL_API_KEY" > "$metrics_header_file"
 metrics="$(curl --config "$metrics_header_file" --fail --silent --show-error --max-time 10 "$api_url/health/metrics")" || alert "metrics check failed"
-printf '%s' "$metrics" | MAX_DEAD_JOBS="$max_dead_jobs" MAX_5XX="$max_5xx" node -e '
-  const metrics = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
-  const dead = metrics.backgroundJobs?.DEAD ?? 0;
-  const errors = metrics.http?.responses5xx ?? 0;
-  if (dead > Number(process.env.MAX_DEAD_JOBS) || errors > Number(process.env.MAX_5XX)) process.exit(1);
+printf '%s' "$metrics" | MAX_DEAD_JOBS="$max_dead_jobs" MAX_5XX="$max_5xx" python3 -c '
+import json, os, sys
+metrics = json.load(sys.stdin)
+dead = metrics.get("actionableBackgroundJobs", metrics.get("backgroundJobs", {})).get("DEAD", 0)
+errors = metrics.get("http", {}).get("responses5xx", 0)
+if dead > int(os.environ["MAX_DEAD_JOBS"]) or errors > int(os.environ["MAX_5XX"]):
+    sys.exit(1)
 ' || alert "queue or HTTP error threshold exceeded"
 
 echo "AutoService monitor passed: disk ${disk_percent}%, API, web, storage readiness, queue and HTTP counters are healthy."

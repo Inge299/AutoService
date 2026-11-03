@@ -4,6 +4,7 @@ import { loadConfig } from "./config.js";
 import { ObjectStorage, MediaIntegrityError } from "./infrastructure/object-storage.js";
 import { createPrisma } from "./infrastructure/prisma.js";
 import { createReminderDelivery } from "./infrastructure/reminder-delivery.js";
+import { deliverReminder } from "./infrastructure/send-reminder.js";
 
 interface ClaimedJob {
   id: string;
@@ -70,29 +71,7 @@ function reminderIdFrom(payload: Prisma.JsonValue): string | undefined {
 async function sendReminder(payload: Prisma.JsonValue): Promise<void> {
   const reminderId = reminderIdFrom(payload);
   if (!reminderId) throw new PermanentJobError("SEND_REMINDER_SMS payload is invalid");
-  const reminder = await prisma.reminder.findUnique({ where: { id: reminderId } });
-  if (!reminder) throw new PermanentJobError("Reminder does not exist");
-  if (reminder.state !== "PENDING") return;
-  const receipt = await reminderDelivery.send({
-    phone: reminder.customerPhone,
-    text: `Автосервис: ${reminder.reason}. ${reminder.vehicleLabel}. Плановая дата: ${new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "Europe/Moscow" }).format(reminder.dueAt)}.`,
-  });
-  await prisma.reminder.update({
-    where: { id: reminder.id },
-    data: { state: "SENT", sentAt: new Date(), providerMessageId: receipt.providerMessageId, lastError: null },
-  });
-  if (receipt.providerMessageId) {
-    await prisma.backgroundJob.create({
-      data: {
-        workshopId: reminder.workshopId,
-        reminderId: reminder.id,
-        type: "CHECK_REMINDER_DELIVERY",
-        payload: { reminderId: reminder.id },
-        idempotencyKey: `reminder:${reminder.id}:delivery-status`,
-        runAfter: new Date(Date.now() + 60_000),
-      },
-    });
-  }
+  await deliverReminder(prisma, reminderDelivery, reminderId);
 }
 
 async function checkReminderDelivery(payload: Prisma.JsonValue): Promise<void> {
@@ -129,8 +108,8 @@ while (!stopping) {
 
   try {
     await processJob(job);
-    await prisma.backgroundJob.update({
-      where: { id: job.id },
+    await prisma.backgroundJob.updateMany({
+      where: { id: job.id, state: JobState.RUNNING },
       data: { state: JobState.SUCCEEDED, lockedUntil: null, lastError: null },
     });
   } catch (error) {
@@ -149,8 +128,8 @@ while (!stopping) {
         },
       });
     }
-    await prisma.backgroundJob.update({
-      where: { id: job.id },
+    await prisma.backgroundJob.updateMany({
+      where: { id: job.id, state: JobState.RUNNING },
       data: {
         state: terminal ? JobState.DEAD : JobState.RETRY,
         lockedUntil: null,

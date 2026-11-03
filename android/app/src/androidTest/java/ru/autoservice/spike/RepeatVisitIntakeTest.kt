@@ -68,6 +68,8 @@ class RepeatVisitIntakeTest {
             assertEquals("В456ВВ77", saved!!.licensePlate)
             assertEquals(105000, saved!!.mileageKm)
             assertEquals("Новая жалоба", saved!!.complaint)
+            assertEquals("test-client", saved!!.customerId)
+            assertEquals("car-2", saved!!.vehicleId)
         }
     }
 

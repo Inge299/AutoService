@@ -14,10 +14,10 @@ export default async function WorkshopLayout({ children }: { children: React.Rea
   }
   if (currentUser.mustChangePassword) redirect("/staff/change-password");
   const verifiedSession = { ...session, displayName: currentUser.displayName, role: currentUser.role };
-  const [backend, workshop, reminders] = await Promise.all([
+  const [backend, workshop, summary] = await Promise.all([
     getBackendConnection(),
     getApiWorkshop(verifiedSession),
-    workshopRepository.listReminders(),
+    workshopRepository.getSummary(),
   ]);
-  return <AppShell session={{ displayName: verifiedSession.displayName, role: verifiedSession.role }} accessTokenExpiresAtEpochMs={session.accessTokenExpiresAtEpochMs} backend={backend} workshop={workshop} reminderCount={reminders.length}>{children}</AppShell>;
+  return <AppShell session={{ displayName: verifiedSession.displayName, role: verifiedSession.role }} accessTokenExpiresAtEpochMs={session.accessTokenExpiresAtEpochMs} backend={backend} workshop={workshop} reminderCount={summary.reminderCounts.PENDING ?? 0}>{children}</AppShell>;
 }
