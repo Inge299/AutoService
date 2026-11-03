@@ -11,7 +11,7 @@ import type { WebSession } from "@/lib/auth/session";
 import { SessionRefresher } from "@/components/session-refresher";
 
 const navigation: Array<{ href: string; label: string; icon: IconName }> = [
-  { href: "/dashboard", label: "Сегодня", icon: "dashboard" },
+  { href: "/dashboard", label: "Обзор", icon: "dashboard" },
   { href: "/visits", label: "Визиты", icon: "visits" },
   { href: "/customers", label: "Клиенты", icon: "customers" },
   { href: "/reminders", label: "Напоминания", icon: "reminders" },

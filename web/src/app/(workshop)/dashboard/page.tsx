@@ -9,7 +9,7 @@ import { requireSession } from "@/lib/auth/session";
 import { formatRub, pluralRu, visitStatusMeta, type VisitStatus } from "@/lib/domain";
 import { workshopRepository } from "@/lib/repository";
 
-export const metadata: Metadata = { title: "Сегодня" };
+export const metadata: Metadata = { title: "Обзор" };
 
 const board: Array<{ status: VisitStatus; label: string }> = [
   { status: "DRAFT", label: "На приёмке" },
@@ -38,12 +38,12 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <PageHeader title="Сегодня в мастерской" description={`${currentDate}. ${session.displayName}, здесь собраны текущие визиты и решения клиентов.`} actions={<ActionLink variant="secondary" href="/visits"><Icon name="search" /> Найти визит</ActionLink>} />
+      <PageHeader title="Обзор мастерской" description={`${currentDate}. ${session.displayName}, здесь собраны текущие визиты и решения клиентов.`} actions={<ActionLink variant="secondary" href="/visits"><Icon name="search" /> Найти визит</ActionLink>} />
 
-      <section className="operations-summary" aria-label="Сводка за сегодня">
-        <div><span>В работе</span><strong>{summary.activeVisits}</strong></div>
+      <section className="operations-summary" aria-label="Текущие визиты и согласования за всё время">
+        <div><span>Активные визиты</span><strong>{summary.activeVisits}</strong></div>
         <div><span>Ждут решения</span><strong>{summary.visitCounts.WAITING_APPROVAL ?? 0}</strong></div>
-        <div><span>Согласовано</span><strong>{formatRub(summary.approvedValue)}</strong><small>{summary.approved} {pluralRu(summary.approved, "работа", "работы", "работ")}</small></div>
+        <div><span>Согласовано за всё время</span><strong>{formatRub(summary.approvedValue)}</strong><small>{summary.approved} {pluralRu(summary.approved, "работа", "работы", "работ")}</small></div>
       </section>
 
       <div className="dashboard-layout">
