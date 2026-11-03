@@ -151,39 +151,29 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     val vehicleBrandSuggestions by viewModel.vehicleBrandSuggestions.collectAsState()
     val complaintSuggestions by viewModel.complaintSuggestions.collectAsState()
     val session by viewModel.session.collectAsState()
-    var selectedVisitId by remember { mutableStateOf<String?>(null) }
-    var creatingVisit by remember { mutableStateOf(false) }
-    var creatingFindingForVisitId by remember { mutableStateOf<String?>(null) }
+    var selectedVisitId by rememberSaveable { mutableStateOf<String?>(null) }
+    var creatingVisit by rememberSaveable { mutableStateOf(false) }
+    var creatingFindingForVisitId by rememberSaveable { mutableStateOf<String?>(null) }
     var showCamera by remember { mutableStateOf(false) }
     var captureFindingId by remember { mutableStateOf<String?>(null) }
     var editingFinding by remember { mutableStateOf<FindingEntity?>(null) }
+    var screenWorkshopId by rememberSaveable { mutableStateOf<String?>(null) }
     androidx.compose.runtime.LaunchedEffect(session?.workshopId) {
-        selectedVisitId = null
-        creatingVisit = false
-        creatingFindingForVisitId = null
-        showCamera = false
-        captureFindingId = null
-        editingFinding = null
-    }
-
-
-    val capturePermissions = remember {
-        arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
-    }
-    var capturePermissionsGranted by remember {
-        mutableStateOf(
-            capturePermissions.all {
-                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-            },
-        )
-    }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) {
-        capturePermissionsGranted = capturePermissions.all { permission ->
-            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+        val current = session?.workshopId
+        if (screenWorkshopId != null && screenWorkshopId != current) {
+            selectedVisitId = null
+            creatingVisit = false
+            creatingFindingForVisitId = null
+            showCamera = false
+            captureFindingId = null
+            editingFinding = null
         }
+        screenWorkshopId = current
     }
+
+
+    var cameraGranted by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> cameraGranted = granted }
     val message: (String) -> Unit = { text ->
         scope.launch { snackbarHost.showSnackbar(text) }
     }
@@ -298,7 +288,7 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
     ) { padding ->
         val selectedVisit = visits.firstOrNull { it.id == selectedVisitId }
         when {
-            showCamera && selectedVisit != null && capturePermissionsGranted -> {
+            showCamera && selectedVisit != null && cameraGranted -> {
                 CameraCaptureScreen(
                     visitId = selectedVisit.id,
                     findingId = captureFindingId,
@@ -369,12 +359,10 @@ private fun AutoServiceApp(viewModel: QueueViewModel = viewModel()) {
             selectedVisit != null -> VisitScreen(
                 visit = selectedVisit,
                 viewModel = viewModel,
-                capturePermissionsGranted = capturePermissionsGranted,
-                onRequestPermissions = { permissionLauncher.launch(capturePermissions) },
-                onOpenCamera = { showCamera = true },
+                onOpenCamera = { if (cameraGranted) showCamera = true else cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
                 onOpenFindingCamera = { findingId ->
-                    captureFindingId = findingId
-                    showCamera = true
+                    if (cameraGranted) { captureFindingId = findingId; showCamera = true }
+                    else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                 },
                 onPrepareFinding = { finding ->
                     viewModel.prepareFinding(
@@ -649,10 +637,10 @@ private fun FindingScreen(
     onSave: (FindingDraft) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var title by remember(existingFinding?.id) { mutableStateOf(existingFinding?.title.orEmpty()) }
-    var description by remember(existingFinding?.id) { mutableStateOf(existingFinding?.description.orEmpty()) }
-    var price by remember(existingFinding?.id) { mutableStateOf(existingFinding?.priceRub?.toString().orEmpty()) }
-    var priority by remember(existingFinding?.id) { mutableStateOf(existingFinding?.priority ?: FindingPriority.IMPORTANT) }
+    var title by rememberSaveable(existingFinding?.id) { mutableStateOf(existingFinding?.title.orEmpty()) }
+    var description by rememberSaveable(existingFinding?.id) { mutableStateOf(existingFinding?.description.orEmpty()) }
+    var price by rememberSaveable(existingFinding?.id) { mutableStateOf(existingFinding?.priceRub?.toString().orEmpty()) }
+    var priority by rememberSaveable(existingFinding?.id) { mutableStateOf(existingFinding?.priority ?: FindingPriority.IMPORTANT) }
 
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -933,19 +921,19 @@ internal fun IntakeScreen(
     onSave: (VisitDraft) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var customerName by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var vehicle by remember { mutableStateOf("") }
-    var plate by remember { mutableStateOf("") }
-    var mileage by remember { mutableStateOf("") }
-    var complaint by remember { mutableStateOf("") }
-    var search by remember { mutableStateOf("") }
+    var customerName by rememberSaveable { mutableStateOf("") }
+    var phone by rememberSaveable { mutableStateOf("") }
+    var vehicle by rememberSaveable { mutableStateOf("") }
+    var plate by rememberSaveable { mutableStateOf("") }
+    var mileage by rememberSaveable { mutableStateOf("") }
+    var complaint by rememberSaveable { mutableStateOf("") }
+    var search by rememberSaveable { mutableStateOf("") }
     var matches by remember { mutableStateOf<List<CustomerMatch>>(emptyList()) }
     var searchMessage by remember { mutableStateOf<String?>(null) }
     var searching by remember { mutableStateOf(false) }
-    var selectedVehicle by remember { mutableStateOf<String?>(null) }
-    var selectedCustomerId by remember { mutableStateOf<String?>(null) }
-    var selectedVehicleId by remember { mutableStateOf<String?>(null) }
+    var selectedVehicle by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCustomerId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedVehicleId by rememberSaveable { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LazyColumn(
@@ -1138,8 +1126,6 @@ private fun String.addQuickValue(value: String): String = when {
 private fun VisitScreen(
     visit: VisitEntity,
     viewModel: QueueViewModel,
-    capturePermissionsGranted: Boolean,
-    onRequestPermissions: () -> Unit,
     onOpenCamera: () -> Unit,
     onOpenFindingCamera: (String) -> Unit,
     onPrepareFinding: (FindingEntity) -> Unit,
@@ -1192,7 +1178,15 @@ private fun VisitScreen(
         observedFindingStatuses = findings.associate { it.id to it.status }
     }
 
+    val audioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) onMessage("Для записи голоса разрешите доступ к микрофону в настройках телефона")
+        else onMessage("Микрофон разрешён. Нажмите «Голос», чтобы начать запись")
+    }
     fun toggleVoice(findingId: String? = null) {
+        if (!recordingVoice && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
         if (!recordingVoice) {
             voiceFindingId = findingId
             val output = viewModel.newCaptureFile(visit.id, MediaKind.VOICE, findingId)
@@ -1223,7 +1217,17 @@ private fun VisitScreen(
         }
     }
 
-    DisposableEffect(Unit) { onDispose { voiceRecorder.release() } }
+    DisposableEffect(Unit) {
+        onDispose {
+            // A valid recording belongs to the visit even if the screen is left or rotated.
+            val completed = if (recordingVoice) voiceRecorder.stop() else null
+            val findingId = voiceFindingId
+            if (completed != null) {
+                viewModel.registerCapture(visitId = visit.id, findingId = findingId, kind = MediaKind.VOICE,
+                    mimeType = "audio/mp4", file = completed, onSuccess = {}, onFailure = {})
+            } else voiceRecorder.release()
+        }
+    }
 
     Column(
         modifier = modifier
@@ -1330,33 +1334,16 @@ private fun VisitScreen(
             Text("Добавить находку")
         }
         Spacer(Modifier.height(8.dp))
-        if (!capturePermissionsGranted) {
-            Spacer(Modifier.height(8.dp))
-            Button(onClick = onRequestPermissions, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
-                Icon(Icons.Outlined.PhotoCamera, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Разрешить камеру и микрофон")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onOpenCamera, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                Icon(Icons.Outlined.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Фото / видео")
             }
-        } else {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(onClick = onOpenCamera, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
-                        Icon(Icons.Outlined.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Фото / видео")
-                    }
-                    OutlinedButton(
-                        onClick = { toggleVoice() },
-                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                    ) {
-                        Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(if (recordingVoice) "Стоп" else "Голос")
-                    }
-                }
+            OutlinedButton(onClick = { toggleVoice() }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (recordingVoice) "Стоп" else "Голос")
             }
         }
 

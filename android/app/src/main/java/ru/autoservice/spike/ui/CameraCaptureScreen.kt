@@ -2,6 +2,8 @@ package ru.autoservice.spike.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -68,6 +70,9 @@ fun CameraCaptureScreen(
     var recording by remember { mutableStateOf<Recording?>(null) }
     var videoFile by remember { mutableStateOf<File?>(null) }
     var bindingError by remember { mutableStateOf<String?>(null) }
+    val microphoneLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        onMessage(if (granted) "Микрофон разрешён. Нажмите «Видео», чтобы начать запись" else "Для видео со звуком разрешите доступ к микрофону")
+    }
 
     DisposableEffect(lifecycleOwner) {
         val future = ProcessCameraProvider.getInstance(context)
@@ -190,6 +195,8 @@ fun CameraCaptureScreen(
                         val active = recording
                         if (active != null) {
                             active.stop()
+                        } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                            microphoneLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         } else {
                             val output = viewModel.newCaptureFile(visitId, MediaKind.VIDEO, findingId)
                             videoFile = output
