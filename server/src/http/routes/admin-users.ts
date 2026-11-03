@@ -1,3 +1,4 @@
+import { serializable } from "../../infrastructure/transaction.js";
 import { randomUUID } from "node:crypto";
 import { Prisma, type MembershipRole, type PrismaClient } from "@prisma/client";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
@@ -44,7 +45,7 @@ function requireAdmin(request: FastifyRequest, reply: { code(status: number): { 
   return true;
 }
 
-async function ensureAnotherAdmin(prisma: PrismaClient, workshopId: string, userId: string): Promise<boolean> {
+async function ensureAnotherAdmin(prisma: Prisma.TransactionClient, workshopId: string, userId: string): Promise<boolean> {
   return (await prisma.membership.count({
     where: {
       workshopId,
@@ -138,28 +139,18 @@ export function adminUserRoutes(prisma: PrismaClient): FastifyPluginAsync {
       if (userId === request.actor.userId && !body.isActive) {
         return reply.code(409).send({ error: "cannot_disable_self" });
       }
-      const membership = await prisma.membership.findUnique({
-        where: { workshopId_userId: { workshopId: request.actor.workshopId, userId } },
+      const result = await serializable(prisma, async tx => {
+        const actor = await tx.membership.findUnique({ where: { workshopId_userId: { workshopId: request.actor.workshopId, userId: request.actor.userId } }, include: { user: { select: { isActive: true } } } });
+        if (!actor || !actor.isActive || !actor.user.isActive || actor.role !== "ADMIN") return "admin_required" as const;
+        const membership = await tx.membership.findUnique({ where: { workshopId_userId: { workshopId: request.actor.workshopId, userId } } });
+        if (!membership) return "not_found" as const;
+        if (!body.isActive && membership.role === "ADMIN" && !await ensureAnotherAdmin(tx, request.actor.workshopId, userId)) return "last_admin" as const;
+        await tx.membership.update({ where: { workshopId_userId: { workshopId: request.actor.workshopId, userId } }, data: { isActive: body.isActive } });
+        await tx.auditEvent.create({ data: { workshopId: request.actor.workshopId, actorUserId: request.actor.userId,
+          action: body.isActive ? "USER_ENABLED" : "USER_DISABLED", entityType: "user", entityId: userId } });
+        return "ok" as const;
       });
-      if (!membership) return reply.code(404).send({ error: "not_found" });
-      if (!body.isActive && membership.role === "ADMIN" && !await ensureAnotherAdmin(prisma, request.actor.workshopId, userId)) {
-        return reply.code(409).send({ error: "last_admin" });
-      }
-      await prisma.$transaction([
-        prisma.membership.update({
-          where: { workshopId_userId: { workshopId: request.actor.workshopId, userId } },
-          data: { isActive: body.isActive },
-        }),
-        prisma.auditEvent.create({
-          data: {
-            workshopId: request.actor.workshopId,
-            actorUserId: request.actor.userId,
-            action: body.isActive ? "USER_ENABLED" : "USER_DISABLED",
-            entityType: "user",
-            entityId: userId,
-          },
-        }),
-      ]);
+      if (result !== "ok") return reply.code(result === "not_found" ? 404 : result === "admin_required" ? 403 : 409).send({ error: result });
       return { id: userId, isActive: body.isActive };
     });
 
@@ -170,27 +161,18 @@ export function adminUserRoutes(prisma: PrismaClient): FastifyPluginAsync {
       if (userId === request.actor.userId && body.role !== "ADMIN") {
         return reply.code(409).send({ error: "cannot_demote_self" });
       }
-      const membership = await prisma.membership.findUnique({
-        where: { workshopId_userId: { workshopId: request.actor.workshopId, userId } },
+      const result = await serializable(prisma, async tx => {
+        const actor = await tx.membership.findUnique({ where: { workshopId_userId: { workshopId: request.actor.workshopId, userId: request.actor.userId } }, include: { user: { select: { isActive: true } } } });
+        if (!actor || !actor.isActive || !actor.user.isActive || actor.role !== "ADMIN") return "admin_required" as const;
+        const membership = await tx.membership.findUnique({ where: { workshopId_userId: { workshopId: request.actor.workshopId, userId } } });
+        if (!membership) return "not_found" as const;
+        if (membership.role === "ADMIN" && body.role !== "ADMIN" && !await ensureAnotherAdmin(tx, request.actor.workshopId, userId)) return "last_admin" as const;
+        await tx.membership.update({ where: { workshopId_userId: { workshopId: request.actor.workshopId, userId } }, data: { role: body.role as MembershipRole } });
+        await tx.auditEvent.create({ data: { workshopId: request.actor.workshopId, actorUserId: request.actor.userId,
+          action: "USER_ROLE_CHANGED", entityType: "user", entityId: userId, metadata: { role: body.role } } });
+        return "ok" as const;
       });
-      if (!membership) return reply.code(404).send({ error: "not_found" });
-      if (membership.role === "ADMIN" && body.role !== "ADMIN" && !await ensureAnotherAdmin(prisma, request.actor.workshopId, userId)) {
-        return reply.code(409).send({ error: "last_admin" });
-      }
-      await prisma.membership.update({
-        where: { workshopId_userId: { workshopId: request.actor.workshopId, userId } },
-        data: { role: body.role as MembershipRole },
-      });
-      await prisma.auditEvent.create({
-        data: {
-          workshopId: request.actor.workshopId,
-          actorUserId: request.actor.userId,
-          action: "USER_ROLE_CHANGED",
-          entityType: "user",
-          entityId: userId,
-          metadata: { role: body.role },
-        },
-      });
+      if (result !== "ok") return reply.code(result === "not_found" ? 404 : result === "admin_required" ? 403 : 409).send({ error: result });
       return { id: userId, role: body.role };
     });
 
