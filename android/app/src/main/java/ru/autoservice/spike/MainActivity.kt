@@ -1322,8 +1322,15 @@ private fun VisitScreen(
             Spacer(Modifier.height(12.dp))
         }
 
+        Text("Материалы и находки", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        Button(onClick = onCreateFinding, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+            Icon(Icons.Outlined.Add, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Добавить находку")
+        }
+        Spacer(Modifier.height(8.dp))
         if (!capturePermissionsGranted) {
-            Text("Материалы и находки", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
             Button(onClick = onRequestPermissions, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
                 Icon(Icons.Outlined.PhotoCamera, contentDescription = null)
@@ -1335,12 +1342,6 @@ private fun VisitScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Материалы и находки", style = MaterialTheme.typography.titleLarge)
-                Button(onClick = onCreateFinding, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
-                    Icon(Icons.Outlined.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Добавить находку")
-                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = onOpenCamera, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
                         Icon(Icons.Outlined.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
