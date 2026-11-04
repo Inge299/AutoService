@@ -5,6 +5,7 @@ import { ObjectStorage, MediaIntegrityError } from "./infrastructure/object-stor
 import { createPrisma } from "./infrastructure/prisma.js";
 import { createReminderDelivery } from "./infrastructure/reminder-delivery.js";
 import { deliverReminder } from "./infrastructure/send-reminder.js";
+import { runWorkerLoop } from "./infrastructure/worker-loop.js";
 
 interface ClaimedJob {
   id: string;
@@ -99,12 +100,9 @@ async function processJob(job: ClaimedJob): Promise<void> {
   throw new PermanentJobError(`Unsupported job type: ${job.type}`);
 }
 
-while (!stopping) {
+async function runOnce(): Promise<boolean> {
   const job = await claimJob();
-  if (!job) {
-    await delay(config.WORKER_POLL_INTERVAL_MS);
-    continue;
-  }
+  if (!job) return false;
 
   try {
     await processJob(job);
@@ -138,6 +136,17 @@ while (!stopping) {
       },
     });
   }
+  return true;
 }
 
-await prisma.$disconnect();
+try {
+  await runWorkerLoop({
+    stopping: () => stopping,
+    runOnce,
+    wait: delay,
+    pollIntervalMs: config.WORKER_POLL_INTERVAL_MS,
+    reportFailure: (error, retryMs) => console.error("Worker cycle failed; retrying", { error, retryMs }),
+  });
+} finally {
+  await prisma.$disconnect();
+}
