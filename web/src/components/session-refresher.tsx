@@ -29,6 +29,10 @@ export function SessionRefresher({
           window.location.assign(scope === "customer" ? "/customer/login?error=session_expired" : "/staff/login?error=session_expired");
           return;
         }
+        if (!response.ok) {
+          if (!cancelled) schedule(Date.now() + 60_000 + ACCESS_REFRESH_MARGIN_MS);
+          return;
+        }
         const body = await response.json() as { accessTokenExpiresAtEpochMs?: number };
         if (!cancelled && body.accessTokenExpiresAtEpochMs) schedule(body.accessTokenExpiresAtEpochMs);
       } catch {

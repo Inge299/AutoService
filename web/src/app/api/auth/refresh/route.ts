@@ -9,6 +9,7 @@ import {
   persistCustomerSession,
   persistSession,
 } from "@/lib/auth/session";
+import { AutoServiceApiError } from "@/lib/api/autoservice-api";
 import { refreshAuthTokensSingleFlight } from "@/lib/auth/refresh";
 
 function safeReturnTo(value: string | null, fallback: string): string {
@@ -45,7 +46,13 @@ export async function GET(request: Request) {
       refreshedExpiresAt = tokens.accessTokenExpiresAtEpochMs;
       await persistSession(createSessionToken({ ...session, ...tokens }), tokens.refreshTokenExpiresAtEpochMs);
     }
-  } catch {
+  } catch (error) {
+    const sessionMissing = error instanceof Error && ["customer_session_missing", "staff_session_missing"].includes(error.message);
+    if (!sessionMissing && (!(error instanceof AutoServiceApiError) || error.status !== 401)) {
+      if (background) return Response.json({ error: "session_refresh_unavailable" }, { status: 503, headers: { "Cache-Control": "no-store" } });
+      return new Response("Сервер временно недоступен. Обновите страницу, когда соединение восстановится.",
+        { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+    }
     if (customer) await clearCustomerSession();
     else await clearSession();
     if (background) return Response.json({ error: "session_expired" }, { status: 401 });
