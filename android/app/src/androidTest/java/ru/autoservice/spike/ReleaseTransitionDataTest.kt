@@ -38,6 +38,20 @@ class ReleaseTransitionDataTest {
         checkpoint.writeText(JSONObject().put("files", files).put("session", sessionIdentity()).toString())
         instrumentation.sendStatus(0, android.os.Bundle().apply { putString("stream", "LEGACY_MEDIA_CHECKPOINT_FILES=${files.length()}\n") })
     }
+    @Test fun captureProductionMediaAndSession() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("qaReleasePhase") == "captureProduction")
+        val expectedVersion = InstrumentationRegistry.getArguments().getString("qaExpectedVersion")!!.toLong()
+        assertEquals(expectedVersion, PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0)))
+        val info = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+        assertEquals("2d3fba77411b2b68d0cae37ca4582c8720de142923a8381353e0a7cd11949c93", digest(info.signingInfo!!.apkContentsSigners.single().toByteArray()))
+        val directory = File(context.noBackupFilesDir, "workshops")
+        val files = JSONObject()
+        directory.walkTopDown().filter { it.isFile && !it.name.endsWith(".capture") }.forEach { file ->
+            files.put(file.relativeTo(directory).path, JSONObject().put("size", file.length()).put("sha256", digest(file.readBytes())))
+        }
+        checkpoint.writeText(JSONObject().put("files", files).put("session", sessionIdentity()).toString())
+        instrumentation.sendStatus(0, android.os.Bundle().apply { putString("stream", "RELEASE_MEDIA_CHECKPOINT_FILES=${files.length()}\n") })
+    }
     @Test fun releaseRetainsMediaSessionAndUsesProductionSigner() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("qaReleasePhase") == "verify")
         check(Build.VERSION.SDK_INT >= 28)

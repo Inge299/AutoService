@@ -60,6 +60,9 @@ class ReportRepository(
         require(pending.reportPreparationState == "PENDING") { "Нет отчёта для публикации" }
         val operationId = requireNotNull(pending.reportOperationId)
         val token = requireNotNull(pending.reportToken)
+        if (!api.supportsExplicitRecommendations()) {
+            throw ReportMediaReadinessException("Сервер нужно обновить перед публикацией отчёта. Черновик сохранён")
+        }
         val existing = api.recoverReport(pending.id, operationId, token)
         if (existing != null) return@withLock completePublication(pending, existing)
         val acknowledged = decodeIds(pending.reportAcknowledgedPrivateFindingIds)
@@ -67,9 +70,6 @@ class ReportRepository(
             ?: throw ReportMediaReadinessException("Откройте отчёт заново и проверьте материалы")
         checkMedia(pending)
         val recommended = decodeIds(pending.reportRecommendedPrivateFindingIds)
-        if (recommended.isNotEmpty() && !api.supportsExplicitRecommendations()) {
-            throw IllegalStateException("Сервер не поддерживает рекомендации из черновиков. Обновите сервер перед публикацией")
-        }
 
         // Saving comes first so a previously edited draft is never published by accident.
         // If the publish response was lost, saving returns report_already_published; the

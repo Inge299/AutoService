@@ -110,7 +110,7 @@ class ReportRepositoryTest {
     fun `selected recommendation survives restart and older server cannot silently omit it`() = runTest {
         val id = "11111111-1111-4111-8111-111111111111"
         val dao = FakeVisitDao(sampleVisit())
-        val remote = RecordingRemote()
+        val remote = RecordingRemote().apply { supportsRecommendations = false }
         val repo = ReportRepository(dao, remote) { emptyList() }
         val pending = repo.queuePublication(sampleVisit(), ReportDraft("Работа", "", null,
             acknowledgedPrivateFindingIds = listOf(id), recommendedPrivateFindingIds = listOf(id)))
@@ -121,6 +121,18 @@ class ReportRepositoryTest {
         remote.supportsRecommendations = true
         restored.publishPending(pending.id)
         assertEquals(listOf(id), remote.recommendedPrivateIds)
+    }
+
+    @Test
+    fun `old server cannot publish a report even without selected recommendations`() = runTest {
+        val dao = FakeVisitDao(sampleVisit())
+        val remote = RecordingRemote().apply { supportsRecommendations = false }
+        val repo = ReportRepository(dao, remote) { emptyList() }
+        val pending = repo.queuePublication(sampleVisit(), ReportDraft("Работа", "", null))
+        val failure = runCatching { repo.publishPending(pending.id) }.exceptionOrNull()
+        assertTrue(failure is ReportMediaReadinessException)
+        assertEquals(0, remote.savedReports)
+        assertEquals("Работа", dao.find(pending.id)?.reportCompletedWork)
     }
 
     @Test
@@ -166,7 +178,7 @@ class ReportRepositoryTest {
         var publishedToken: String? = null
         var acknowledgedPrivateIds: List<String> = emptyList()
         var recommendedPrivateIds: List<String> = emptyList()
-        var supportsRecommendations = false
+        var supportsRecommendations = true
         override suspend fun supportsExplicitRecommendations() = supportsRecommendations
         var recovered: ReportLink? = null
         override suspend fun recoverReport(visitId: String, operationId: String, token: String): ReportLink? = recovered
