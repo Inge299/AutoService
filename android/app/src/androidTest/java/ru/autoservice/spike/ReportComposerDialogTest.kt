@@ -86,6 +86,24 @@ class ReportComposerDialogTest {
         compose.runOnIdle { assertTrue(published?.recommendedPrivateFindingIds == listOf(id)) }
     }
 
+    @Test fun recommendedDraftShowsItsIndividualDeadlineInsteadOfTheVisitDate() {
+        val zone = java.time.ZoneId.of("Europe/Moscow")
+        val visitDate = java.time.LocalDate.now(zone).plusMonths(2)
+        val workDate = java.time.LocalDate.now(zone).plusMonths(1)
+        val format = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy")
+        val id = "11111111-1111-4111-8111-111111111111"
+        compose.setContent { AutoServiceTheme {
+            ReportComposerDialog("Диагностика", "", visitDate.atStartOfDay(zone).toInstant().toEpochMilli(),
+                onDismiss = {}, onPublish = {}, privateFindingIds = listOf(id),
+                privateRecommendationOptions = listOf(ReportRecommendationOption(id, "Проверить ремень",
+                    workDate.atStartOfDay(zone).toInstant().toEpochMilli(), followUpConfigured = true)))
+        } }
+        compose.onNodeWithText("Проверить ремень").performScrollTo().performClick()
+        compose.onNodeWithText("Проверить отчёт").performClick()
+        compose.onNodeWithText("• Проверить ремень — срок: ${workDate.format(format)}").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(visitDate.format(format)).performScrollTo().assertIsDisplayed()
+    }
+
     @Test fun reportActionsStayVisibleAndDatePresetPublishesSelectedDate() {
         var published: ReportDraft? = null
         compose.setContent {
