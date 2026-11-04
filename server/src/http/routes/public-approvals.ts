@@ -1,3 +1,4 @@
+import { queueLegacyMedia } from "../../infrastructure/legacy-media.js";
 import { serializable } from "../../infrastructure/transaction.js";
 import { createHash } from "node:crypto";
 import type { ApprovalDecisionValue, FindingStatus, PrismaClient } from "@prisma/client";
@@ -48,9 +49,6 @@ export function publicApprovalRoutes(prisma: PrismaClient, storage: ObjectStorag
       if (!link) return reply.code(404).send({ error: "not_found" });
       if (unavailable(link)) return reply.code(410).send({ error: "link_unavailable" });
 
-      if (!link.openedAt) {
-        await prisma.approvalLink.update({ where: { id: link.id }, data: { openedAt: new Date() } });
-      }
 
       const version = link.approvalVersion;
       const assets = version.mediaIds.length
@@ -66,15 +64,15 @@ export function publicApprovalRoutes(prisma: PrismaClient, storage: ObjectStorag
           })
         : [];
       if (assets.length !== version.mediaIds.length) {
-        return reply.code(410).send({ error: "approval_media_unavailable" });
+        return reply.code(503).send({ error: "media_preparation_failed" });
       }
       const byId = new Map(assets.map((asset) => [asset.id, asset]));
+      const preparation = await queueLegacyMedia(prisma, version.workshopId, assets);
+      if (preparation !== "ready") return reply.header("Retry-After", "10").code(503).send({ error: preparation === "failed" ? "media_preparation_failed" : "media_preparing" });
       const media = await Promise.all(version.mediaIds.map(async (mediaId) => {
         const asset = byId.get(mediaId);
         if (!asset) throw new Error("Approval media snapshot is incomplete");
-        const objectKey = await storage.seal(asset);
-        if (objectKey !== asset.objectKey) await prisma.mediaAsset.update({ where: { id: asset.id }, data: { objectKey } });
-        const target = await storage.createDownloadTarget(objectKey);
+        const target = await storage.createDownloadTarget(asset.objectKey);
         return {
           id: asset.id,
           kind: asset.kind,
@@ -83,6 +81,9 @@ export function publicApprovalRoutes(prisma: PrismaClient, storage: ObjectStorag
           expiresInSeconds: target.expiresInSeconds,
         };
       }));
+      if (!link.openedAt) {
+        await prisma.approvalLink.update({ where: { id: link.id }, data: { openedAt: new Date() } });
+      }
       return reply.send({
         expiresAt: link.expiresAt,
         openedAt: link.openedAt ?? new Date(),

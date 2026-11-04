@@ -1,3 +1,4 @@
+import { queueLegacyMedia } from "../../infrastructure/legacy-media.js";
 import { customerVisibleStatus } from "../../domain/customer-visibility.js";
 import { serializable } from "../../infrastructure/transaction.js";
 import { createHash } from "node:crypto";
@@ -146,7 +147,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
           tx.mediaAsset.findMany({
             where: { workshopId, visitId: id },
             orderBy: { createdAt: "asc" },
-            select: { id: true, findingId: true, state: true },
+            select: { id: true, findingId: true, state: true, objectKey: true },
           }),
         ]);
         const visibleFindings = findings.filter(finding => customerVisibleStatus(finding.status));
@@ -166,6 +167,9 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
         if (relevantMedia.some(asset => asset.state !== "VERIFIED" && asset.state !== "READY")) {
           return { kind: "report_media_pending" as const };
         }
+        const preparation = await queueLegacyMedia(tx, workshopId, relevantMedia);
+        if (preparation === "failed") return { kind: "report_media_failed" as const };
+        if (preparation === "preparing") return { kind: "report_media_pending" as const };
         const serverMediaIds = relevantMedia.map(asset => asset.id).sort();
         const expectedMediaIds = [...new Set(body.expectedMediaIds)].sort();
         if (serverMediaIds.length !== expectedMediaIds.length || serverMediaIds.some((id, index) => id !== expectedMediaIds[index])) {
@@ -233,6 +237,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
       });
 
       if (result.kind === "report_client_update_required") return reply.code(409).send({ error: "report_client_update_required" });
+      if (result.kind === "report_media_failed") return reply.code(409).send({ error: "report_media_failed" });
       if (result.kind === "report_media_pending") return reply.code(409).send({ error: "report_media_pending" });
       if (result.kind === "report_media_changed") return reply.code(409).send({ error: "report_media_changed" });
       if (result.kind === "recommendations_changed") return reply.code(409).send({ error: "recommendations_changed" });

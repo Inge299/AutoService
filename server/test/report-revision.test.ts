@@ -142,6 +142,39 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL report revision inte
     expect((await prisma.reportVersion.findFirstOrThrow({ where: { visitId: v.id } })).mediaIds).toEqual([mediaId]);
   });
 
+  it("queues old media once and blocks publication until it is sealed", async () => {
+    const v = await visit(); await draft(v.id, null);
+    const mediaId = randomUUID();
+    await prisma.mediaAsset.create({ data: { id: mediaId, operationId: randomUUID(), workshopId, visitId: v.id,
+      kind: "PHOTO", mimeType: "image/jpeg", byteCount: 1n, sha256: "a".repeat(64), objectKey: `qa/${mediaId}/original`, state: "READY" } });
+    const payload = { operationId: randomUUID(), token: randomUUID().replaceAll("-", ""), expectedMediaIds: [mediaId] };
+    expect((await publish(v.id, payload)).json().error).toBe("report_media_pending");
+    expect((await publish(v.id, payload)).json().error).toBe("report_media_pending");
+    expect(await prisma.reportVersion.count({ where: { visitId: v.id } })).toBe(0);
+    expect(await prisma.backgroundJob.count({ where: { idempotencyKey: `legacy-seal:${mediaId}` } })).toBe(1);
+    await prisma.backgroundJob.update({ where: { idempotencyKey: `legacy-seal:${mediaId}` }, data: { state: "DEAD" } });
+    expect((await publish(v.id, payload)).json().error).toBe("report_media_failed");
+    await prisma.mediaAsset.update({ where: { id: mediaId }, data: { objectKey: `qa/${mediaId}/verified` } });
+    expect((await publish(v.id, payload)).statusCode).toBe(201);
+  });
+
+  it("waits for old approval media and stops retrying after a terminal preparation failure", async () => {
+    const v = await visit(), findingId = randomUUID(), mediaId = randomUUID();
+    await prisma.finding.create({ data: { id: findingId, workshopId, visitId: v.id, title: "Synthetic", description: "QA", priceRub: 100,
+      priority: "IMPORTANT", status: "READY_FOR_APPROVAL", createdAt: new Date(), updatedAt: new Date() } });
+    await prisma.mediaAsset.create({ data: { id: mediaId, operationId: randomUUID(), workshopId, visitId: v.id, findingId,
+      kind: "PHOTO", mimeType: "image/jpeg", byteCount: 1n, sha256: "a".repeat(64), objectKey: `qa/${mediaId}/original`, state: "READY" } });
+    const payload = { operationId: randomUUID(), token: `approval_${randomUUID().replaceAll("-", "")}_synthetic`, mediaIds: [mediaId] };
+    const prepare = () => app.inject({ method: "POST", url: `/v1/findings/${findingId}/approval-link`, payload });
+    const pending = await prepare();
+    expect(pending.statusCode).toBe(503); expect(pending.json().error).toBe("approval_media_preparing");
+    expect(await prisma.approvalVersion.count({ where: { findingId } })).toBe(0);
+    await prisma.backgroundJob.update({ where: { idempotencyKey: `legacy-seal:${mediaId}` }, data: { state: "DEAD" } });
+    expect((await prepare()).json().error).toBe("approval_media_preparation_failed");
+    await prisma.mediaAsset.update({ where: { id: mediaId }, data: { objectKey: `qa/${mediaId}/verified` } });
+    expect((await prepare()).statusCode).toBe(201);
+  });
+
   it("serializes report publication against new media registration", async () => {
     for (let attempt = 0; attempt < 5; attempt++) {
       const v = await visit(); await draft(v.id, null);

@@ -153,7 +153,7 @@ describe("public approval routes", () => {
         id: "11111111-1111-4111-8111-111111111106",
         kind: "VOICE",
         mimeType: "audio/mp4",
-        objectKey: "private/object-key",
+        objectKey: "private/object-key/verified",
       }]) },
     } as unknown as PrismaClient;
     const app = await buildApp(config, {
@@ -172,4 +172,25 @@ describe("public approval routes", () => {
     expect(response.body).not.toContain("private/object-key");
     await app.close();
   });
+  it("queues old approval media without reading it during the public request", async () => {
+    const link = approvalLink();
+    link.approvalVersion.mediaIds = ["11111111-1111-4111-8111-111111111106"];
+    const createMany = vi.fn().mockResolvedValue({ count: 1 });
+    const seal = vi.fn();
+    const createDownloadTarget = vi.fn();
+    const prisma = { approvalLink: { findUnique: vi.fn().mockResolvedValue(link), update: vi.fn().mockResolvedValue({}) },
+      mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: link.approvalVersion.mediaIds[0], objectKey: "old/original" }]) },
+      backgroundJob: { createMany, findFirst: vi.fn().mockResolvedValue(null) } } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: { seal, createDownloadTarget } as unknown as ObjectStorage });
+    try {
+      const response = await app.inject({ method: "GET", url: `/public/v1/approvals/${token}` });
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toEqual({ error: "media_preparing" });
+      expect(response.headers["retry-after"]).toBe("10");
+      expect(createMany).toHaveBeenCalledWith(expect.objectContaining({ skipDuplicates: true }));
+      expect(seal).not.toHaveBeenCalled();
+      expect(createDownloadTarget).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
 });

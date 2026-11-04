@@ -65,7 +65,7 @@ describe("visit reports", () => {
     const nextVisitAt = dated ? new Date("2099-11-20T10:00:00.000Z") : null;
     const versionCreate = vi.fn().mockResolvedValue({ id: reportVersionId });
     const linkCreate = vi.fn().mockResolvedValue({ expiresAt: new Date("2026-10-01T12:00:00.000Z") });
-    const mediaRows = [{ id: "88888888-8888-4888-8888-888888888888", findingId: null, state: "READY" }, { id: "hidden-photo", findingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", state: "READY" }];
+    const mediaRows = [{ id: "88888888-8888-4888-8888-888888888888", findingId: null, state: "READY", objectKey: "qa/verified" }, { id: "hidden-photo", findingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", state: "READY", objectKey: "qa/verified" }];
     const transaction = {
       reportVersion: { findUnique: vi.fn().mockResolvedValue(null), findFirst: vi.fn().mockResolvedValue(null), create: versionCreate },
       report: {

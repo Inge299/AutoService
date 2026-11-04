@@ -1,3 +1,4 @@
+import { AutoServiceApiError } from "@/lib/api/autoservice-api";
 import { PublicMediaRefresh } from "@/components/public-media-refresh";
 import { PublicUnavailable } from "@/components/public-unavailable";
 import { CustomerContact } from "@/components/customer-contact";
@@ -18,8 +19,8 @@ export default async function ApprovalPage({ params }: { params: Promise<{ token
   let approval;
   try {
     approval = await getPublicApproval(token);
-  } catch {
-    return <PublicUnavailable technical />;
+  } catch (error) {
+    return <PublicUnavailable technical preparing={error instanceof AutoServiceApiError && error.status === 503 && error.body.includes("media_preparing")} preparationFailed={error instanceof AutoServiceApiError && error.status === 503 && error.body.includes("media_preparation_failed")} />;
   }
   if (!approval) return <PublicUnavailable />;
   const priority = priorityMeta[approval.finding.priority];

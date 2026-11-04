@@ -57,6 +57,7 @@ describe("public report routes", () => {
       expect(response.json().report.findings).toEqual([{ id: visibleId, title: "Видимая работа", status: "COMPLETED" }]);
       expect(response.json().report.recommendations).toBe("Проверить уровень");
       expect(response.json().report.media).toHaveLength(1);
+      expect(seal).not.toHaveBeenCalled();
       expect(createDownloadTarget).toHaveBeenCalledTimes(1);
       expect(createDownloadTarget).toHaveBeenCalledWith("visible/verified");
     } finally { await app.close(); }
@@ -77,7 +78,7 @@ describe("public report routes", () => {
         }),
         update,
       },
-      mediaAsset: { update: vi.fn().mockResolvedValue({}), findMany: vi.fn().mockResolvedValue([{ id: "44444444-4444-4444-8444-444444444444", kind: "PHOTO", mimeType: "image/jpeg", objectKey: "private/report-photo" }]) },
+      mediaAsset: { update: vi.fn().mockResolvedValue({}), findMany: vi.fn().mockResolvedValue([{ id: "44444444-4444-4444-8444-444444444444", kind: "PHOTO", mimeType: "image/jpeg", objectKey: "private/report-photo/verified" }]) },
     } as unknown as PrismaClient;
     const createDownloadTarget = vi.fn().mockResolvedValue({ url: "https://media.example/signed", expiresInSeconds: 900 });
     const app = await buildApp(config, { prisma, storage: { seal: vi.fn().mockResolvedValue("private/object-key"), createDownloadTarget } as unknown as ObjectStorage });
@@ -88,8 +89,27 @@ describe("public report routes", () => {
     expect(response.headers["cache-control"]).toBe("no-store");
     expect(response.headers["referrer-policy"]).toBe("no-referrer");
     expect(response.json()).toMatchObject({ workshop: { name: "АвтоСфера" }, visit: { complaint: "Скрип", createdAt: "2026-10-01T09:00:00.000Z", mileageKm: 80_000 }, report: { version: 2, publishedAt: "2026-10-02T09:00:00.000Z", completedWork: "Заменили колодки", media: [expect.objectContaining({ url: "https://media.example/signed" })] } });
-    expect(response.body).not.toContain("private/report-photo");
+    expect(response.body).not.toContain("private/report-photo/verified");
     expect(update).toHaveBeenCalledOnce();
     await app.close();
   });
+  it("queues old visible report media and never seals it on request", async () => {
+    const createMany = vi.fn().mockResolvedValue({ count: 1 });
+    const seal = vi.fn();
+    const createDownloadTarget = vi.fn();
+    const prisma = { reportLink: { findUnique: vi.fn().mockResolvedValue({
+      id: "link", expiresAt: new Date(Date.now() + 60_000), revokedAt: null, openedAt: new Date(),
+      reportVersion: { workshopId: "workshop", visitId: "visit", mediaIds: ["media"], findings: [], mediaManifest: [{id: "media", findingId: null}] },
+    }) }, mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: "media", findingId: null, objectKey: "old/original" }]) }, backgroundJob: { createMany, findFirst: vi.fn().mockResolvedValue(null) } } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: { seal, createDownloadTarget } as unknown as ObjectStorage });
+    try {
+      const response = await app.inject({ method: "GET", url: `/public/v1/reports/${token}` });
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toEqual({ error: "media_preparing" });
+      expect(createMany).toHaveBeenCalledWith(expect.objectContaining({ skipDuplicates: true }));
+      expect(seal).not.toHaveBeenCalled();
+      expect(createDownloadTarget).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
 });

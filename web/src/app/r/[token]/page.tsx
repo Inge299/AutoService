@@ -1,3 +1,4 @@
+import { AutoServiceApiError } from "@/lib/api/autoservice-api";
 import { PublicMediaRefresh } from "@/components/public-media-refresh";
 import { CustomerHeader } from "@/components/customer-header";
 /* eslint-disable @next/next/no-img-element -- signed object-storage hosts are runtime-configured. */
@@ -42,7 +43,7 @@ export default async function PublicReportPage({ params }: { params: Promise<{ t
   const { token } = await params;
   let report;
   try { report = await getPublicReport(token); }
-  catch { return <PublicUnavailable technical title="Отчёт по визиту" />; }
+  catch (error) { return <PublicUnavailable technical preparing={error instanceof AutoServiceApiError && error.status === 503 && error.body.includes("media_preparing")} preparationFailed={error instanceof AutoServiceApiError && error.status === 503 && error.body.includes("media_preparation_failed")} title="Отчёт по визиту" />; }
   if (!report) return <PublicUnavailable title="Отчёт по визиту" />;
   const phoneLink = report.workshop.phone?.replace(/[^+\d]/g, "");
   const completed = report.report.findings.filter(finding => finding.status === "COMPLETED");

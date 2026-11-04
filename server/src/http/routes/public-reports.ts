@@ -1,3 +1,4 @@
+import { queueLegacyMedia } from "../../infrastructure/legacy-media.js";
 import { customerVisibleMediaIds, reportMediaAssociations, projectReportFindings, withoutPrivateGeneratedRecommendations } from "../../domain/customer-visibility.js";
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
@@ -29,9 +30,6 @@ export function publicReportRoutes(prisma: PrismaClient, storage: ObjectStorage)
       });
       if (!link) return reply.code(404).send({ error: "not_found" });
       if (unavailable(link)) return reply.code(410).send({ error: "link_unavailable" });
-      if (!link.openedAt) {
-        await prisma.reportLink.update({ where: { id: link.id }, data: { openedAt: new Date() } });
-      }
 
       const version = link.reportVersion;
       const projection = projectReportFindings(version.findings);
@@ -44,18 +42,22 @@ export function publicReportRoutes(prisma: PrismaClient, storage: ObjectStorage)
           select: { id: true, findingId: true, kind: true, mimeType: true, objectKey: true, sha256: true, byteCount: true },
         })
         : [];
-      if (assets.length !== version.mediaIds.length) return reply.code(410).send({ error: "report_media_unavailable" });
+      if (assets.length !== version.mediaIds.length) return reply.code(503).send({ error: "media_preparation_failed" });
       const safeIds = customerVisibleMediaIds(version.mediaIds, version.mediaManifest, projection.mediaVisibleIds, projection.hasHidden, assets);
       const associations = reportMediaAssociations(version.mediaIds, version.mediaManifest, projection.mediaVisibleIds);
       const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
+      const safeAssets = safeIds.map(id => assetsById.get(id)).filter((asset): asset is NonNullable<typeof asset> => Boolean(asset));
+      const preparation = await queueLegacyMedia(prisma, version.workshopId, safeAssets);
+      if (preparation !== "ready") return reply.header("Retry-After", "10").code(503).send({ error: preparation === "failed" ? "media_preparation_failed" : "media_preparing" });
       const media = await Promise.all(safeIds.map(async (mediaId) => {
         const asset = assetsById.get(mediaId);
         if (!asset) throw new Error("Report media snapshot is incomplete");
-        const objectKey = await storage.seal(asset);
-        if (objectKey !== asset.objectKey) await prisma.mediaAsset.update({ where: { id: asset.id }, data: { objectKey } });
-        const target = await storage.createDownloadTarget(objectKey);
+        const target = await storage.createDownloadTarget(asset.objectKey);
         return { id: asset.id, findingId: associations.get(asset.id) ?? null, kind: asset.kind, mimeType: asset.mimeType, url: target.url, expiresInSeconds: target.expiresInSeconds };
       }));
+      if (!link.openedAt) {
+        await prisma.reportLink.update({ where: { id: link.id }, data: { openedAt: new Date() } });
+      }
       return reply.send({
         expiresAt: link.expiresAt,
         openedAt: link.openedAt ?? new Date(),

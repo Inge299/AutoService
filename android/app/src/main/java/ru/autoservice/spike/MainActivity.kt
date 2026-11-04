@@ -2220,6 +2220,7 @@ private fun FindingStatus.decisionLabel(): String = when (this) {
 
 private fun Throwable.reportPublicationMessage(): String = when ((this as? ApiException)?.message) {
     "report_client_update_required" -> "Обновите приложение перед публикацией отчёта"
+    "report_media_failed" -> "Не удалось подготовить материалы на сервере. Обратитесь к администратору"
     "report_media_pending" -> "Дождитесь загрузки и проверки всех материалов отчёта"
     "report_media_changed" -> "Список материалов изменился. Обновите визит и заново проверьте отчёт"
     "recommendations_changed" -> "Список рекомендаций изменился. Обновите визит и проверьте отчёт"
