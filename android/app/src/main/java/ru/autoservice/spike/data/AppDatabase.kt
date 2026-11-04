@@ -8,7 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [VisitEntity::class, MediaAssetEntity::class, DictionaryValueEntity::class, FindingEntity::class],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -19,6 +19,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun findingDao(): FindingDao
 
     companion object {
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE visits ADD COLUMN reportRecommendedPrivateFindingIds TEXT")
+            }
+        }
         val MIGRATION_11_12 = object : Migration(11, 12) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE visits ADD COLUMN pendingCustomerId TEXT")

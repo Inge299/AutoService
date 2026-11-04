@@ -3,8 +3,8 @@ import { customerVisibleStatus } from "./customer-visibility.js";
 type ReportFinding = { title: string; priority: string; status: string; followUpState?: string; followUpConfigured?: boolean; followUpDueAt?: Date | null };
 
 export function futureWork<T extends ReportFinding>(findings: T[]): T[] {
-  return findings.filter(finding => customerVisibleStatus(finding.status) && (finding.followUpState ?? "OPEN") === "OPEN" && finding.status !== "COMPLETED" && finding.status !== "DECLINED" &&
-    (finding.status === "DEFERRED" || finding.priority === "PLANNED"));
+  return findings.filter(finding => (customerVisibleStatus(finding.status) || finding.status === "RECOMMENDED") && (finding.followUpState ?? "OPEN") === "OPEN" && finding.status !== "COMPLETED" && finding.status !== "DECLINED" &&
+    (finding.status === "DEFERRED" || finding.status === "RECOMMENDED" || finding.priority === "PLANNED"));
 }
 
 export function reportRecommendations(notes: string, findings: ReportFinding[], dueAt: Date | null): string {

@@ -1,3 +1,4 @@
+import { PublicMediaRefresh } from "@/components/public-media-refresh";
 import { PublicUnavailable } from "@/components/public-unavailable";
 import { CustomerContact } from "@/components/customer-contact";
 import { CustomerHeader } from "@/components/customer-header";
@@ -31,8 +32,9 @@ export default async function ApprovalPage({ params }: { params: Promise<{ token
       }[approval.decision.value]
     : { label: "На согласовании", tone: "warning" };
 
+  const mediaExpiry = Math.min(900, ...approval.media.map(media => media.expiresInSeconds || 900));
   return (
-    <main className="customer-page">
+    <PublicMediaRefresh expiresInSeconds={mediaExpiry}><main className="customer-page">
       <CustomerHeader phone={approval.workshop.phone} />
       <div className="customer-shell">
         <section className="customer-intro"><p className="customer-context">{approval.workshop.name}</p><h1>{approval.decision ? "Решение получено" : "Нужно ваше решение"}</h1><p>{approval.decision ? "Ваш ответ сохранён. Если нужно изменить решение, свяжитесь с мастерской." : "Мастер нашёл дополнительную работу и просит подтвердить её до продолжения ремонта."}</p><div className="customer-car"><span><Icon name="car" /></span><div><strong>{approval.visit.vehicleLabel}</strong><small>{approval.visit.licensePlate} · {approval.visit.customerName}</small></div><StatusPill label={approvalStatus.label} tone={approvalStatus.tone} /></div></section>
@@ -49,6 +51,6 @@ export default async function ApprovalPage({ params }: { params: Promise<{ token
         </div>
       </div>
       <footer className="customer-footer"><span>AutoService</span></footer>
-    </main>
+    </main></PublicMediaRefresh>
   );
 }

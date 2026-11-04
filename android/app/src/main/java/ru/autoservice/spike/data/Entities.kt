@@ -75,6 +75,7 @@ data class VisitEntity(
     val reportPreparationError: String? = null,
     val reportAcknowledgedPrivateFindingIds: String? = null,
     val reportExpectedMediaIds: String? = null,
+    val reportRecommendedPrivateFindingIds: String? = null,
     val pendingCustomerId: String? = null,
     val pendingVehicleId: String? = null,
     val syncError: String? = null,

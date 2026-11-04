@@ -107,6 +107,23 @@ class ReportRepositoryTest {
     }
 
     @Test
+    fun `selected recommendation survives restart and older server cannot silently omit it`() = runTest {
+        val id = "11111111-1111-4111-8111-111111111111"
+        val dao = FakeVisitDao(sampleVisit())
+        val remote = RecordingRemote()
+        val repo = ReportRepository(dao, remote) { emptyList() }
+        val pending = repo.queuePublication(sampleVisit(), ReportDraft("Работа", "", null,
+            acknowledgedPrivateFindingIds = listOf(id), recommendedPrivateFindingIds = listOf(id)))
+        val restored = ReportRepository(dao, remote) { emptyList() }
+        assertTrue(runCatching { restored.publishPending(pending.id) }.isFailure)
+        assertEquals(0, remote.savedReports)
+        assertEquals(id, dao.find(pending.id)?.reportRecommendedPrivateFindingIds)
+        remote.supportsRecommendations = true
+        restored.publishPending(pending.id)
+        assertEquals(listOf(id), remote.recommendedPrivateIds)
+    }
+
+    @Test
     fun `lost publication response can be recovered even when local media changed`() = runTest {
         val dao = FakeVisitDao(sampleVisit())
         val remote = RecordingRemote()
@@ -148,6 +165,9 @@ class ReportRepositoryTest {
         var publishedOperationId: String? = null
         var publishedToken: String? = null
         var acknowledgedPrivateIds: List<String> = emptyList()
+        var recommendedPrivateIds: List<String> = emptyList()
+        var supportsRecommendations = false
+        override suspend fun supportsExplicitRecommendations() = supportsRecommendations
         var recovered: ReportLink? = null
         override suspend fun recoverReport(visitId: String, operationId: String, token: String): ReportLink? = recovered
         var revokedReports = 0
@@ -158,10 +178,11 @@ class ReportRepositoryTest {
             savedNextVisitAtEpochMs = nextVisitAtEpochMs
         }
 
-        override suspend fun publishReport(visitId: String, operationId: String, token: String, acknowledgedPrivateFindingIds: List<String>, expectedMediaIds: List<String>): ReportLink {
+        override suspend fun publishReport(visitId: String, operationId: String, token: String, acknowledgedPrivateFindingIds: List<String>, expectedMediaIds: List<String>, recommendedPrivateFindingIds: List<String>): ReportLink {
             publishedOperationId = operationId
             publishedToken = token
             acknowledgedPrivateIds = acknowledgedPrivateFindingIds
+            recommendedPrivateIds = recommendedPrivateFindingIds
             return ReportLink("https://example.test/r/$token", 1_800_000L)
         }
 

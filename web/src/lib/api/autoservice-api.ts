@@ -213,13 +213,14 @@ export interface PublicReport {
       description: string;
       priceRub: number | null;
       priority: FindingPriority;
-      status: FindingStatus;
+      status: FindingStatus | "RECOMMENDED";
       followUpConfigured?: boolean;
       followUpDueAt?: string | null;
       followUpState?: "OPEN" | "DONE" | "CANCELLED";
     }>;
     media: Array<{
       id: string;
+      findingId?: string | null;
       kind: "PHOTO" | "VIDEO" | "VOICE";
       mimeType: string;
       url: string;

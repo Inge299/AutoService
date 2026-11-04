@@ -106,6 +106,29 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL report revision inte
     expect(portalCount._count.media).toBe(2);
   });
 
+  it("publishes an explicitly selected private work as a recommendation without exposing its media", async () => {
+    const v = await visit(); await draft(v.id, null);
+    const findingId = randomUUID(), mediaId = randomUUID();
+    const dueAt = new Date("2099-11-20T09:00:00Z");
+    await prisma.finding.create({ data: { id: findingId, workshopId, visitId: v.id, title: "Synthetic recommendation", description: "Inspect",
+      priceRub: null, priority: "IMPORTANT", status: "DRAFT", followUpConfigured: true, followUpDueAt: dueAt, followUpState: "OPEN",
+      createdAt: new Date(), updatedAt: new Date() } });
+    await prisma.mediaAsset.create({ data: { id: mediaId, operationId: randomUUID(), workshopId, visitId: v.id, findingId,
+      kind: "PHOTO", mimeType: "image/jpeg", byteCount: 1n, sha256: "a".repeat(64), objectKey: `qa/${mediaId}/verified`, state: "READY" } });
+    const payload = { operationId: randomUUID(), token: randomUUID().replaceAll("-", ""), expectedMediaIds: [],
+      acknowledgedPrivateFindingIds: [findingId], recommendedPrivateFindingIds: [findingId] };
+    expect((await app.inject({ method: "POST", url: `/v1/visits/${v.id}/report/publish`, payload: { ...payload, recommendedPrivateFindingIds: [randomUUID()] } })).json().error).toBe("recommendations_changed");
+    const response = await app.inject({ method: "POST", url: `/v1/visits/${v.id}/report/publish`, payload });
+    expect(response.statusCode).toBe(201);
+    const version = await prisma.reportVersion.findFirstOrThrow({ where: { visitId: v.id } });
+    const projection = projectReportFindings(version.findings);
+    expect(projection.visible).toEqual([expect.objectContaining({ id: findingId, status: "RECOMMENDED" })]);
+    expect(customerVisibleMediaIds(version.mediaIds, version.mediaManifest, projection.mediaVisibleIds, projection.hasHidden, [])).toEqual([]);
+    expect(version.recommendations).toContain("Synthetic recommendation");
+    expect(await prisma.reminder.count({ where: { visitId: v.id, findingId, dueAt } })).toBe(1);
+    expect((await prisma.finding.findUniqueOrThrow({ where: { id: findingId } })).status).toBe("DRAFT");
+  });
+
   it("does not publish until the expected server media is complete and ready", async () => {
     const v = await visit(); await draft(v.id, null);
     const mediaId = randomUUID();

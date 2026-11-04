@@ -129,6 +129,7 @@ import ru.autoservice.spike.ui.QueueViewModel
 import ru.autoservice.spike.ui.MIN_PASSWORD_LENGTH
 import ru.autoservice.spike.ui.isValidNewPassword
 import ru.autoservice.spike.ui.ReportComposerDialog
+import ru.autoservice.spike.ui.ReportRecommendationOption
 import ru.autoservice.spike.ui.theme.AutoServiceTheme
 
 class MainActivity : ComponentActivity() {
@@ -1519,6 +1520,10 @@ private fun VisitScreen(
                 completedFindingTitles = findings.filter { it.status == FindingStatus.COMPLETED }.map { it.title },
                 hasIndividualPlans = findings.any { it.status !in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL) && it.followUpState == "OPEN" && it.followUpConfigured && it.followUpDueAtEpochMs != null },
                 privateFindingIds = privateIds.toList(),
+                privateRecommendationOptions = findings.filter { it.id in privateIds && it.followUpState == "OPEN" }.map {
+                    ReportRecommendationOption(it.id, it.title, it.followUpDueAtEpochMs, it.followUpConfigured)
+                },
+                initialRecommendedPrivateIds = visit.reportRecommendedPrivateFindingIds.orEmpty().split(",").filter(String::isNotBlank),
                 expectedMediaIds = reportAssets.map { it.id },
                 pendingMediaCount = reportAssets.count { it.syncState != SyncState.SYNCED },
                 futureFindingTitles = findings.filter { it.followUpState == "OPEN" && it.status !in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL, FindingStatus.COMPLETED, FindingStatus.DECLINED) &&
@@ -2217,6 +2222,7 @@ private fun Throwable.reportPublicationMessage(): String = when ((this as? ApiEx
     "report_client_update_required" -> "Обновите приложение перед публикацией отчёта"
     "report_media_pending" -> "Дождитесь загрузки и проверки всех материалов отчёта"
     "report_media_changed" -> "Список материалов изменился. Обновите визит и заново проверьте отчёт"
+    "recommendations_changed" -> "Список рекомендаций изменился. Обновите визит и проверьте отчёт"
     "private_findings_changed" -> "Список черновиков изменился. Обновите визит и заново проверьте отчёт"
     "pending_approvals" -> "Сначала дождитесь решения клиента по всем согласованиям"
     "completed_work_required" -> "Опишите выполненные работы"

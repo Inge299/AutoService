@@ -66,7 +66,8 @@ interface WorkshopRemote {
         nextVisitAtEpochMs: Long?,
     )
     suspend fun recoverReport(visitId: String, operationId: String, token: String): ReportLink?
-    suspend fun publishReport(visitId: String, operationId: String, token: String, acknowledgedPrivateFindingIds: List<String>, expectedMediaIds: List<String>): ReportLink
+    suspend fun supportsExplicitRecommendations(): Boolean = false
+    suspend fun publishReport(visitId: String, operationId: String, token: String, acknowledgedPrivateFindingIds: List<String>, expectedMediaIds: List<String>, recommendedPrivateFindingIds: List<String>): ReportLink
     suspend fun revokeReportLink(visitId: String)
     suspend fun uploadMedia(asset: MediaAssetEntity)
     suspend fun deleteMedia(assetId: String)
@@ -279,7 +280,12 @@ class AutoServiceApi(
         }
     }
 
-    override suspend fun publishReport(visitId: String, operationId: String, token: String, acknowledgedPrivateFindingIds: List<String>, expectedMediaIds: List<String>): ReportLink = withContext(Dispatchers.IO) {
+    override suspend fun supportsExplicitRecommendations(): Boolean = withContext(Dispatchers.IO) {
+        try { request("GET", "/v1/report-features").optBoolean("explicitRecommendations", false) }
+        catch (error: ApiException) { if (error.statusCode == 404) false else throw error }
+    }
+
+    override suspend fun publishReport(visitId: String, operationId: String, token: String, acknowledgedPrivateFindingIds: List<String>, expectedMediaIds: List<String>, recommendedPrivateFindingIds: List<String>): ReportLink = withContext(Dispatchers.IO) {
         val json = request(
             "POST",
             "/v1/visits/$visitId/report/publish",
@@ -287,7 +293,8 @@ class AutoServiceApi(
                 .put("operationId", operationId)
                 .put("token", token)
                 .put("acknowledgedPrivateFindingIds", org.json.JSONArray(acknowledgedPrivateFindingIds))
-                .put("expectedMediaIds", org.json.JSONArray(expectedMediaIds)),
+                .put("expectedMediaIds", org.json.JSONArray(expectedMediaIds))
+                .put("recommendedPrivateFindingIds", org.json.JSONArray(recommendedPrivateFindingIds)),
         )
         ReportLink(
             publicUrl = "$baseUrl${json.getString("publicPath")}",

@@ -21,6 +21,7 @@ const publishSchema = z.object({
   expiresInDays: z.number().int().min(1).max(90).default(30),
   acknowledgedPrivateFindingIds: z.array(z.string().uuid()).max(500).default([]),
   expectedMediaIds: z.array(z.string().uuid()).max(5000).optional(),
+  recommendedPrivateFindingIds: z.array(z.string().uuid()).max(500).default([]),
 });
 
 function tokenHash(token: string): string {
@@ -29,6 +30,7 @@ function tokenHash(token: string): string {
 
 export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
   return async (app) => {
+    app.get("/v1/report-features", async () => ({ explicitRecommendations: true }));
     app.get("/v1/visits/:id/report", async (request, reply) => {
       const { id } = paramsSchema.parse(request.params);
       const report = await prisma.report.findFirst({
@@ -153,6 +155,11 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
         if (privateIds.length !== acknowledgedIds.length || privateIds.some((id, index) => id !== acknowledgedIds[index])) {
           return { kind: "private_findings_changed" as const };
         }
+        const recommendedIds = new Set(body.recommendedPrivateFindingIds);
+        if ([...recommendedIds].some(id => !privateIds.includes(id)) || findings.some(finding =>
+          recommendedIds.has(finding.id) && finding.followUpState !== "OPEN")) return { kind: "recommendations_changed" as const };
+        const recommendedFindings = findings.filter(finding => recommendedIds.has(finding.id))
+          .map(finding => ({ ...finding, status: "RECOMMENDED" as const }));
         if (!body.expectedMediaIds) return { kind: "report_client_update_required" as const };
         const visibleIds = new Set(visibleFindings.map(finding => finding.id));
         const relevantMedia = media.filter(asset => asset.findingId === null || visibleIds.has(asset.findingId));
@@ -165,8 +172,9 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
           return { kind: "report_media_changed" as const };
         }
         const readyMedia = media.filter(asset => asset.state === "VERIFIED" || asset.state === "READY");
-        const recommendations = reportRecommendations(report.recommendations, visibleFindings, report.nextVisitAt);
-        const planned = futureWork(visibleFindings);
+        const reportableFindings = [...visibleFindings, ...recommendedFindings];
+        const recommendations = reportRecommendations(report.recommendations, reportableFindings, report.nextVisitAt);
+        const planned = futureWork(reportableFindings);
         if (planned.some(work => isPastVisitDate(work.followUpConfigured ? work.followUpDueAt ?? null : report.nextVisitAt))) {
           return { kind: "past_date" as const };
         }
@@ -186,7 +194,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
             completedWork: report.completedWork,
             recommendations,
             nextVisitAt: report.nextVisitAt,
-            findings: findings.map(finding => ({ ...finding, followUpDueAt: finding.followUpDueAt?.toISOString() ?? null })),
+            findings: findings.map(finding => ({ ...finding, ...(recommendedIds.has(finding.id) ? { reportRecommendation: true } : {}), followUpDueAt: finding.followUpDueAt?.toISOString() ?? null })),
             mediaIds: readyMedia.map((asset) => asset.id),
             mediaManifest: readyMedia.map(asset => ({ id: asset.id, findingId: asset.findingId ?? null })),
           },
@@ -227,6 +235,7 @@ export function reportRoutes(prisma: PrismaClient): FastifyPluginAsync {
       if (result.kind === "report_client_update_required") return reply.code(409).send({ error: "report_client_update_required" });
       if (result.kind === "report_media_pending") return reply.code(409).send({ error: "report_media_pending" });
       if (result.kind === "report_media_changed") return reply.code(409).send({ error: "report_media_changed" });
+      if (result.kind === "recommendations_changed") return reply.code(409).send({ error: "recommendations_changed" });
       if (result.kind === "private_findings_changed") return reply.code(409).send({ error: "private_findings_changed" });
       if (result.kind === "pending_approvals") return reply.code(409).send({ error: "pending_approvals" });
       if (result.kind === "report_unavailable") return reply.code(409).send({ error: "report_not_draft" });

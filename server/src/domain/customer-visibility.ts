@@ -17,29 +17,36 @@ export function withoutPrivateGeneratedRecommendations(notes: string, hiddenTitl
 }
 
 export function projectReportFindings(findings: unknown) {
-  if (!Array.isArray(findings)) return { visible: [], visibleIds: new Set<string>(), hiddenTitles: [], hasHidden: true, canSanitize: false };
+  if (!Array.isArray(findings)) return { visible: [], visibleIds: new Set<string>(), mediaVisibleIds: new Set<string>(), hiddenTitles: [], hasHidden: true, canSanitize: false };
   const visible: unknown[] = [];
   const visibleIds = new Set<string>();
+  const mediaVisibleIds = new Set<string>();
   const hiddenTitles: string[] = [];
   let hasHidden = false;
   let canSanitize = true;
   for (const item of findings) {
     if (!item || typeof item !== "object" || Array.isArray(item)) { hasHidden = true; canSanitize = false; continue; }
     const finding = item as Record<string, unknown>;
-    if (customerVisibleStatus(finding.status)) {
+    const explicitRecommendation = finding.reportRecommendation === true && ["DRAFT", "READY_FOR_APPROVAL"].includes(String(finding.status));
+    if (customerVisibleStatus(finding.status) || explicitRecommendation) {
       const publicFinding: Record<string, unknown> = {};
       for (const key of ["id", "title", "description", "priceRub", "priority", "status", "followUpDueAt", "followUpConfigured", "followUpState"]) {
         if (Object.hasOwn(finding, key)) publicFinding[key] = finding[key];
       }
+      if (explicitRecommendation) publicFinding.status = "RECOMMENDED";
       visible.push(publicFinding);
-      if (typeof finding.id === "string") visibleIds.add(finding.id);
+      if (typeof finding.id === "string") {
+        visibleIds.add(finding.id);
+        if (!explicitRecommendation) mediaVisibleIds.add(finding.id);
+      }
+      if (explicitRecommendation) hasHidden = true;
     } else {
       hasHidden = true;
       if (typeof finding.title === "string" && finding.title.length > 0 && !/[\r\n\u2028\u2029]/.test(finding.title)) hiddenTitles.push(finding.title);
       else canSanitize = false;
     }
   }
-  return { visible, visibleIds, hiddenTitles, hasHidden, canSanitize };
+  return { visible, visibleIds, mediaVisibleIds, hiddenTitles, hasHidden, canSanitize };
 }
 
 /** Use immutable publication-time associations when available; old snapshots
@@ -64,4 +71,17 @@ export function customerVisibleMediaIds(
   }
   const known = new Map(currentAssets.map(asset => [asset.id, asset.findingId]));
   return ids.filter(id => { const findingId = known.get(id); return !!findingId && visibleFindingIds.has(findingId); });
+}
+
+/** Only an intact publication manifest can link an image to a work item. */
+export function reportMediaAssociations(ids: readonly string[], manifest: unknown, visibleFindingIds: ReadonlySet<string>): Map<string, string | null> {
+  const general = new Map(ids.map(id => [id, null]));
+  if (!Array.isArray(manifest) || manifest.length !== ids.length) return general;
+  const result = new Map<string, string | null>();
+  for (const item of manifest) {
+    if (!item || typeof item !== "object" || Array.isArray(item) || typeof item.id !== "string" ||
+        (item.findingId !== null && typeof item.findingId !== "string") || result.has(item.id)) return general;
+    result.set(item.id, item.findingId !== null && visibleFindingIds.has(item.findingId) ? item.findingId : null);
+  }
+  return result.size === ids.length && ids.every(id => result.has(id)) ? result : general;
 }

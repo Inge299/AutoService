@@ -458,3 +458,26 @@ body{background:var(--canvas)}
   .mobile-more-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.mobile-more-heading button{min-height:44px;border:0;background:transparent;color:var(--teal-dark);font:inherit}
   .mobile-more-menu>a{display:flex;align-items:center;gap:12px;min-height:48px;padding:8px;border-radius:10px}.mobile-more-menu>a svg{width:20px;height:20px}.mobile-more-menu p{margin:0;color:var(--muted)}.mobile-more-menu .button{width:100%;min-height:48px}
 }
+
+/* Customer report: clear reading order without changing the workshop UI. */
+.report-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0}
+.report-facts>div{padding:13px 15px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.report-facts span,.report-work-price small{display:block;color:var(--muted);font-size:12px}
+.report-facts strong{display:block;margin-top:4px;font-size:15px}
+.report-document-meta{font-size:12px!important;overflow-wrap:anywhere;color:var(--muted)}
+.report-detail .report-section{margin-top:28px;padding-top:24px;border-top:1px solid var(--line)}
+.report-detail .report-section h2{margin:0 0 10px;font-size:22px;letter-spacing:-.02em}
+.report-detail .report-section h3{margin:0 0 8px;font-size:17px}
+.report-detail .report-section p{white-space:pre-line;overflow-wrap:anywhere;line-height:1.55}
+.report-section-description{color:var(--muted);font-size:13px}
+.report-work-list{display:grid;gap:10px;margin-top:14px}
+.report-work-card{padding:15px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.report-work-heading{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+.report-work-heading>div:first-child{min-width:0}.report-work-heading h4{margin:9px 0 0;font-size:15px;overflow-wrap:anywhere}
+.report-work-price{text-align:right;flex-shrink:0}.report-work-price strong{display:block;margin-top:4px;font-size:14px}
+.report-work-card>p{margin:10px 0 0;color:var(--muted);font-size:13px}
+.report-work-card .report-work-plan{padding:10px 12px;border-left:3px solid var(--teal);background:var(--teal-soft);color:var(--text)}
+.report-work-media{margin-top:16px}.report-work-media>span{display:block;margin-bottom:8px;color:var(--muted);font-size:12px}
+.report-contact .decision-panel{text-align:left}.report-contact .decision-panel .button{width:100%;margin-top:12px}
+@media(max-width:720px){.report-facts{gap:8px}.report-facts>div{padding:11px}.report-work-heading{flex-wrap:wrap}.report-work-price{text-align:left}}
+@media print{.report-page{background:#fff}.report-page .customer-header,.report-page .customer-footer,.report-page .report-contact{display:none!important}.report-page .customer-shell{width:100%;padding:0}.report-page .customer-layout{display:block}.report-page .approval-detail{border:0;box-shadow:none;padding:0}.report-page .report-work-card,.report-page figure{break-inside:avoid}.report-page .customer-intro h1{font-size:28px}.report-page a{color:inherit}}

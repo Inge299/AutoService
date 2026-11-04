@@ -73,7 +73,7 @@ class OfflineIntakeDeviceTest {
         override suspend fun completeFinding(findingId: String): FindingEntity = error("not used")
         override suspend fun saveReport(visitId: String, completedWork: String, recommendations: String, nextVisitAtEpochMs: Long?) = Unit
         override suspend fun recoverReport(visitId: String, operationId: String, token: String): ReportLink? = null
-        override suspend fun publishReport(visitId: String, operationId: String, token: String, acknowledgedPrivateFindingIds: List<String>, expectedMediaIds: List<String>): ReportLink = error("not used")
+        override suspend fun publishReport(visitId: String, operationId: String, token: String, acknowledgedPrivateFindingIds: List<String>, expectedMediaIds: List<String>, recommendedPrivateFindingIds: List<String>): ReportLink = error("not used")
         override suspend fun revokeReportLink(visitId: String) = Unit
         override suspend fun uploadMedia(asset: MediaAssetEntity) = Unit
         override suspend fun deleteMedia(assetId: String) = Unit

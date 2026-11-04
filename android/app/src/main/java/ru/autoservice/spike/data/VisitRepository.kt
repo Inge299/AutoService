@@ -107,6 +107,7 @@ class VisitRepository(
         reportPreparationError = local.reportPreparationError,
         reportAcknowledgedPrivateFindingIds = local.reportAcknowledgedPrivateFindingIds,
         reportExpectedMediaIds = local.reportExpectedMediaIds,
+        reportRecommendedPrivateFindingIds = local.reportRecommendedPrivateFindingIds,
         pendingCustomerId = local.pendingCustomerId,
         pendingVehicleId = local.pendingVehicleId,
         syncError = local.syncError,

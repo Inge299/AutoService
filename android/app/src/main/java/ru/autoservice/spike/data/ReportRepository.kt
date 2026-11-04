@@ -15,6 +15,7 @@ data class ReportDraft(
     val nextVisitAtEpochMs: Long?,
     val acknowledgedPrivateFindingIds: List<String> = emptyList(),
     val expectedMediaIds: List<String> = emptyList(),
+    val recommendedPrivateFindingIds: List<String> = emptyList(),
 )
 
 class ReportMediaReadinessException(message: String) : IllegalStateException(message)
@@ -31,6 +32,9 @@ class ReportRepository(
             "Завершить можно только ремонт в работе"
         }
         require(draft.completedWork.trim().isNotEmpty()) { "Опишите выполненные работы" }
+        require(draft.recommendedPrivateFindingIds.all { it in draft.acknowledgedPrivateFindingIds }) {
+            "Список рекомендаций изменился. Проверьте отчёт заново"
+        }
 
         val current = visitDao.find(visit.id) ?: visit
         val retry = current.reportPreparationState in setOf("PENDING", "FAILED")
@@ -44,6 +48,7 @@ class ReportRepository(
             reportPreparationError = null,
             reportAcknowledgedPrivateFindingIds = encodeIds(draft.acknowledgedPrivateFindingIds),
             reportExpectedMediaIds = encodeIds(draft.expectedMediaIds),
+            reportRecommendedPrivateFindingIds = encodeIds(draft.recommendedPrivateFindingIds),
         )
         visitDao.upsert(pending)
         if (!retry) checkMedia(pending)
@@ -61,6 +66,10 @@ class ReportRepository(
         val expectedMedia = pending.reportExpectedMediaIds?.let(::decodeIds)
             ?: throw ReportMediaReadinessException("Откройте отчёт заново и проверьте материалы")
         checkMedia(pending)
+        val recommended = decodeIds(pending.reportRecommendedPrivateFindingIds)
+        if (recommended.isNotEmpty() && !api.supportsExplicitRecommendations()) {
+            throw IllegalStateException("Сервер не поддерживает рекомендации из черновиков. Обновите сервер перед публикацией")
+        }
 
         // Saving comes first so a previously edited draft is never published by accident.
         // If the publish response was lost, saving returns report_already_published; the
@@ -72,10 +81,10 @@ class ReportRepository(
                 recommendations = pending.reportRecommendations.orEmpty(),
                 nextVisitAtEpochMs = pending.reportNextVisitAtEpochMs,
             )
-            api.publishReport(pending.id, operationId, token, acknowledged, expectedMedia)
+            api.publishReport(pending.id, operationId, token, acknowledged, expectedMedia, recommended)
         } catch (error: ApiException) {
             if (error.statusCode != 409 || error.message != "report_already_published") throw error
-            api.publishReport(pending.id, operationId, token, acknowledged, expectedMedia)
+            api.publishReport(pending.id, operationId, token, acknowledged, expectedMedia, recommended)
         }
         completePublication(pending, link)
     }
@@ -109,6 +118,7 @@ class ReportRepository(
             reportPreparationError = null,
             reportAcknowledgedPrivateFindingIds = null,
             reportExpectedMediaIds = null,
+            reportRecommendedPrivateFindingIds = null,
         ))
     }
 
