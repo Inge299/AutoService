@@ -21,8 +21,11 @@ describe("customer portal", () => {
     const findMany = vi.fn().mockResolvedValue([{
       id: "55555555-5555-4555-8555-555555555555", customerName: "Иван", customerPhone: "+79991234567",
       vehicleLabel: "Lada Vesta", licensePlate: "А123АА77", mileageKm: 10_000, complaint: "ТО",
-      status: "COMPLETED", createdAt: new Date(), updatedAt: new Date(), findings: [], _count: { media: 2 },
-      report: { status: "PUBLISHED", completedWork: "Заменили масло", recommendations: "Проверить уровень", nextVisitAt: new Date("2026-10-01T09:00:00Z"), publishedAt: new Date() },
+      status: "COMPLETED", createdAt: new Date(), updatedAt: new Date(), findings: [
+        { id: "private", title: "Скрытая находка", status: "DRAFT" },
+        { id: "sent", title: "На согласовании", status: "SENT_TO_CUSTOMER" },
+      ], _count: { media: 2 },
+      report: { status: "PUBLISHED", completedWork: "Заменили масло", recommendations: "Проверить уровень\nНе выполнено в этот визит: Скрытая находка. Необходимо выполнить в дальнейшем. Срок необходимо согласовать с мастерской.", versions: [{ findings: [{ id: "private", title: "Скрытая находка", status: "DRAFT" }] }], nextVisitAt: new Date("2026-10-01T09:00:00Z"), publishedAt: new Date() },
     }]);
     const prisma = {
       authSession: { findUnique: vi.fn().mockResolvedValue({ userId, workshopId, customerId, scope: "CUSTOMER", expiresAt: new Date(Date.now() + 60_000), revokedAt: null }) },
@@ -38,7 +41,9 @@ describe("customer portal", () => {
     const response = await app.inject({ method: "GET", url: "/public/v1/customer-accounts/me", headers: { authorization: `Bearer ${token}` } });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ visits: [{ report: { status: "PUBLISHED", completedWork: "Заменили масло" } }] });
+    expect(response.json()).toMatchObject({ visits: [{ findings: [{ id: "sent" }], report: { status: "PUBLISHED", completedWork: "Заменили масло", recommendations: "Проверить уровень" } }] });
+    expect(response.body).not.toContain("Скрытая находка");
+    expect(response.body).not.toContain("versions");
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ workshopId }),
       include: expect.objectContaining({ report: expect.any(Object) }),

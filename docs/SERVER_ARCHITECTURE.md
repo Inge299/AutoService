@@ -191,7 +191,7 @@ exponential backoff до 60 секунд, не более 5 попыток. Пр
 | `INTERNAL_API_KEY` | — | Ключ только для доверенной служебной интеграции, production: 32+ символа |
 | `ACCESS_TOKEN_SECRET` | — | Отдельный ключ подписи access-токенов, production: 32+ символа |
 | `OTP_HASH_SECRET` | — | Отдельный HMAC-ключ хеширования OTP/IP, production: 32+ символа |
-| `SMS_PROVIDER` | `disabled` | `disabled`, development-only `debug`, production `smsru` или `smsc` |
+| `SMS_PROVIDER` | `disabled` | `disabled`, development-only `debug` или production `smsru`; `smsc` временно отключён |
 | `SMS_RU_API_ID` | — | API-ключ SMS.RU; обязателен при `SMS_PROVIDER=smsru` |
 | `SMS_RU_FROM` | account default | Согласованное имя отправителя SMS.RU |
 | `SMS_RU_VERIFICATION_MODE` | `callcheck` | `callcheck` для входящего звонка или `sms` для одноразового кода |

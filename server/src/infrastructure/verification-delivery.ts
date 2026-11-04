@@ -236,8 +236,7 @@ export function createVerificationDelivery(config: Config, logger: FastifyBaseLo
     }
     return new SmsRuVerificationDelivery(config.SMS_RU_API_ID, config.SMS_RU_FROM);
   }
-  if (config.SMS_PROVIDER === "smsc" && config.SMSC_LOGIN && config.SMSC_API_KEY) {
-    return new SmscWaitCallVerificationDelivery(config.SMSC_LOGIN, config.SMSC_API_KEY);
-  }
+  // SMSC WaitCall callbacks cannot be correlated to a specific challenge.
+  // Keep this provider unavailable until the protocol can verify each attempt.
   return disabledVerificationDelivery;
 }

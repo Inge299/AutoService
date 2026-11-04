@@ -2,6 +2,7 @@ package ru.autoservice.spike
 
 import android.app.KeyguardManager
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -17,6 +18,9 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import ru.autoservice.spike.data.VisitDraft
+import ru.autoservice.spike.data.VisitEntity
+import ru.autoservice.spike.data.VisitStatus
+import ru.autoservice.spike.data.SyncState
 import ru.autoservice.spike.network.CustomerMatch
 import ru.autoservice.spike.network.CustomerVehicle
 import ru.autoservice.spike.ui.theme.AutoServiceTheme
@@ -66,6 +70,59 @@ class RepeatVisitIntakeTest {
             assertEquals("+79990000000", saved!!.customerPhone)
             assertEquals("Toyota", saved!!.vehicleLabel)
             assertEquals("В456ВВ77", saved!!.licensePlate)
+            assertEquals(105000, saved!!.mileageKm)
+            assertEquals("Новая жалоба", saved!!.complaint)
+            assertEquals("test-client", saved!!.customerId)
+            assertEquals("car-2", saved!!.vehicleId)
+        }
+    }
+
+    @Test fun filledIntakeSurvivesSavedStateRestoration() {
+        var saved: VisitDraft? = null
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent {
+            AutoServiceTheme {
+                IntakeScreen(onSearchCustomers = { emptyList() }, vehicleBrands = emptyList(), commonComplaints = emptyList(),
+                    onCancel = {}, onSave = { saved = it })
+            }
+        }
+        scrollTo("Телефон клиента *").performTextInput("9991234567")
+        scrollTo("Имя клиента").performTextInput("Тестовый клиент")
+        scrollTo("Автомобиль").performTextInput("Тестовая машина")
+        scrollTo("Пробег, км").performTextInput("12345")
+        scrollTo("Жалобы клиента").performTextInput("Тестовая жалоба")
+        restoration.emulateSavedInstanceStateRestore()
+        scrollTo("Сохранить").performClick()
+        compose.waitUntil(5_000) { saved != null }
+        compose.runOnIdle {
+            assertEquals("9991234567", saved!!.customerPhone)
+            assertEquals("Тестовый клиент", saved!!.customerName)
+            assertEquals("Тестовая машина", saved!!.vehicleLabel)
+            assertEquals(12345, saved!!.mileageKm)
+            assertEquals("Тестовая жалоба", saved!!.complaint)
+        }
+    }
+
+    @Test fun correctingConflictKeepsMileageAndSelectsExistingCar() {
+        var saved: VisitDraft? = null
+        val visit = VisitEntity("synthetic-visit", "Тест", "+79990000000", "Toyota", "В456ВВ77", 105000,
+            "Новая жалоба", VisitStatus.IN_REPAIR, 1, 2, SyncState.BLOCKED, syncError = "Conflict")
+        compose.setContent {
+            AutoServiceTheme {
+                IntakeScreen(onSearchCustomers = { listOf(CustomerMatch("test-client", "Тест", "+79990000000",
+                    listOf(CustomerVehicle("car-2", "Toyota", "В456ВВ77")))) }, vehicleBrands = emptyList(),
+                    commonComplaints = emptyList(), onCancel = {}, onSave = { saved = it }, initialVisit = visit)
+            }
+        }
+        scrollTo("Госномер или телефон клиента").performTextInput("9990000000")
+        scrollTo("Найти клиента").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("Toyota · В456ВВ77")).fetchSemanticsNodes().isNotEmpty() }
+        scrollTo("Toyota · В456ВВ77").performClick()
+        scrollTo("Сохранить").performClick()
+        compose.waitUntil(5_000) { saved != null }
+        compose.runOnIdle {
+            assertEquals("test-client", saved!!.customerId)
+            assertEquals("car-2", saved!!.vehicleId)
             assertEquals(105000, saved!!.mileageKm)
             assertEquals("Новая жалоба", saved!!.complaint)
         }

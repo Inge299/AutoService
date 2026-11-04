@@ -1,3 +1,4 @@
+import { queueLegacyMedia } from "../../infrastructure/legacy-media.js";
 import { serializable } from "../../infrastructure/transaction.js";
 import { createHash } from "node:crypto";
 import type { FindingPriority, FindingStatus, PrismaClient } from "@prisma/client";
@@ -50,10 +51,20 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
       }
 
       const result = await serializable(prisma, async (tx) => {
-        const visit = await tx.visit.findFirst({ where: { id: body.visitId, workshopId }, select: { id: true } });
+        const visit = await tx.visit.findFirst({ where: { id: body.visitId, workshopId }, select: { id: true, status: true } });
         if (!visit) return null;
+        if (["COMPLETED", "CANCELLED"].includes(visit.status)) return { visitClosed: true as const };
         const existing = await tx.finding.findUnique({ where: { id } });
         if (existing && existing.workshopId !== workshopId) return null;
+        if (existing && existing.visitId !== body.visitId) return { visitMismatch: true as const };
+        // An identical initial create can be retried after the response was lost,
+        // including a finding initially created ready for approval.
+        if (existing && body.baseServerVersion === null && existing.serverVersion === 1 &&
+          existing.title === body.title && existing.description === body.description && existing.priceRub === body.priceRub &&
+          existing.priority === body.priority && existing.status === body.status &&
+          existing.createdAt.getTime() === body.createdAtEpochMs && existing.updatedAt.getTime() === body.updatedAtEpochMs) {
+          return { conflict: false as const, finding: existing };
+        }
         if (existing && existing.status !== "DRAFT") return { statusProtected: true as const };
         if (existing && body.baseServerVersion !== existing.serverVersion) {
           return { conflict: true as const, finding: existing };
@@ -77,6 +88,8 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
       });
 
       if (!result) return reply.code(404).send({ error: "not_found" });
+      if (result.visitClosed) return reply.code(409).send({ error: "visit_closed" });
+      if (result.visitMismatch) return reply.code(409).send({ error: "finding_visit_mismatch" });
       if (result.statusProtected) return reply.code(403).send({ error: "finding_status_managed_by_approval" });
       if (result.conflict) return reply.code(409).send({ error: "version_conflict", server: result.finding });
       return reply.send(result.finding);
@@ -160,9 +173,12 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
             findingId: id,
             state: { in: ["VERIFIED", "READY"] },
           },
-          select: { id: true },
+          select: { id: true, objectKey: true },
         });
         if (media.length !== body.mediaIds.length) return { kind: "media_unavailable" as const };
+        const preparation = await queueLegacyMedia(tx, workshopId, media);
+        if (preparation === "failed") return { kind: "media_preparation_failed" as const };
+        if (preparation === "preparing") return { kind: "media_preparing" as const };
 
         const previous = await tx.approvalVersion.findFirst({
           where: { findingId: id },
@@ -234,6 +250,8 @@ export function findingRoutes(prisma: PrismaClient): FastifyPluginAsync {
       if (result.kind === "finding_unavailable") return reply.code(409).send({ error: "finding_not_ready" });
       if (result.kind === "price_required") return reply.code(409).send({ error: "price_required" });
       if (result.kind === "media_unavailable") return reply.code(409).send({ error: "approval_media_unavailable" });
+      if (result.kind === "media_preparation_failed") return reply.code(409).send({ error: "approval_media_preparation_failed" });
+      if (result.kind === "media_preparing") return reply.code(503).send({ error: "approval_media_preparing" });
       if (result.kind === "operation_conflict") return reply.code(409).send({ error: "operation_conflict" });
 
       return reply.code(result.kind === "created" ? 201 : 200).send({

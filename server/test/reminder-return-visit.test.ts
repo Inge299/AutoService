@@ -21,7 +21,8 @@ describe("return visit reminders", () => {
     const auditCreate = vi.fn().mockResolvedValue({});
     const transaction = {
       visit: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: visitId, serverVersion: 1 }) },
-      customer: { upsert: vi.fn().mockResolvedValue({ id: "55555555-5555-4555-8555-555555555555" }) },
+      $queryRaw: vi.fn().mockResolvedValueOnce([{ id: "55555555-5555-4555-8555-555555555555" }]).mockResolvedValueOnce([{ id: "66666666-6666-4666-8666-666666666666" }]),
+      customer: { findFirst: vi.fn().mockResolvedValue({ id: "55555555-5555-4555-8555-555555555555" }), update: vi.fn().mockResolvedValue({ id: "55555555-5555-4555-8555-555555555555" }) },
       vehicle: { findFirst: vi.fn().mockResolvedValue({ id: "66666666-6666-4666-8666-666666666666" }), update: vi.fn().mockResolvedValue({ id: "66666666-6666-4666-8666-666666666666" }) },
       reminder: { findFirst: vi.fn().mockResolvedValue({ id: reminderId, state: "PENDING" }), update: reminderUpdate },
       auditEvent: { create: auditCreate },

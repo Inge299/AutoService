@@ -10,13 +10,14 @@ describe("future work in visit reports", () => {
     { title: "Согласовано", priority: "IMPORTANT", status: "APPROVED" },
   ];
   it("includes deferred work regardless of priority and only unfinished planned work", () => {
-    expect(futureWork(findings).map(item => item.title)).toEqual(["Замена ремня", "Замена фильтра"]);
+    expect(futureWork(findings).map(item => item.title)).toEqual(["Замена ремня"]);
   });
   it("keeps master notes and adds explicit work and deadline for the report and reminder", () => {
     const text = reportRecommendations("Проверять уровень масла", findings, new Date("2026-11-18T00:00:00+03:00"));
     expect(text).toContain("Проверять уровень масла");
     expect(text).toContain("Не выполнено в этот визит: Замена ремня. Необходимо выполнить в дальнейшем. Рекомендуемый срок: до 18.11.2026.");
     expect(text).not.toContain("Уже сделано");
+    expect(text).not.toContain("Замена фильтра");
     expect(reportRecommendations(text, findings, new Date("2026-12-18T00:00:00+03:00"))).not.toContain("18.11.2026");
   });
   it("does not invent a deadline and does not duplicate recommendations on retry", () => {

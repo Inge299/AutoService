@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface FindingDao {
+    @Query("SELECT DISTINCT visitId FROM findings WHERE status = 'CALL_REQUESTED'")
+    fun observeCallRequestedVisitIds(): Flow<List<String>>
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(finding: FindingEntity)
 

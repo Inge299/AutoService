@@ -49,7 +49,8 @@ describe("P0 reliability regressions", () => {
 
   it("never issues a writable target for verified evidence", async () => {
     const createUploadTarget = vi.fn();
-    const app = await mediaApp({ visit: { findFirst: async () => ({ id }) }, finding: { findFirst: async () => ({ id }) }, mediaAsset: { findUnique: async () => asset } }, { createUploadTarget });
+    const tx = { visit: { findFirst: async () => ({ id, status: "COMPLETED" }) }, finding: { findFirst: async () => ({ id }) }, mediaAsset: { findUnique: async () => asset } };
+    const app = await mediaApp({ $transaction: async (fn: (tx: unknown) => unknown) => fn(tx) }, { createUploadTarget });
     try {
       const response = await app.inject({ method: "POST", url: `/v1/media/${id}/upload-session`, payload: { ...asset, byteCount: 4 } });
       expect(response.statusCode).toBe(200);

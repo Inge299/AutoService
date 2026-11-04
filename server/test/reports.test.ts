@@ -22,6 +22,23 @@ const headers = { "x-workshop-id": workshopId, "x-user-id": userId };
 const membership = { findUnique: vi.fn().mockResolvedValue({ role: "EMPLOYEE", isActive: true, user: { isActive: true } }) };
 
 describe("visit reports", () => {
+  it("recovers only the matching published operation without creating a report", async () => {
+    const lookup = vi.fn().mockResolvedValue({ id: reportVersionId, workshopId, visitId,
+      link: { tokenHash: createHash("sha256").update(token).digest("hex"), revokedAt: null, expiresAt: new Date("2099-01-01T00:00:00Z") } });
+    const prisma = { membership, reportVersion: { findUnique: lookup } } as unknown as PrismaClient;
+    const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
+    try {
+      const recover = (value: string) => app.inject({ method: "POST", url: `/v1/visits/${visitId}/report/recover`, headers, payload: { operationId, token: value } });
+      expect((await recover("x".repeat(43))).statusCode).toBe(404);
+      const response = await recover(token);
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ reportVersionId, publicPath: `/r/${token}`, reused: true });
+      lookup.mockResolvedValueOnce(null);
+      const missing = await recover(token);
+      expect(missing.statusCode).toBe(404);
+      expect(missing.json().error).toBe("report_operation_not_found");
+    } finally { await app.close(); }
+  });
   it("saves an editable draft only for a workshop visit", async () => {
     const reportCreate = vi.fn().mockResolvedValue({ id: reportId, visitId, status: "DRAFT", completedWork: "Заменили колодки" });
     const transaction = {
@@ -45,9 +62,10 @@ describe("visit reports", () => {
   });
 
   it.each([true, false])("publishes future work in the immutable report and schedules only dated recommendations (dated=%s)", async (dated) => {
-    const nextVisitAt = dated ? new Date("2026-11-20T10:00:00.000Z") : null;
+    const nextVisitAt = dated ? new Date("2099-11-20T10:00:00.000Z") : null;
     const versionCreate = vi.fn().mockResolvedValue({ id: reportVersionId });
     const linkCreate = vi.fn().mockResolvedValue({ expiresAt: new Date("2026-10-01T12:00:00.000Z") });
+    const mediaRows = [{ id: "88888888-8888-4888-8888-888888888888", findingId: null, state: "READY", objectKey: "qa/verified" }, { id: "hidden-photo", findingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", state: "READY", objectKey: "qa/verified" }];
     const transaction = {
       reportVersion: { findUnique: vi.fn().mockResolvedValue(null), findFirst: vi.fn().mockResolvedValue(null), create: versionCreate },
       report: {
@@ -60,10 +78,11 @@ describe("visit reports", () => {
       finding: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([
         { id: "77777777-7777-4777-8777-777777777777", title: "Колодки", description: "Износ", priceRub: 12_800, priority: "IMPORTANT", status: "COMPLETED" },
         { id: "deferred", title: "Ремень", description: "Износ", priceRub: 1000, priority: "IMPORTANT", status: "DEFERRED" },
+        { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", title: "Неопубликованный черновик", description: "Внутреннее", priceRub: 900, priority: "PLANNED", status: "DRAFT" },
       ]) },
-      mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: "88888888-8888-4888-8888-888888888888" }]) },
+      mediaAsset: { findMany: vi.fn().mockResolvedValue(mediaRows) },
       reportLink: { create: linkCreate },
-      reminder: { create: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999999" }) },
+      reminder: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999999" }) },
       backgroundJob: { create: vi.fn().mockResolvedValue({}) },
       visit: { update: vi.fn().mockResolvedValue({}) },
       auditEvent: { create: vi.fn().mockResolvedValue({}) },
@@ -74,21 +93,43 @@ describe("visit reports", () => {
     } as unknown as PrismaClient;
     const app = await buildApp(config, { prisma, storage: {} as ObjectStorage });
 
-    const response = await app.inject({
+    const unacknowledged = await app.inject({
       method: "POST", url: `/v1/visits/${visitId}/report/publish`, headers,
       payload: { operationId, token, expiresInDays: 14 },
+    });
+    expect(unacknowledged.statusCode).toBe(409);
+    expect(unacknowledged.json().error).toBe("private_findings_changed");
+    expect(versionCreate).not.toHaveBeenCalled();
+    const acknowledgedPrivateFindingIds = ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"];
+    const oldClient = await app.inject({ method: "POST", url: `/v1/visits/${visitId}/report/publish`, headers,
+      payload: { operationId, token, acknowledgedPrivateFindingIds } });
+    expect(oldClient.json().error).toBe("report_client_update_required");
+    const changed = await app.inject({ method: "POST", url: `/v1/visits/${visitId}/report/publish`, headers,
+      payload: { operationId, token, acknowledgedPrivateFindingIds, expectedMediaIds: [] } });
+    expect(changed.json().error).toBe("report_media_changed");
+    mediaRows[0]!.state = "RETRY";
+    const pending = await app.inject({ method: "POST", url: `/v1/visits/${visitId}/report/publish`, headers,
+      payload: { operationId, token, acknowledgedPrivateFindingIds, expectedMediaIds: ["88888888-8888-4888-8888-888888888888"] } });
+    expect(pending.json().error).toBe("report_media_pending");
+    mediaRows[0]!.state = "READY";
+    const response = await app.inject({
+      method: "POST", url: `/v1/visits/${visitId}/report/publish`, headers,
+      payload: { operationId, token, expiresInDays: 14, acknowledgedPrivateFindingIds, expectedMediaIds: ["88888888-8888-4888-8888-888888888888"] },
     });
 
     expect(response.statusCode).toBe(201);
     expect(response.json()).toMatchObject({ reportVersionId, token, publicPath: `/r/${token}`, reused: false });
-    expect(versionCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ operationId, reportId, visitId, mediaIds: ["88888888-8888-4888-8888-888888888888"] }) }));
+    expect(versionCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ operationId, reportId, visitId, mediaIds: ["88888888-8888-4888-8888-888888888888", "hidden-photo"] }) }));
     expect(linkCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reportVersionId, tokenHash: createHash("sha256").update(token).digest("hex") }) }));
     expect(transaction.visit.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "COMPLETED" }) }));
+    expect(versionCreate.mock.calls[0]![0].data.findings.map((finding: { id: string }) => finding.id)).toContain("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    expect(versionCreate.mock.calls[0]![0].data.mediaManifest).toEqual([{ id: "88888888-8888-4888-8888-888888888888", findingId: null }, { id: "hidden-photo", findingId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }]);
     const recommendations = versionCreate.mock.calls[0]![0].data.recommendations;
+    expect(recommendations).not.toContain("Неопубликованный черновик");
     expect(recommendations).toContain("Не выполнено в этот визит: Ремень. Необходимо выполнить в дальнейшем.");
     if (dated) {
-      expect(recommendations).toContain("Рекомендуемый срок: до 20.11.2026.");
-      expect(transaction.reminder.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reportVersionId, visitId, reason: recommendations, dueAt: nextVisitAt }) }));
+      expect(recommendations).toContain("Рекомендуемый срок: до 20.11.2099.");
+      expect(transaction.reminder.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reportVersionId, visitId, findingId: "deferred", reason: "Необходимо выполнить: Ремень", dueAt: nextVisitAt }) }));
       expect(transaction.backgroundJob.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: "SEND_REMINDER_SMS", reminderId: "99999999-9999-4999-8999-999999999999" }) }));
     } else {
       expect(recommendations).toContain("Срок необходимо согласовать с мастерской.");

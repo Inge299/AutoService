@@ -22,7 +22,7 @@ class ApprovalPreparationWorker(context: Context, params: WorkerParameters) : Co
             throw error
         } catch (error: Exception) {
             val transient = error is IOException && (error !is ApiException || error.statusCode >= 500 || error.statusCode in setOf(408, 429))
-            if (transient && runAttemptCount < 9) Result.retry() else {
+            if (transient) Result.retry() else {
                 repository.preparationFailed(id, "Не удалось подготовить ссылку. Проверьте загрузку материалов и повторите")
                 Result.failure()
             }

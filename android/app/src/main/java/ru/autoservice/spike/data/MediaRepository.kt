@@ -56,6 +56,15 @@ class MediaRepository(
         mediaDao.pending().forEach { scheduler.enqueue(it.id) }
     }
 
+    suspend fun resumeAfterVisitCorrection(visitId: String) {
+        mediaDao.forVisit(visitId).filter {
+            it.syncState == SyncState.BLOCKED && it.lastError == "Сначала устраните проблему синхронизации визита или находки"
+        }.forEach { asset ->
+            mediaDao.updateProgress(asset.id, SyncState.RETRY, asset.uploadAttempts, "Ожидает синхронизации визита и находки", clock())
+            scheduler.enqueue(asset.id)
+        }
+    }
+
     suspend fun recoverAndReschedule() {
         val knownPaths = mediaDao.allLocalPaths().toHashSet()
         fileStore.committedFiles()

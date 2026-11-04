@@ -158,7 +158,7 @@ describe("phone authentication", () => {
     await app.close();
   });
 
-  it("issues a session after the signed SMSC WaitCall callback confirms the caller phone", async () => {
+  it("does not confirm any challenge from a phone-only SMSC callback", async () => {
     const database = otpPrisma({
       id: userId,
       isActive: true,
@@ -197,7 +197,10 @@ describe("phone authentication", () => {
       url: "/public/v1/auth/phone/smsc-wait-call?token=" + "s".repeat(32),
       payload: { waitcall: "1", phone: "79991234567", ts: "1700000000" },
     });
-    expect(callback.statusCode).toBe(200);
+    expect(callback.statusCode).toBe(503);
+    expect(database.raw.otpChallenge.updateMany).not.toHaveBeenCalled();
+    // A flag written before this fix must not bypass an individual provider check.
+    database.stored.challenge!.callVerifiedAt = new Date();
 
     const verified = await app.inject({
       method: "POST",
@@ -205,7 +208,19 @@ describe("phone authentication", () => {
       payload: { challengeId: requested.json().challengeId },
     });
     expect(verified.statusCode).toBe(200);
-    expect(verified.json()).toMatchObject({ accessToken: expect.any(String), refreshToken: expect.any(String) });
+    expect(verified.json()).toEqual({ status: "pending" });
+    expect(database.raw.authSession.create).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("does not start SMSC WaitCall while callback correlation is unavailable", async () => {
+    const database = otpPrisma({ id: userId, isActive: true, memberships: [{ workshopId }], customerProfiles: [] });
+    const app = await buildApp({ ...config, SMS_PROVIDER: "smsc", SMSC_LOGIN: "autoservice", SMSC_API_KEY: "a".repeat(16), SMSC_WAIT_CALL_CALLBACK_SECRET: "s".repeat(32) }, {
+      prisma: database.prisma, storage: {} as ObjectStorage,
+    });
+    const response = await app.inject({ method: "POST", url: "/public/v1/auth/phone/request-code", payload: { phone: "+79991234567", audience: "STAFF" } });
+    expect(response.statusCode).toBe(503);
+    expect(database.raw.otpChallenge.create).not.toHaveBeenCalled();
     await app.close();
   });
 

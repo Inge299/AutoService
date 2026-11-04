@@ -23,6 +23,20 @@ class MediaUploadWorker(
 
         if (asset.syncState == SyncState.SYNCED) return Result.success()
 
+        // Never register evidence before its visit and finding exist on the server.
+        val visit = container.database.visitDao().find(asset.visitId)
+        val finding = asset.findingId?.let { id -> container.database.findingDao().all().firstOrNull { it.id == id } }
+        if (visit?.syncState == SyncState.BLOCKED || finding?.syncError != null) {
+            retry(dao, asset, "Ожидает исправления визита или находки")
+            return Result.retry()
+        }
+        if (visit == null || visit.serverVersion == 0 || visit.syncState != SyncState.SYNCED ||
+            (asset.findingId != null && (finding == null || finding.serverVersion == 0))) {
+            container.uploadScheduler.enqueueIntake()
+            retry(dao, asset, "Ожидает синхронизации визита и находки")
+            return Result.retry()
+        }
+
         if (!container.fileStore.verify(asset.localPath, asset.byteCount, asset.sha256)) {
             dao.updateProgress(
                 id = asset.id,
@@ -54,18 +68,11 @@ class MediaUploadWorker(
             if (error.statusCode in 400..499 && error.statusCode !in setOf(408, 429)) {
                 block(dao, asset, if (error.statusCode == 401) "Войдите в мастерскую и повторите загрузку" else "Не удалось загрузить материал. Проверьте файл и повторите")
                 Result.failure()
-            } else if (runAttemptCount >= 4) {
-                block(dao, asset, "Загрузка не завершена. Нажмите «Повторить»")
-                Result.failure()
             } else {
                 retry(dao, asset, "Сервер временно недоступен. Повторим автоматически")
                 Result.retry()
             }
         } catch (error: IOException) {
-            if (runAttemptCount >= 4) {
-                block(dao, asset, "Загрузка не завершена. Нажмите «Повторить»")
-                return Result.failure()
-            }
             retry(dao = dao, asset = asset, message = "Нет связи с сервером. Повторим автоматически")
             Result.retry()
         } catch (error: Exception) {

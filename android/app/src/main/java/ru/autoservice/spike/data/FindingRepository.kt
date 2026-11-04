@@ -1,5 +1,8 @@
 package ru.autoservice.spike.data
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import ru.autoservice.spike.network.ApiException
 import ru.autoservice.spike.network.WorkshopRemote
 import ru.autoservice.spike.network.ApprovalLink
 import java.security.SecureRandom
@@ -12,10 +15,13 @@ class FindingRepository(
     private val mediaDao: MediaDao,
     private val api: WorkshopRemote,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val syncMutex: Mutex = Mutex(),
+    private val scheduleSync: () -> Unit = {},
+    private val parentReady: suspend (String) -> Boolean = { true },
 ) {
     fun findingsForVisit(visitId: String) = findingDao.observeForVisit(visitId)
 
-    suspend fun createFinding(draft: FindingDraft): FindingEntity {
+    suspend fun createFinding(draft: FindingDraft): FindingEntity = syncMutex.withLock {
         require(draft.title.isNotBlank()) { "Укажите, что обнаружено" }
         require(draft.priceRub == null || draft.priceRub >= 0) { "Укажите корректную цену" }
 
@@ -31,40 +37,43 @@ class FindingRepository(
             createdAtEpochMs = now,
             updatedAtEpochMs = now,
         )
-        val saved = api.saveFinding(finding)
-        findingDao.insert(saved)
-        return saved
+        findingDao.insert(finding)
+        scheduleSync()
+        finding
     }
 
-    suspend fun prepareForApproval(finding: FindingEntity) {
-        require(finding.status == FindingStatus.DRAFT) { "Находка уже подготовлена" }
-        require(finding.priceRub != null) { "Укажите цену перед согласованием" }
-        findingDao.update(api.saveFinding(
-            finding.copy(status = FindingStatus.READY_FOR_APPROVAL, updatedAtEpochMs = clock()),
-        ))
+    suspend fun prepareForApproval(finding: FindingEntity) = syncMutex.withLock {
+        val current = findingDao.all().firstOrNull { it.id == finding.id } ?: finding
+        require(current.status == FindingStatus.DRAFT) { "Находка уже подготовлена" }
+        require(current.priceRub != null) { "Укажите цену перед согласованием" }
+        val updated = current.copy(status = FindingStatus.READY_FOR_APPROVAL, updatedAtEpochMs = clock())
+        if (current.serverVersion == 0) {
+            require(current.syncError == null) { "Сначала устраните проблему синхронизации находки" }
+            findingDao.update(updated)
+            scheduleSync()
+        } else findingDao.update(api.saveFinding(updated))
     }
 
-    suspend fun updateDraft(finding: FindingEntity, draft: FindingDraft): FindingEntity {
-        require(finding.status == FindingStatus.DRAFT && finding.approvalPreparationState != "PENDING") { "Дождитесь подготовки согласования" }
+    suspend fun updateDraft(finding: FindingEntity, draft: FindingDraft): FindingEntity = syncMutex.withLock {
+        val current = findingDao.all().firstOrNull { it.id == finding.id } ?: finding
+        require(current.status == FindingStatus.DRAFT && current.approvalPreparationState != "PENDING") { "Дождитесь подготовки согласования" }
         require(draft.title.isNotBlank()) { "Укажите, что обнаружено" }
         require(draft.priceRub == null || draft.priceRub >= 0) { "Укажите корректную цену" }
-        val updated = finding.copy(
-            title = draft.title.trim(),
-            description = draft.description.trim(),
-            priceRub = draft.priceRub,
-            priority = draft.priority,
-            updatedAtEpochMs = clock(),
-        )
-        val saved = api.saveFinding(updated)
-        findingDao.update(saved)
-        return saved
+        val updated = current.copy(title = draft.title.trim(), description = draft.description.trim(), priceRub = draft.priceRub,
+            priority = draft.priority, updatedAtEpochMs = clock())
+        if (current.serverVersion == 0) {
+            require(current.syncError == null) { "Сначала устраните проблему синхронизации находки" }
+            findingDao.update(updated)
+            scheduleSync()
+            updated
+        } else api.saveFinding(updated).also { findingDao.update(it) }
     }
 
-    suspend fun queueApproval(finding: FindingEntity) {
+    suspend fun queueApproval(finding: FindingEntity) = syncMutex.withLock {
         require(finding.priceRub != null) { "Укажите цену перед согласованием" }
         require(finding.status in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL, FindingStatus.SENT_TO_CUSTOMER)) { "Решение клиента уже получено" }
         val current = findingDao.all().firstOrNull { it.id == finding.id } ?: finding
-        if (current.approvalPreparationState == "PENDING") return
+        if (current.approvalPreparationState == "PENDING") return@withLock
         val media = mediaDao.forFinding(finding.id)
         require(media.isNotEmpty()) { "Добавьте материалы перед подготовкой ссылки" }
         require(media.size <= 20) { "В одном согласовании может быть до 20 материалов" }
@@ -79,9 +88,11 @@ class FindingRepository(
         ))
     }
 
-    suspend fun processPending(findingId: String) {
-        var finding = findingDao.all().firstOrNull { it.id == findingId } ?: return
-        if (finding.approvalPreparationState != "PENDING") return
+    suspend fun processPending(findingId: String): Unit = syncMutex.withLock {
+        var finding = findingDao.all().firstOrNull { it.id == findingId } ?: return@withLock
+        if (finding.approvalPreparationState != "PENDING") return@withLock
+        require(finding.syncError == null) { "Сначала устраните проблему синхронизации находки" }
+        if (finding.serverVersion == 0) throw IOException("Ожидает синхронизации находки")
         val ids = finding.approvalPendingMediaIds.orEmpty().split(",").filter { it.isNotBlank() }
         require(ids.isNotEmpty()) { "Набор материалов пуст" }
         val assets = mediaDao.forFinding(findingId).associateBy { it.id }
@@ -97,10 +108,11 @@ class FindingRepository(
             findingDao.update(finding)
         }
         createApprovalLink(finding, finding.approvalReplaceActive)
+        Unit
     }
 
-    suspend fun preparationFailed(id: String, message: String) {
-        val finding = findingDao.all().firstOrNull { it.id == id } ?: return
+    suspend fun preparationFailed(id: String, message: String) = syncMutex.withLock {
+        val finding = findingDao.all().firstOrNull { it.id == id } ?: return@withLock
         findingDao.update(finding.copy(approvalPreparationState = "FAILED", approvalPreparationError = message))
     }
 
@@ -161,26 +173,31 @@ class FindingRepository(
         return createApprovalLink(finding, replaceActive = true)
     }
 
-    suspend fun synchronizeLocal(serverFindings: List<FindingEntity>) {
-        findingDao.all()
-            .filter { it.serverVersion == 0 }
-            .forEach { findingDao.update(api.saveFinding(it)) }
+    suspend fun synchronizeLocal(serverFindings: List<FindingEntity>) = syncMutex.withLock {
+        findingDao.all().filter { it.serverVersion == 0 && it.syncError == null }.forEach { local ->
+            if (parentReady(local.visitId)) {
+                try {
+                    val server = api.saveFinding(local)
+                    findingDao.update(server.copy(approvalOperationId = local.approvalOperationId, approvalToken = local.approvalToken,
+                        approvalPublicUrl = local.approvalPublicUrl, approvalExpiresAtEpochMs = local.approvalExpiresAtEpochMs,
+                        approvalPreparationState = local.approvalPreparationState, approvalPendingMediaIds = local.approvalPendingMediaIds,
+                        approvalPreparationError = local.approvalPreparationError, approvalReplaceActive = local.approvalReplaceActive))
+                } catch (error: ApiException) {
+                    if (error.statusCode !in 400..499 || error.statusCode in setOf(401, 408, 429)) throw error
+                    findingDao.update(local.copy(syncError = "Находка не синхронизирована: проверьте данные или конфликт на сервере"))
+                }
+            }
+        }
         serverFindings.forEach { remote ->
             val local = findingDao.all().firstOrNull { it.id == remote.id }
-            if (local == null) {
-                findingDao.insert(remote)
-            } else {
-                findingDao.update(remote.copy(
-                    approvalOperationId = local.approvalOperationId,
-                    approvalToken = local.approvalToken,
-                    approvalPublicUrl = local.approvalPublicUrl,
-                    approvalExpiresAtEpochMs = local.approvalExpiresAtEpochMs,
-                    approvalPreparationState = local.approvalPreparationState,
-                    approvalPendingMediaIds = local.approvalPendingMediaIds,
-                    approvalPreparationError = local.approvalPreparationError,
-                    approvalReplaceActive = local.approvalReplaceActive,
-                ))
-            }
+            if (local == null) findingDao.insert(remote)
+            else if (local.serverVersion != 0) findingDao.update(remote.copy(
+                approvalOperationId = local.approvalOperationId, approvalToken = local.approvalToken,
+                approvalPublicUrl = local.approvalPublicUrl, approvalExpiresAtEpochMs = local.approvalExpiresAtEpochMs,
+                approvalPreparationState = local.approvalPreparationState, approvalPendingMediaIds = local.approvalPendingMediaIds,
+                approvalPreparationError = local.approvalPreparationError, approvalReplaceActive = local.approvalReplaceActive,
+                syncError = local.syncError,
+            ))
         }
     }
 

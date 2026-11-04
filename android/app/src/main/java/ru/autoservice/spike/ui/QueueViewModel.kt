@@ -54,6 +54,9 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         initialValue = emptyList(),
     )
 
+    val callRequestedVisitIds: StateFlow<List<String>> = session.flatMapLatest { it?.let { container.forWorkshop(it.workshopId).database.findingDao().observeCallRequestedVisitIds() } ?: flowOf(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val vehicleBrandSuggestions: StateFlow<List<String>> = session.flatMapLatest { it?.let { container.forWorkshop(it.workshopId).localDictionaryRepository.suggestions(DictionaryKind.VEHICLE_BRAND) } ?: flowOf(SeededQuickValues.vehicleBrands) }
         .stateIn(
             scope = viewModelScope,
@@ -124,6 +127,7 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
     fun changePassword(current: String, password: String, onSuccess: () -> Unit, onFailure: (Throwable) -> Unit) {
         viewModelScope.launch {
             runCatching {
+                require(isValidNewPassword(password)) { "Пароль должен содержать от $MIN_PASSWORD_LENGTH до 256 символов" }
                 container.api.changePassword(current, password)
                 synchronize()
             }.onSuccess { onSuccess() }.onFailure(onFailure)
@@ -162,13 +166,22 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
         onFailure: (Throwable) -> Unit,
     ) {
         viewModelScope.launch {
-            runCatching {
-                container.visitRepository.createVisit(draft).also {
-                    container.localDictionaryRepository.recordVisitValues(draft)
+            runCatching { container.visitRepository.createVisit(draft) }
+                .onSuccess { visit ->
+                    onSuccess(visit)
+                    // Suggestions are secondary; failure here must not report a saved visit as unsaved.
+                    runCatching { container.localDictionaryRepository.recordVisitValues(draft) }
                 }
-            }
-                .onSuccess(onSuccess)
                 .onFailure(onFailure)
+        }
+    }
+
+    fun correctUnsyncedVisit(visit: VisitEntity, draft: VisitDraft, onSuccess: () -> Unit, onFailure: (Throwable) -> Unit) {
+        viewModelScope.launch {
+            runCatching {
+                container.visitRepository.correctUnsyncedVisit(visit.id, draft)
+                container.mediaRepository.resumeAfterVisitCorrection(visit.id)
+            }.onSuccess { onSuccess() }.onFailure(onFailure)
         }
     }
 
@@ -252,6 +265,19 @@ class QueueViewModel(application: Application) : AndroidViewModel(application) {
             runCatching { container.findingRepository.markCompleted(finding) }
                 .onSuccess { onSuccess() }
                 .onFailure(onFailure)
+        }
+    }
+
+    fun updateFollowUp(finding: FindingEntity, dueAt: Long?, state: String, onSuccess: () -> Unit, onFailure: (Throwable) -> Unit) {
+        val workshop = container.forWorkshop(requireNotNull(session.value).workshopId)
+        viewModelScope.launch {
+            runCatching {
+                val saved = workshop.api.updateFollowUp(finding, dueAt, state)
+                workshop.database.findingDao().update(finding.copy(followUpDueAtEpochMs = saved.followUpDueAtEpochMs,
+                    followUpConfigured = saved.followUpConfigured, followUpState = saved.followUpState,
+                    followUpCompletedAtEpochMs = saved.followUpCompletedAtEpochMs, serverVersion = saved.serverVersion,
+                    updatedAtEpochMs = saved.updatedAtEpochMs))
+            }.onSuccess { onSuccess() }.onFailure(onFailure)
         }
     }
 

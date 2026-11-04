@@ -38,9 +38,13 @@ class WorkshopContainer(context: Context, val workshopId: String, authStore: Aut
     val api = AutoServiceApi(BuildConfig.API_BASE_URL, authStore, workshopId)
     val uploadTransport = ServerUploadTransport(api)
     val mediaRepository = MediaRepository(database.mediaDao(), fileStore, uploadScheduler, api)
-    val visitRepository = VisitRepository(database.visitDao(), api)
-    val reportRepository = ReportRepository(database.visitDao(), api)
-    val findingRepository = FindingRepository(database.findingDao(), database.mediaDao(), api)
+    private val intakeMutex = kotlinx.coroutines.sync.Mutex()
+    val visitRepository = VisitRepository(database.visitDao(), api, syncMutex = intakeMutex, scheduleSync = { uploadScheduler.enqueueIntake() })
+    val reportRepository = ReportRepository(database.visitDao(), api,
+        hasUnsyncedFindings = { id -> database.findingDao().all().any { it.visitId == id && it.serverVersion == 0 } }, syncMutex = intakeMutex) { visitId -> database.mediaDao().forVisit(visitId) }
+    val findingRepository = FindingRepository(database.findingDao(), database.mediaDao(), api, syncMutex = intakeMutex,
+        scheduleSync = { uploadScheduler.enqueueIntake() },
+        parentReady = { id -> database.visitDao().find(id)?.let { it.serverVersion > 0 && it.syncState == SyncState.SYNCED } == true })
     val localDictionaryRepository = LocalDictionaryRepository(database.dictionaryDao())
 
     // Import only records whose ownership the authenticated server has confirmed.
@@ -73,5 +77,5 @@ class WorkshopContainer(context: Context, val workshopId: String, authStore: Aut
     private fun database(context: Context, name: String): AppDatabase = Room.databaseBuilder(context, AppDatabase::class.java, name)
         .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4,
             AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7,
-            AppDatabase.MIGRATION_7_8).build()
+            AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13).build()
 }

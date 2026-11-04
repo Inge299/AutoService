@@ -8,7 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [VisitEntity::class, MediaAssetEntity::class, DictionaryValueEntity::class, FindingEntity::class],
-    version = 8,
+    version = 13,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -19,6 +19,37 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun findingDao(): FindingDao
 
     companion object {
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE visits ADD COLUMN reportRecommendedPrivateFindingIds TEXT")
+            }
+        }
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE visits ADD COLUMN pendingCustomerId TEXT")
+                db.execSQL("ALTER TABLE visits ADD COLUMN pendingVehicleId TEXT")
+                db.execSQL("ALTER TABLE visits ADD COLUMN syncError TEXT")
+                db.execSQL("ALTER TABLE findings ADD COLUMN syncError TEXT")
+            }
+        }
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE visits ADD COLUMN reportExpectedMediaIds TEXT")
+            }
+        }
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE visits ADD COLUMN reportAcknowledgedPrivateFindingIds TEXT")
+            }
+        }
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE findings ADD COLUMN followUpDueAtEpochMs INTEGER")
+                db.execSQL("ALTER TABLE findings ADD COLUMN followUpConfigured INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE findings ADD COLUMN followUpState TEXT NOT NULL DEFAULT 'OPEN'")
+                db.execSQL("ALTER TABLE findings ADD COLUMN followUpCompletedAtEpochMs INTEGER")
+            }
+        }
         val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE visits ADD COLUMN reportOperationId TEXT")

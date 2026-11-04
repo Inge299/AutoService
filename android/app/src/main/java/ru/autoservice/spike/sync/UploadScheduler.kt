@@ -13,6 +13,15 @@ import java.util.concurrent.TimeUnit
 class UploadScheduler(context: Context, private val workshopId: String) {
     private val workManager = WorkManager.getInstance(context)
 
+    fun enqueueIntake() {
+        val request = OneTimeWorkRequestBuilder<IntakeSyncWorker>()
+            .setInputData(workDataOf("workshop-id" to workshopId))
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.SECONDS)
+            .build()
+        workManager.enqueueUniqueWork("$workshopId-intake-sync", ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+    }
+
     fun enqueue(mediaId: String) {
         val request = OneTimeWorkRequestBuilder<MediaUploadWorker>()
             .setInputData(workDataOf(MediaUploadWorker.MEDIA_ID to mediaId, "workshop-id" to workshopId))

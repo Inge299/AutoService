@@ -62,7 +62,7 @@ describe("finding status guard", () => {
     const update = vi.fn();
     const transaction = vi.fn(async (callback) => callback({
       visit: { findFirst: vi.fn().mockResolvedValue({ id: visitId }) },
-      finding: { findUnique: vi.fn().mockResolvedValue({ workshopId, status: "READY_FOR_APPROVAL", serverVersion: 1 }), update },
+      finding: { findUnique: vi.fn().mockResolvedValue({ workshopId, visitId, status: "READY_FOR_APPROVAL", serverVersion: 1 }), update },
     }));
     const prisma = {
       membership: { findUnique: vi.fn().mockResolvedValue({ role: "EMPLOYEE", isActive: true, user: { isActive: true } }) },

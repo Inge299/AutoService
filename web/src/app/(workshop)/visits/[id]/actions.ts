@@ -3,7 +3,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createApprovalLink, getApiVisit } from "@/lib/api/autoservice-api";
+import { AutoServiceApiError, createApprovalLink, getApiVisit } from "@/lib/api/autoservice-api";
 import { requireSession } from "@/lib/auth/session";
 
 export async function createApprovalLinkAction(formData: FormData): Promise<void> {
@@ -16,7 +16,14 @@ export async function createApprovalLinkAction(formData: FormData): Promise<void
     redirect(`/visits/${encodeURIComponent(visitId)}?error=approval_unavailable`);
   }
   const token = randomBytes(32).toString("base64url");
-  const result = await createApprovalLink(findingId, { operationId: randomUUID(), token, mediaIds: finding.media.map((media) => media.id), expiresInDays: 7 }, session);
+  let result;
+  try {
+    result = await createApprovalLink(findingId, { operationId: randomUUID(), token, mediaIds: finding.media.map((media) => media.id), expiresInDays: 7 }, session);
+  } catch (error) {
+    if (error instanceof AutoServiceApiError && error.body.includes("approval_media_preparing")) redirect(`/visits/${encodeURIComponent(visitId)}?error=media_preparing`);
+    if (error instanceof AutoServiceApiError && error.body.includes("approval_media_preparation_failed")) redirect(`/visits/${encodeURIComponent(visitId)}?error=media_failed`);
+    throw error;
+  }
   revalidatePath(`/visits/${visitId}`);
   redirect(`/visits/${encodeURIComponent(visitId)}?approval=${encodeURIComponent(result.publicPath)}`);
 }

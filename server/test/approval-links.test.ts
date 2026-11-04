@@ -52,7 +52,7 @@ describe("approval link creation", () => {
         }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
-      mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: mediaId }]) },
+      mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: mediaId, objectKey: "qa/verified" }]) },
       approvalLink: { create: linkCreate },
       visit: { findFirst: vi.fn().mockResolvedValue({ status: "IN_REPAIR" }), update: vi.fn().mockResolvedValue({}) },
       auditEvent: { create: vi.fn().mockResolvedValue({}) },
@@ -139,7 +139,7 @@ describe("approval link creation", () => {
         findFirst: vi.fn().mockResolvedValue({ id: findingId, visitId, title: "Колодки", description: "Замена", priceRub: 12_800 }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
-      mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: mediaId }]) },
+      mediaAsset: { findMany: vi.fn().mockResolvedValue([{ id: mediaId, objectKey: "qa/verified" }]) },
       approvalLink: {
         update: revoke,
         create: vi.fn().mockResolvedValue({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", expiresAt: new Date("2026-10-01T12:00:00.000Z") }),

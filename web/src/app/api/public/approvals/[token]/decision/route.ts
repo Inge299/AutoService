@@ -27,10 +27,10 @@ export async function POST(
     return NextResponse.json(decision);
   } catch (error) {
     if (error instanceof AutoServiceApiError) {
-      return NextResponse.json(
-        { error: error.status === 409 ? "decision_already_recorded" : "approval_unavailable" },
-        { status: error.status },
-      );
+      const upstream = (() => { try { return JSON.parse(error.body) as { error?: string }; } catch { return {}; } })();
+      const code = ["decision_already_recorded", "visit_closed", "link_unavailable", "not_found"].includes(upstream.error ?? "")
+        ? upstream.error : "approval_unavailable";
+      return NextResponse.json({ error: code }, { status: error.status });
     }
     return NextResponse.json({ error: "backend_unavailable" }, { status: 502 });
   }

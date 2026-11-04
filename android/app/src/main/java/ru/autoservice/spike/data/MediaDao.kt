@@ -21,6 +21,9 @@ interface MediaDao {
     @Query("DELETE FROM media_assets WHERE id = :id")
     suspend fun delete(id: String)
 
+    @Query("SELECT * FROM media_assets WHERE visitId = :visitId ORDER BY createdAtEpochMs")
+    suspend fun forVisit(visitId: String): List<MediaAssetEntity>
+
     @Query("SELECT * FROM media_assets WHERE findingId = :findingId ORDER BY createdAtEpochMs")
     suspend fun forFinding(findingId: String): List<MediaAssetEntity>
 

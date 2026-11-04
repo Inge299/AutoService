@@ -22,12 +22,6 @@ const verifySchema = z.object({
   code: z.string().regex(/^\d{6}$/),
 });
 const verifyCallSchema = z.object({ challengeId: z.string().uuid() });
-const smscWaitCallSchema = z.object({
-  waitcall: z.union([z.literal("1"), z.literal(1)]),
-  phone: z.string().min(8).max(32).transform(normalizePhone),
-  ts: z.union([z.string(), z.number()]).optional(),
-});
-
 const CODE_TTL_MS = 5 * 60_000;
 const RESEND_DELAY_MS = 60_000;
 const PHONE_WINDOW_MS = 60 * 60_000;
@@ -62,23 +56,9 @@ export function phoneAuthRoutes(
         !callbackSecretMatches((request.query as Record<string, unknown>).token, smscWaitCallCallbackSecret)) {
         return reply.code(404).send();
       }
-      const body = smscWaitCallSchema.parse(request.body);
-      const now = new Date();
-      const confirmed = await prisma.otpChallenge.updateMany({
-        where: {
-          phone: body.phone,
-          verificationMethod: "CALLCHECK",
-          providerCheckId: { not: null },
-          callVerifiedAt: null,
-          consumedAt: null,
-          expiresAt: { gt: now },
-        },
-        data: { callVerifiedAt: now },
-      });
-      // A duplicated provider callback must be acknowledged and must not reveal
-      // whether a phone number has an active login attempt.
-      request.log.info({ event: "smsc_wait_call_callback", matchedChallenges: confirmed.count }, "SMSC WaitCall callback received");
-      return reply.code(200).send();
+      // The provider callback identifies only a phone, not the originating challenge.
+      // It cannot safely confirm any particular authentication attempt.
+      return reply.code(503).send({ error: "verification_delivery_unavailable" });
     });
 
     app.post("/public/v1/auth/phone/request-code", async (request, reply) => {
@@ -275,16 +255,14 @@ export function phoneAuthRoutes(
         challenge.verificationMethod === "CALLCHECK" && challenge.providerCheckId;
       if (!valid || !challenge) return reply.code(401).send({ error: "invalid_or_expired_call" });
 
+      // Always verify this specific provider check; a stored callback flag may have
+      // been set by an uncorrelated phone-only callback before the fix.
       let callState: import("../../infrastructure/verification-delivery.js").CallCheckState;
-      if (challenge.callVerifiedAt) {
-        callState = "CONFIRMED";
-      } else {
-        try {
-          callState = await delivery.checkCall(challenge.providerCheckId!);
-        } catch (error) {
-          request.log.error({ err: error, challengeId: challenge.id }, "Call verification status failed");
-          return reply.code(502).send({ error: "verification_delivery_failed" });
-        }
+      try {
+        callState = await delivery.checkCall(challenge.providerCheckId!);
+      } catch (error) {
+        request.log.error({ err: error, challengeId: challenge.id }, "Call verification status failed");
+        return reply.code(502).send({ error: "verification_delivery_failed" });
       }
       if (callState === "PENDING") return reply.send({ status: "pending" });
       if (callState === "EXPIRED") {
