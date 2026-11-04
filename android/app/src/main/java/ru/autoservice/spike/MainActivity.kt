@@ -1163,6 +1163,7 @@ private fun VisitScreen(
     val allAssets by viewModel.assets.collectAsState()
     val assets = allAssets.filter { it.visitId == visit.id }
     val visitAssets = assets.filter { it.findingId == null }
+    val visitClosed = visit.status in setOf(VisitStatus.COMPLETED, VisitStatus.CANCELLED)
     val findings by viewModel.findingsForVisit(visit.id).collectAsState(initial = emptyList())
     val voiceRecorder = remember { VoiceRecorder(context) }
     var recordingVoice by remember { mutableStateOf(false) }
@@ -1349,25 +1350,28 @@ private fun VisitScreen(
             Spacer(Modifier.height(12.dp))
         }
 
-        Text("Материалы и находки", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(8.dp))
-        Button(onClick = onCreateFinding, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
-            Icon(Icons.Outlined.Add, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Добавить находку")
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = onOpenCamera, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
-                Icon(Icons.Outlined.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Фото / видео")
+        if (!visitClosed) {
+            Text("Материалы и находки", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = onCreateFinding, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                Icon(Icons.Outlined.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Добавить находку")
             }
-            OutlinedButton(onClick = { toggleVoice() }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
-                Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(if (recordingVoice) "Стоп" else "Голос")
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onOpenCamera, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                    Icon(Icons.Outlined.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Фото / видео")
+                }
+                OutlinedButton(onClick = { toggleVoice() }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                    Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (recordingVoice) "Стоп" else "Голос")
+                }
             }
+
         }
 
         Spacer(Modifier.height(18.dp))
@@ -1398,6 +1402,7 @@ private fun VisitScreen(
                 FindingCard(
                     finding = finding,
                     findingAssets = assets.filter { it.findingId == finding.id },
+                    visitClosed = visitClosed,
                     onOpenCamera = { onOpenFindingCamera(finding.id) },
                     onToggleVoice = { toggleVoice(finding.id) },
                     recordingVoice = recordingVoice && voiceFindingId == finding.id,
@@ -1422,6 +1427,7 @@ private fun VisitScreen(
                     FindingCard(
                         finding = finding,
                         findingAssets = assets.filter { it.findingId == finding.id },
+                        visitClosed = visitClosed,
                         onOpenCamera = { onOpenFindingCamera(finding.id) },
                         onToggleVoice = { toggleVoice(finding.id) },
                         recordingVoice = recordingVoice && voiceFindingId == finding.id,
@@ -1441,8 +1447,11 @@ private fun VisitScreen(
         VisitTimeline(
             findingCount = findings.size,
             readyForApprovalCount = findings.count { it.status == FindingStatus.READY_FOR_APPROVAL },
+            awaitingDecisionCount = findings.count { it.status == FindingStatus.SENT_TO_CUSTOMER },
             decisionCount = findings.count { it.status.isCustomerDecision() },
+            completedCount = findings.count { it.status == FindingStatus.COMPLETED },
             materialCount = assets.size,
+            visitSynced = visit.syncState == SyncState.SYNCED,
         )
         renewalFinding?.let { finding ->
             AlertDialog(
@@ -1567,6 +1576,7 @@ private fun VisitScreen(
                         asset = asset,
                         onRetry = { viewModel.retry(asset) },
                         onDelete = { deletionAsset = asset },
+                        allowChanges = !visitClosed,
                     )
                 }
             }
@@ -1590,7 +1600,9 @@ private fun VisitNextStepCard(visit: VisitEntity, findings: List<FindingEntity>)
         needsApproval > 0 ->
             "Подготовьте согласование" to "Карточек к отправке: $needsApproval. Проверьте цену и материалы, затем отправьте ссылку клиенту."
         awaitingCustomer > 0 ->
-            "Ожидайте решения" to "Согласование отправлено. Ответ клиента появится в карточке автоматически."
+            "Ожидайте решения" to "Проверьте, что ссылка отправлена клиенту. Его ответ появится в карточке автоматически."
+        findings.any { it.status == FindingStatus.COMPLETED } ->
+            "Проверьте итог визита" to "Работы отмечены выполненными. Подготовьте итоговый отчёт."
         else ->
             "Зафиксируйте результат осмотра" to "Добавьте находку, фото, видео или голосовую заметку."
     }
@@ -1629,11 +1641,14 @@ private fun VisitNextStepCard(visit: VisitEntity, findings: List<FindingEntity>)
 }
 
 @Composable
-private fun VisitTimeline(
+internal fun VisitTimeline(
     findingCount: Int,
     readyForApprovalCount: Int,
+    awaitingDecisionCount: Int,
     decisionCount: Int,
+    completedCount: Int,
     materialCount: Int,
+    visitSynced: Boolean,
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1649,7 +1664,7 @@ private fun VisitTimeline(
             TimelineStep(
                 number = "1",
                 title = "Приёмка сохранена",
-                detail = "Данные автомобиля подтверждены сервером",
+                detail = if (visitSynced) "Данные автомобиля подтверждены сервером" else "Данные сохранены на телефоне; ожидается синхронизация",
                 color = MaterialTheme.colorScheme.tertiaryContainer,
             )
             TimelineStep(
@@ -1661,16 +1676,20 @@ private fun VisitTimeline(
             TimelineStep(
                 number = "3",
                 title = when {
+                    awaitingDecisionCount > 0 -> "Ожидают решения: $awaitingDecisionCount"
                     decisionCount > 0 -> "Решения клиента: $decisionCount"
                     readyForApprovalCount > 0 -> "Готово к согласованию: $readyForApprovalCount"
+                    completedCount > 0 -> "Работ выполнено: $completedCount"
                     else -> "Согласование не готово"
                 },
                 detail = when {
+                    awaitingDecisionCount > 0 -> "Проверьте, что ссылки отправлены клиенту"
                     decisionCount > 0 -> "Проверьте ответы в карточках находок"
                     readyForApprovalCount > 0 -> "Можно готовить ссылку для клиента"
+                    completedCount > 0 -> "Результаты показаны в карточках работ"
                     else -> "Добавьте цену и материалы к находкам"
                 },
-                color = if (readyForApprovalCount == 0 && decisionCount == 0) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.secondaryContainer,
+                color = if (readyForApprovalCount == 0 && awaitingDecisionCount == 0 && decisionCount == 0 && completedCount == 0) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.secondaryContainer,
             )
         }
     }
@@ -1694,9 +1713,10 @@ private fun TimelineStep(number: String, title: String, detail: String, color: a
 }
 
 @Composable
-private fun FindingCard(
+internal fun FindingCard(
     finding: FindingEntity,
     findingAssets: List<MediaAssetEntity>,
+    visitClosed: Boolean,
     onOpenCamera: () -> Unit,
     onToggleVoice: () -> Unit,
     recordingVoice: Boolean,
@@ -1739,7 +1759,7 @@ private fun FindingCard(
                     } ?: if (finding.followUpConfigured) "Срок не назначен" else "Срок следующего визита или индивидуальный"
                 }
                 Text(planLabel,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.primary)
-                OutlinedButton(onClick=onPlan,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text(if (finding.followUpState == "OPEN") "Срок и выполнение" else "Изменить план") }
+                if (!visitClosed) OutlinedButton(onClick=onPlan,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text(if (finding.followUpState == "OPEN") "Срок и выполнение" else "Изменить план") }
             }
             val syncedAssets = findingAssets.filter { it.syncState == SyncState.SYNCED }
             val pendingAssets = findingAssets.filter { it.syncState != SyncState.SYNCED }
@@ -1754,7 +1774,8 @@ private fun FindingCard(
                     assets = findingAssets,
                     onRetryUpload = onRetryUpload,
                     onDelete = onDelete,
-                    allowDelete = finding.approvalPreparationState != "PENDING" && finding.status in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL),
+                    allowDelete = !visitClosed && finding.approvalPreparationState != "PENDING" && finding.status in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL),
+                    allowRetry = !visitClosed,
                 )
                 Text("Листайте вправо, чтобы увидеть все материалы", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -1765,60 +1786,62 @@ private fun FindingCard(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = onOpenCamera, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
-                    Icon(Icons.Outlined.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Фото / видео")
+            if (!visitClosed) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = onOpenCamera, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                        Icon(Icons.Outlined.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Фото / видео")
+                    }
+                    OutlinedButton(onClick = onToggleVoice, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                        Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (recordingVoice) "Стоп" else "Голос")
+                    }
                 }
-                OutlinedButton(onClick = onToggleVoice, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
-                    Icon(Icons.Outlined.Phone, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (recordingVoice) "Стоп" else "Голос")
+                if (finding.status in setOf(FindingStatus.DRAFT, FindingStatus.READY_FOR_APPROVAL, FindingStatus.SENT_TO_CUSTOMER)) when (finding.approvalPreparationState) {
+                    "PENDING" -> Text("Готовим ссылку · можно продолжать работу", color = MaterialTheme.colorScheme.primary)
+                    "READY" -> Text("Ссылка готова · отправьте её через «Поделиться»", color = MaterialTheme.colorScheme.primary)
+                    "FAILED" -> Text(finding.approvalPreparationError ?: "Нужен повтор", color = MaterialTheme.colorScheme.error)
                 }
-            }
-            when (finding.approvalPreparationState) {
-                "PENDING" -> Text("Готовим ссылку · можно продолжать работу", color = MaterialTheme.colorScheme.primary)
-                "READY" -> Text("Ссылка готова · отправьте её через «Поделиться»", color = MaterialTheme.colorScheme.primary)
-                "FAILED" -> Text(finding.approvalPreparationError ?: "Нужен повтор", color = MaterialTheme.colorScheme.error)
-            }
-            when (finding.status) {
-                FindingStatus.DRAFT -> Button(onClick = onSendApprovalLink, enabled = finding.approvalPreparationState != "PENDING", modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Text("Подготовить ссылку")
+                when (finding.status) {
+                    FindingStatus.DRAFT -> Button(onClick = onSendApprovalLink, enabled = finding.approvalPreparationState != "PENDING", modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text("Подготовить ссылку")
+                    }
+                    FindingStatus.READY_FOR_APPROVAL -> Button(
+                        onClick = onSendApprovalLink,
+                        enabled = finding.approvalPreparationState != "PENDING",
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { Text(if (finding.approvalPreparationState == "FAILED") "Повторить подготовку" else "Подготовить ссылку") }
+                    FindingStatus.SENT_TO_CUSTOMER -> Button(
+                        onClick = onSendApprovalLink,
+                        enabled = finding.approvalPreparationState != "PENDING",
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) {
+                        Icon(Icons.Outlined.Share, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Поделиться")
+                    }
+                    FindingStatus.APPROVED -> Button(onClick = onComplete, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Icon(Icons.Outlined.Check, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Отметить выполненной")
+                    }
+                    else -> Unit
                 }
-                FindingStatus.READY_FOR_APPROVAL -> Button(
-                    onClick = onSendApprovalLink,
-                    enabled = finding.approvalPreparationState != "PENDING",
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                ) { Text(if (finding.approvalPreparationState == "FAILED") "Повторить подготовку" else "Подготовить ссылку") }
-                FindingStatus.SENT_TO_CUSTOMER -> Button(
-                    onClick = onSendApprovalLink,
-                    enabled = finding.approvalPreparationState != "PENDING",
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                ) {
-                    Icon(Icons.Outlined.Share, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Поделиться")
+                if (finding.status == FindingStatus.DRAFT && finding.approvalPreparationState != "PENDING") {
+                    TextButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.Edit, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Изменить")
+                    }
                 }
-                FindingStatus.APPROVED -> Button(onClick = onComplete, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Icon(Icons.Outlined.Check, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Отметить выполненной")
-                }
-                else -> Unit
-            }
-            if (finding.status == FindingStatus.DRAFT && finding.approvalPreparationState != "PENDING") {
-                TextButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Outlined.Edit, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Изменить")
-                }
-            }
-            if (finding.status == FindingStatus.SENT_TO_CUSTOMER) {
-                OutlinedButton(onClick = onRenewApprovalLink, enabled = finding.approvalPreparationState != "PENDING", modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (finding.approvalPreparationState == "FAILED") "Повторить подготовку" else "Обновить материалы")
+                if (finding.status == FindingStatus.SENT_TO_CUSTOMER) {
+                    OutlinedButton(onClick = onRenewApprovalLink, enabled = finding.approvalPreparationState != "PENDING", modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.Refresh, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (finding.approvalPreparationState == "FAILED") "Повторить подготовку" else "Обновить материалы")
+                    }
                 }
             }
         }
@@ -1831,6 +1854,7 @@ private fun FindingMediaGallery(
     onRetryUpload: (MediaAssetEntity) -> Unit,
     onDelete: (MediaAssetEntity) -> Unit,
     allowDelete: Boolean,
+    allowRetry: Boolean,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1841,7 +1865,7 @@ private fun FindingMediaGallery(
         assets.forEach { asset ->
             FindingMediaPreview(
                 asset = asset,
-                onRetryUpload = { onRetryUpload(asset) },
+                onRetryUpload = if (allowRetry) ({ onRetryUpload(asset) }) else null,
                 onDelete = if (allowDelete) ({ onDelete(asset) }) else null,
             )
         }
@@ -1851,7 +1875,7 @@ private fun FindingMediaGallery(
 @Composable
 private fun FindingMediaPreview(
     asset: MediaAssetEntity,
-    onRetryUpload: () -> Unit,
+    onRetryUpload: (() -> Unit)?,
     onDelete: (() -> Unit)?,
 ) {
     var showImage by remember(asset.id) { mutableStateOf(false) }
@@ -1881,7 +1905,7 @@ private fun FindingMediaPreview(
             if (!localFileExists) {
                 Text("Файл недоступен на телефоне", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
-            if (asset.syncState == SyncState.RETRY || asset.syncState == SyncState.BLOCKED) {
+            if (onRetryUpload != null && (asset.syncState == SyncState.RETRY || asset.syncState == SyncState.BLOCKED)) {
                 TextButton(onClick = onRetryUpload, modifier = Modifier.fillMaxWidth()) { Text("Повторить") }
             }
             onDelete?.let { delete ->
@@ -2088,7 +2112,7 @@ private fun VoicePlayer(path: String) {
 private fun Int.asDurationLabel(): String = "%d:%02d".format(this / 60_000, (this / 1_000) % 60)
 
 @Composable
-private fun QueueItem(asset: MediaAssetEntity, onRetry: () -> Unit, onDelete: () -> Unit) {
+private fun QueueItem(asset: MediaAssetEntity, onRetry: () -> Unit, onDelete: () -> Unit, allowChanges: Boolean) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -2102,10 +2126,10 @@ private fun QueueItem(asset: MediaAssetEntity, onRetry: () -> Unit, onDelete: ()
                 style = MaterialTheme.typography.bodySmall,
             )
             asset.lastError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            if (asset.syncState == SyncState.RETRY || asset.syncState == SyncState.BLOCKED) {
+            if (allowChanges && (asset.syncState == SyncState.RETRY || asset.syncState == SyncState.BLOCKED)) {
                 Button(onClick = onRetry) { Text("Повторить") }
             }
-            TextButton(onClick = onDelete) { Text("Удалить") }
+            if (allowChanges) TextButton(onClick = onDelete) { Text("Удалить") }
         }
     }
 }
@@ -2195,7 +2219,7 @@ private fun FindingPriority.label(): String = when (this) {
 private fun ru.autoservice.spike.data.FindingStatus.label(): String = when (this) {
     ru.autoservice.spike.data.FindingStatus.DRAFT -> "Черновик"
     ru.autoservice.spike.data.FindingStatus.READY_FOR_APPROVAL -> "Готово"
-    ru.autoservice.spike.data.FindingStatus.SENT_TO_CUSTOMER -> "У клиента"
+    ru.autoservice.spike.data.FindingStatus.SENT_TO_CUSTOMER -> "Ожидает решения"
     ru.autoservice.spike.data.FindingStatus.APPROVED -> "Согласовано"
     ru.autoservice.spike.data.FindingStatus.COMPLETED -> "Выполнено"
     ru.autoservice.spike.data.FindingStatus.DECLINED -> "Отклонено"

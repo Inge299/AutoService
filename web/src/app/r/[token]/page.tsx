@@ -48,6 +48,8 @@ export default async function PublicReportPage({ params }: { params: Promise<{ t
   const phoneLink = report.workshop.phone?.replace(/[^+\d]/g, "");
   const completed = report.report.findings.filter(finding => finding.status === "COMPLETED");
   const remaining = report.report.findings.filter(finding => finding.status !== "COMPLETED");
+  const completedLines = report.report.completedWork.split("\n").map(line => line.trim()).filter(Boolean);
+  const duplicatesCompletedCards = completed.length > 0 && completedLines.length === completed.length && completedLines.every((line, index) => line === completed[index]?.title.trim());
   const findingIds = new Set(report.report.findings.map(finding => finding.id));
   const generalMedia = report.report.media.filter(media => !media.findingId || !findingIds.has(media.findingId));
   const mediaFor = (id: string) => report.report.media.filter(media => media.findingId === id);
@@ -61,8 +63,8 @@ export default async function PublicReportPage({ params }: { params: Promise<{ t
         <section className="approval-detail report-detail">
           <div className="approval-heading"><StatusPill label="Итог визита" tone="success" /></div>
           <div className="report-facts"><div><span>Дата визита</span><strong>{report.visit.createdAt ? formatDate(report.visit.createdAt) : "Не указана"}</strong></div><div><span>Пробег</span><strong>{report.visit.mileageKm == null ? "Не указан" : `${new Intl.NumberFormat("ru-RU").format(report.visit.mileageKm)} км`}</strong></div></div>
-          {(report.report.version || report.report.publishedAt || report.visit.id) && <p className="report-document-meta">Отчёт{report.report.version ? ` №${report.report.version}` : ""}{report.report.publishedAt ? ` от ${formatDate(report.report.publishedAt)}` : ""}{report.visit.id ? ` · Визит ${report.visit.id}` : ""}</p>}
-          <section className="report-section"><h2>Что сделали</h2><p className="approval-lead">{report.report.completedWork}</p>{completed.length > 0 && <div className="report-work-list">{completed.map(finding => <WorkCard key={finding.id} finding={finding} nextVisitAt={report.report.nextVisitAt} media={mediaFor(finding.id)} />)}</div>}</section>
+          {(report.report.version || report.report.publishedAt) && <p className="report-document-meta">Отчёт{report.report.version ? ` №${report.report.version}` : ""}{report.report.publishedAt ? ` от ${formatDate(report.report.publishedAt)}` : ""}</p>}
+          <section className="report-section"><h2>Что сделали</h2>{!duplicatesCompletedCards && <p className="approval-lead">{report.report.completedWork}</p>}{completed.length > 0 && <div className="report-work-list">{completed.map(finding => <WorkCard key={finding.id} finding={finding} nextVisitAt={report.report.nextVisitAt} media={mediaFor(finding.id)} />)}</div>}</section>
           {report.visit.complaint && <section className="report-section"><h3>С чем обратились</h3><p>{report.visit.complaint}</p></section>}
           {remaining.length > 0 && <section className="report-section"><h2>Остальные работы и решения</h2><p className="report-section-description">Статус каждой работы показывает, что было решено во время визита.</p><div className="report-work-list">{remaining.map(finding => <WorkCard key={finding.id} finding={finding} nextVisitAt={report.report.nextVisitAt} media={mediaFor(finding.id)} />)}</div></section>}
           <section className="report-section report-recommendations"><h2>Рекомендации</h2><p>{report.report.recommendations || "Рекомендации не указаны."}</p>{report.report.nextVisitAt && <div className="report-next-visit"><Icon name="clock" /><div><small>Следующий визит</small><strong>{formatDate(report.report.nextVisitAt)}</strong></div></div>}</section>
